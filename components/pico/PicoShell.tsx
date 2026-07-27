@@ -38,6 +38,7 @@ type PicoShellProps = {
   mode?: 'default' | 'academy'
   railCollapsed?: boolean
   helpLaneOpen?: boolean
+  preferencesReady?: boolean
   onToggleRail?: () => void
   onToggleHelpLane?: () => void
   children: ReactNode
@@ -131,12 +132,14 @@ export function PicoShell({
   mode = 'default',
   railCollapsed = false,
   helpLaneOpen = false,
+  preferencesReady = true,
   onToggleRail,
   onToggleHelpLane,
   children,
 }: PicoShellProps) {
   const pathname = usePathname()
   const [tourOpen, setTourOpen] = useState(false)
+  const [tourReady, setTourReady] = useState(false)
   const academyMode = mode === 'academy'
   const currentItem = navItems.find((item) => routeIsActive(pathname, item.href)) ?? navItems[0]
   const routeSignal = getPicoRouteSignal(pathname, academyMode)
@@ -152,6 +155,7 @@ export function PicoShell({
 
     const dismissed = window.localStorage.getItem(PICO_WELCOME_TOUR_STORAGE_KEY) === 'dismissed'
     setTourOpen(false)
+    setTourReady(true)
     if (dismissed) {
       return
     }
@@ -180,6 +184,7 @@ export function PicoShell({
                   <button
                     type="button"
                     onClick={() => setTourOpen(true)}
+                    disabled={!tourReady}
                     className={picoClasses.tertiaryButton}
                     data-testid="pico-open-tour"
                   >
@@ -189,6 +194,7 @@ export function PicoShell({
                     <button
                       type="button"
                       onClick={onToggleRail}
+                      disabled={!preferencesReady}
                       aria-pressed={!railCollapsed}
                       className={cn(
                         picoClasses.tertiaryButton,
@@ -203,6 +209,7 @@ export function PicoShell({
                     <button
                       type="button"
                       onClick={onToggleHelpLane}
+                      disabled={!preferencesReady}
                       aria-pressed={helpLaneOpen}
                       className={cn(
                         picoClasses.tertiaryButton,
@@ -223,6 +230,7 @@ export function PicoShell({
                   <button
                     type="button"
                     onClick={() => setTourOpen(true)}
+                    disabled={!tourReady}
                     className={picoClasses.tertiaryButton}
                     data-testid="pico-open-tour-mobile"
                   >
@@ -308,6 +316,7 @@ export function PicoShell({
                   <button
                     type="button"
                     onClick={onToggleRail}
+                    disabled={!preferencesReady}
                     className="inline-flex min-h-11 items-center justify-center rounded-[18px] border border-[color:var(--pico-border)] px-3 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--pico-text-secondary)]"
                   >
                     Map
@@ -315,6 +324,7 @@ export function PicoShell({
                   <button
                     type="button"
                     onClick={onToggleHelpLane}
+                    disabled={!preferencesReady}
                     className="inline-flex min-h-11 items-center justify-center rounded-[18px] border border-[color:var(--pico-border)] px-3 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--pico-text-secondary)]"
                   >
                     Help
@@ -400,6 +410,7 @@ export function PicoShell({
                     <button
                       type="button"
                       onClick={() => setTourOpen(true)}
+                      disabled={!tourReady}
                       className={picoClasses.tertiaryButton}
                       data-testid="pico-open-tour"
                     >
@@ -438,6 +449,7 @@ export function PicoShell({
                     <button
                       type="button"
                       onClick={() => setTourOpen(true)}
+                      disabled={!tourReady}
                       className={picoClasses.tertiaryButton}
                       data-testid="pico-open-tour-mobile"
                     >

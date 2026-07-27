@@ -7,6 +7,7 @@ import { ArrowRight, Check, ExternalLink } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { PicoContactForm } from '@/components/pico/PicoContactForm'
+import { PicoLangSwitcher } from '@/components/pico/PicoLangSwitcher'
 import { usePicoSession } from '@/components/pico/usePicoSession'
 import { usePicoHref } from '@/lib/pico/navigation'
 import s from './PicoPricingPage.module.css'
@@ -23,6 +24,7 @@ const PLANS: Array<{ id: PlanId; priceId: string | null; featured?: boolean; ext
 
 export function PicoPricingPage() {
   const t = useTranslations('pico.pricingPage')
+  const navT = useTranslations('pico.nav')
   const searchParams = useSearchParams()
   const toHref = usePicoHref()
   const session = usePicoSession()
@@ -59,8 +61,17 @@ export function PicoPricingPage() {
     <div className={s.page} data-testid="pico-pricing-route">
       <PicoContactForm open={formOpen} onClose={() => setFormOpen(false)} source="pico-pricing" />
       <header className={s.nav}>
-        <Link href={toHref('/')} className={s.brand}>PICO<span>/ MUTX</span></Link>
-        <nav><Link href={toHref('/')}>Home</Link><Link href={toHref('/support')}>Support</Link><button onClick={() => setFormOpen(true)}>Request access</button></nav>
+        <Link href={toHref('/')} className={s.brand} aria-label="Pico home">
+          <span aria-hidden="true">PX</span>
+          <strong>Pico</strong>
+          <small>/ MUTX</small>
+        </Link>
+        <nav aria-label="Pico pricing navigation">
+          <Link href={toHref('/')}>{t('returnToLanding')}</Link>
+          <Link href={toHref('/support')}>{t('secondaryCta')}</Link>
+          <PicoLangSwitcher />
+          <button type="button" onClick={() => setFormOpen(true)}>{navT('cta')}</button>
+        </nav>
       </header>
 
       <main id="main-content">
@@ -70,7 +81,7 @@ export function PicoPricingPage() {
           <span>{t('subtitle')}</span>
         </section>
 
-        <section className={s.plans} aria-label="Pico plans" data-testid="pico-pricing-live-plans">
+        <section className={s.plans} aria-label={t('livePlans.label')} data-testid="pico-pricing-live-plans">
           {plans.map((plan, index) => {
             const isCurrent = currentPlan === plan.id
             const isRequested = requestedPlan === plan.id
@@ -79,18 +90,19 @@ export function PicoPricingPage() {
                 key={plan.id}
                 className={[plan.featured ? s.featured : '', isRequested ? s.requested : ''].filter(Boolean).join(' ') || undefined}
               >
-                <div className={s.planTop}><span>0{index + 1}</span>{plan.featured ? <b>Most useful</b> : null}</div>
+                <div className={s.planTop}><span>0{index + 1}</span>{plan.featured ? <b>{t('livePlans.badgePopular')}</b> : null}</div>
                 <h2>{plan.name}</h2>
                 <p className={s.price}>{plan.price}<small>{plan.period}</small></p>
                 <p className={s.description}>{plan.description}</p>
                 <ul>{plan.features.map((feature) => <li key={feature}><Check />{feature}</li>)}</ul>
-                {isCurrent ? <span className={s.current}>Current plan</span> : plan.priceId ? (
-                  <button type="button" disabled={loading === plan.id} onClick={() => checkout(plan.id, plan.priceId!)}>
-                    {loading === plan.id
-                      ? 'Opening…'
-                      : session.status === 'unauthenticated'
-                        ? `Sign in to choose ${plan.name}`
-                        : plan.cta}
+                {isCurrent ? <span className={s.current}>{t('livePlans.currentPlan')}</span> : plan.priceId ? (
+                  <button
+                    type="button"
+                    disabled={loading === plan.id}
+                    aria-busy={loading === plan.id}
+                    onClick={() => checkout(plan.id, plan.priceId!)}
+                  >
+                    {loading === plan.id ? t('livePlans.loading') : plan.cta}
                     <ArrowRight />
                   </button>
                 ) : plan.external ? (
@@ -103,10 +115,10 @@ export function PicoPricingPage() {
           })}
         </section>
 
-        {error ? <p className={s.error}>{error}</p> : null}
+        {error ? <p className={s.error} role="alert">{error}</p> : null}
         <section className={s.final}>
-          <p>Start free.<br />Pay when it works.</p>
-          <button type="button" onClick={() => setFormOpen(true)}>Talk to Pico <ArrowRight /></button>
+          <p>{t('subtitle')}</p>
+          <button type="button" onClick={() => setFormOpen(true)}>{t('secondaryCta')} <ArrowRight /></button>
         </section>
       </main>
     </div>

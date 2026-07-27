@@ -249,6 +249,8 @@ export function DocsLayout({ nav, children, title = 'MUTX' }: DocsLayoutProps) {
   const mobileToggleRef = useRef<HTMLButtonElement>(null);
   const mobileSidebarRef = useRef<HTMLElement>(null);
   const docsContentRef = useRef<HTMLElement>(null);
+  const docsHeaderRef = useRef<HTMLElement>(null);
+  const hasSidebar = nav.length > 0;
   const editorialRoutes = ['/manifesto', '/whitepaper', '/roadmap'];
   const resourceRoutes = ['/infrastructure', '/sdk', '/security', '/support'];
   const isEditorial = editorialRoutes.includes(pathname);
@@ -286,19 +288,45 @@ export function DocsLayout({ nav, children, title = 'MUTX' }: DocsLayoutProps) {
   }, [pathname]);
 
   useEffect(() => {
-    if (!mobileNavOpen) return;
+    if (!hasSidebar) return;
+
+    const desktopQuery = window.matchMedia('(min-width: 1024px)');
+    const closeAtDesktop = (event: MediaQueryListEvent) => {
+      if (event.matches) setMobileNavOpen(false);
+    };
+
+    desktopQuery.addEventListener('change', closeAtDesktop);
+    return () => desktopQuery.removeEventListener('change', closeAtDesktop);
+  }, [hasSidebar]);
+
+  useEffect(() => {
+    if (!mobileNavOpen || !hasSidebar) return;
+
+    const focusableSelector =
+      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const headerElements = Array.from(docsHeaderRef.current?.children ?? []).filter(
+      (element) => element !== mobileToggleRef.current,
+    );
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousRootOverflow = document.documentElement.style.overflow;
+    const previousOverscrollBehavior = document.body.style.overscrollBehavior;
 
     function closeOnEscape(event: KeyboardEvent) {
       if (event.key === 'Escape') {
+        event.preventDefault();
         setMobileNavOpen(false);
         return;
       }
 
       if (event.key === 'Tab' && mobileSidebarRef.current) {
         const focusable = Array.from(
-          mobileSidebarRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled])'),
+          mobileSidebarRef.current.querySelectorAll<HTMLElement>(focusableSelector),
         );
-        if (!focusable.length) return;
+        if (!focusable.length) {
+          event.preventDefault();
+          mobileSidebarRef.current.focus();
+          return;
+        }
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
         if (event.shiftKey && document.activeElement === first) {
@@ -312,16 +340,28 @@ export function DocsLayout({ nav, children, title = 'MUTX' }: DocsLayoutProps) {
     }
 
     docsContentRef.current?.setAttribute('inert', '');
+    headerElements.forEach((element) => element.setAttribute('inert', ''));
+    document.body.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'contain';
+    document.documentElement.style.overflow = 'hidden';
     window.requestAnimationFrame(() => {
-      mobileSidebarRef.current?.querySelector<HTMLElement>('a[href], button:not([disabled])')?.focus();
+      const sidebar = mobileSidebarRef.current;
+      sidebar?.querySelector<HTMLElement>(focusableSelector)?.focus();
+      if (sidebar && !sidebar.contains(document.activeElement)) sidebar.focus();
     });
     document.addEventListener('keydown', closeOnEscape);
     return () => {
       document.removeEventListener('keydown', closeOnEscape);
       docsContentRef.current?.removeAttribute('inert');
-      mobileToggleRef.current?.focus();
+      headerElements.forEach((element) => element.removeAttribute('inert'));
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.overscrollBehavior = previousOverscrollBehavior;
+      document.documentElement.style.overflow = previousRootOverflow;
+      if (window.matchMedia('(max-width: 1023px)').matches) {
+        mobileToggleRef.current?.focus();
+      }
     };
-  }, [mobileNavOpen]);
+  }, [hasSidebar, mobileNavOpen]);
 
   return (
     <DocsNavContext.Provider value={{ nav, onNavigate: handleNavigate }}>
@@ -330,30 +370,34 @@ export function DocsLayout({ nav, children, title = 'MUTX' }: DocsLayoutProps) {
       data-mobile-nav-open={mobileNavOpen ? '1' : undefined}
     >
       {/* ── Top header ── */}
-      <header className="docs-header">
-        <button
-          ref={mobileToggleRef}
-          className="lg:hidden p-1.5 -ml-1.5 text-gb-text-2 hover:text-white transition-colors rounded"
-          aria-label="Toggle navigation"
-          aria-expanded={mobileNavOpen}
-          aria-controls="docs-mobile-navigation"
-          onClick={() => setMobileNavOpen((open) => !open)}
-        >
-          <svg
-            width="18"
-            height="18"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
+      <header ref={docsHeaderRef} className="docs-header">
+        {hasSidebar ? (
+          <button
+            ref={mobileToggleRef}
+            type="button"
+            className="docs-mobile-nav-toggle p-1.5 -ml-1.5 text-gb-text-2 hover:text-white transition-colors rounded"
+            aria-label={mobileNavOpen ? 'Close documentation navigation' : 'Open documentation navigation'}
+            aria-expanded={mobileNavOpen}
+            aria-controls="docs-mobile-navigation"
+            onClick={() => setMobileNavOpen((open) => !open)}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M4 6h16M4 12h16M4 18h16"
-            />
-          </svg>
-        </button>
+            <svg
+              width="18"
+              height="18"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d={mobileNavOpen ? 'M6 6l12 12M18 6L6 18' : 'M4 6h16M4 12h16M4 18h16'}
+              />
+            </svg>
+          </button>
+        ) : null}
         <Link href="/docs" className="docs-header-logo">
           <span className="docs-header-logo-mark" aria-hidden="true">
             <span className="docs-header-logo-mark-inner">M</span>
@@ -418,28 +462,34 @@ export function DocsLayout({ nav, children, title = 'MUTX' }: DocsLayoutProps) {
 
       {/* ── Body layout ── */}
       <div className="docs-layout">
-        <button
-          type="button"
-          className="docs-sidebar-overlay lg:hidden docs-mobile-overlay"
-          aria-label="Close documentation navigation"
-          onClick={() => setMobileNavOpen(false)}
-        />
+        {hasSidebar ? (
+          <>
+            <button
+              type="button"
+              className="docs-sidebar-overlay docs-mobile-overlay"
+              aria-hidden="true"
+              tabIndex={-1}
+              onClick={() => setMobileNavOpen(false)}
+            />
 
-        {/* ── Left sidebar ── */}
-        <aside
-          ref={mobileSidebarRef}
-          id="docs-mobile-navigation"
-          className="docs-sidebar docs-mobile-sidebar"
-          aria-label="Documentation navigation"
-          role={mobileNavOpen ? 'dialog' : undefined}
-          aria-modal={mobileNavOpen ? true : undefined}
-        >
-          <nav aria-label="Docs nav">
-            {nav.map((item) => (
-              <NavItem key={item.route} item={item} pathname={pathname} />
-            ))}
-          </nav>
-        </aside>
+            {/* ── Left sidebar ── */}
+            <aside
+              ref={mobileSidebarRef}
+              id="docs-mobile-navigation"
+              className="docs-sidebar docs-mobile-sidebar"
+              aria-label="Documentation navigation"
+              role={mobileNavOpen ? 'dialog' : undefined}
+              aria-modal={mobileNavOpen ? true : undefined}
+              tabIndex={-1}
+            >
+              <nav aria-label="Docs nav">
+                {nav.map((item) => (
+                  <NavItem key={item.route} item={item} pathname={pathname} />
+                ))}
+              </nav>
+            </aside>
+          </>
+        ) : null}
 
         {/* ── Main content ── */}
         <main ref={docsContentRef} id="main-content" className="docs-content">

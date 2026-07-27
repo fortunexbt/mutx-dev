@@ -57,11 +57,44 @@ export type DesktopRouteKey =
   | "logs"
   | "control";
 
+export const DASHBOARD_ROUTE_PATHS = {
+  home: "/dashboard",
+  agents: "/dashboard/agents",
+  deployments: "/dashboard/deployments",
+  documents: "/dashboard/documents",
+  reasoning: "/dashboard/reasoning",
+  runs: "/dashboard/runs",
+  monitoring: "/dashboard/monitoring",
+  autonomy: "/dashboard/autonomy",
+  traces: "/dashboard/traces",
+  observability: "/dashboard/observability",
+  sessions: "/dashboard/sessions",
+  apiKeys: "/dashboard/api-keys",
+  budgets: "/dashboard/budgets",
+  webhooks: "/dashboard/webhooks",
+  swarm: "/dashboard/swarm",
+  security: "/dashboard/security",
+  orchestration: "/dashboard/orchestration",
+  memory: "/dashboard/memory",
+  analytics: "/dashboard/analytics",
+  channels: "/dashboard/channels",
+  templates: "/dashboard/templates",
+  notifications: "/dashboard/notifications",
+  standup: "/dashboard/standup",
+  history: "/dashboard/history",
+  skills: "/dashboard/skills",
+  spawn: "/dashboard/spawn",
+  logs: "/dashboard/logs",
+  control: "/dashboard/control",
+} as const satisfies Record<DesktopRouteKey, `/dashboard${string}`>;
+
+export type DashboardRoutePath = (typeof DASHBOARD_ROUTE_PATHS)[DesktopRouteKey];
+
 export interface DesktopRouteMeta {
   key: DesktopRouteKey;
   title: string;
-  path: string;
-  publicHref: string;
+  path: DashboardRoutePath;
+  publicHref: DashboardRoutePath | null;
   description: string;
   badge: string;
   section: DesktopRouteSection;
@@ -77,8 +110,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   home: {
     key: "home",
     title: "Overview",
-    path: "/dashboard",
-    publicHref: "/",
+    path: DASHBOARD_ROUTE_PATHS.home,
+    publicHref: DASHBOARD_ROUTE_PATHS.home,
     description: "Native mission control for desktop identity, runtime posture, and operator actions.",
     badge: "mission control",
     section: "home",
@@ -88,8 +121,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   agents: {
     key: "agents",
     title: "Agents",
-    path: "/dashboard/agents",
-    publicHref: "/agents",
+    path: DASHBOARD_ROUTE_PATHS.agents,
+    publicHref: DASHBOARD_ROUTE_PATHS.agents,
     description: "Desktop-native registry for assistants, lifecycle control, and fleet ownership.",
     badge: "core ops",
     section: "core",
@@ -100,8 +133,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   deployments: {
     key: "deployments",
     title: "Deployments",
-    path: "/dashboard/deployments",
-    publicHref: "/deployments",
+    path: DASHBOARD_ROUTE_PATHS.deployments,
+    publicHref: DASHBOARD_ROUTE_PATHS.deployments,
     description: "Rollout posture, replica control, and runtime-aware deployment recovery.",
     badge: "core ops",
     section: "core",
@@ -112,8 +145,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   documents: {
     key: "documents",
     title: "Documents",
-    path: "/dashboard/documents",
-    publicHref: "/dashboard/documents",
+    path: DASHBOARD_ROUTE_PATHS.documents,
+    publicHref: DASHBOARD_ROUTE_PATHS.documents,
     description: "Document workflow templates, artifact handling, and hybrid managed or local execution.",
     badge: "execution",
     section: "execution",
@@ -124,8 +157,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   reasoning: {
     key: "reasoning",
     title: "Reasoning",
-    path: "/dashboard/reasoning",
-    publicHref: "/dashboard/reasoning",
+    path: DASHBOARD_ROUTE_PATHS.reasoning,
+    publicHref: DASHBOARD_ROUTE_PATHS.reasoning,
     description: "Autoreason refinement jobs with blind judging, artifact capture, and run-linked traces.",
     badge: "execution",
     section: "execution",
@@ -136,8 +169,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   runs: {
     key: "runs",
     title: "Runs",
-    path: "/dashboard/runs",
-    publicHref: "/runs",
+    path: DASHBOARD_ROUTE_PATHS.runs,
+    publicHref: DASHBOARD_ROUTE_PATHS.runs,
     description: "Recent execution history with direct machine-local follow-up actions.",
     badge: "core ops",
     section: "core",
@@ -148,8 +181,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   monitoring: {
     key: "monitoring",
     title: "Monitoring",
-    path: "/dashboard/monitoring",
-    publicHref: "/environments",
+    path: DASHBOARD_ROUTE_PATHS.monitoring,
+    publicHref: DASHBOARD_ROUTE_PATHS.monitoring,
     description: "Alert pressure, gateway health, governance state, and operator-visible runtime condition.",
     badge: "core ops",
     section: "core",
@@ -160,8 +193,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   autonomy: {
     key: "autonomy",
     title: "Autonomy",
-    path: "/dashboard/autonomy",
-    publicHref: "/dashboard/autonomy",
+    path: DASHBOARD_ROUTE_PATHS.autonomy,
+    publicHref: DASHBOARD_ROUTE_PATHS.autonomy,
     description: "Local autonomy daemon, queue, runner, and report posture from the live workspace contract.",
     badge: "local autonomy",
     section: "execution",
@@ -173,8 +206,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   traces: {
     key: "traces",
     title: "Traces",
-    path: "/dashboard/traces",
-    publicHref: "/runs",
+    path: DASHBOARD_ROUTE_PATHS.traces,
+    publicHref: DASHBOARD_ROUTE_PATHS.traces,
     description: "Trace exploration tied to real runs and machine-aware debugging context.",
     badge: "execution",
     section: "execution",
@@ -185,8 +218,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   observability: {
     key: "observability",
     title: "Observability",
-    path: "/dashboard/observability",
-    publicHref: "/observability",
+    path: DASHBOARD_ROUTE_PATHS.observability,
+    publicHref: DASHBOARD_ROUTE_PATHS.observability,
     description: "Desktop-native event and telemetry surface over the live observability contracts.",
     badge: "execution",
     section: "execution",
@@ -197,8 +230,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   sessions: {
     key: "sessions",
     title: "Sessions",
-    path: "/dashboard/sessions",
-    publicHref: "/sessions",
+    path: DASHBOARD_ROUTE_PATHS.sessions,
+    publicHref: DASHBOARD_ROUTE_PATHS.sessions,
     description: "Local and cloud session activity in one native workspace.",
     badge: "execution",
     section: "execution",
@@ -210,8 +243,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   apiKeys: {
     key: "apiKeys",
     title: "API Keys",
-    path: "/dashboard/api-keys",
-    publicHref: "/api-keys",
+    path: DASHBOARD_ROUTE_PATHS.apiKeys,
+    publicHref: DASHBOARD_ROUTE_PATHS.apiKeys,
     description: "Native key issuance, rotation, revocation, and one-time secret handling.",
     badge: "admin",
     section: "admin",
@@ -221,9 +254,9 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   },
   budgets: {
     key: "budgets",
-    title: "Budgets",
-    path: "/dashboard/budgets",
-    publicHref: "/usage",
+    title: "Usage",
+    path: DASHBOARD_ROUTE_PATHS.budgets,
+    publicHref: DASHBOARD_ROUTE_PATHS.budgets,
     description: "Usage, credit posture, and cost signals with local runtime context nearby.",
     badge: "admin",
     section: "admin",
@@ -233,9 +266,9 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   },
   webhooks: {
     key: "webhooks",
-    title: "Webhooks",
-    path: "/dashboard/webhooks",
-    publicHref: "/connectors",
+    title: "Connectors",
+    path: DASHBOARD_ROUTE_PATHS.webhooks,
+    publicHref: DASHBOARD_ROUTE_PATHS.webhooks,
     description: "Outbound delivery endpoints and test flows without leaving the desktop shell.",
     badge: "admin",
     section: "admin",
@@ -246,8 +279,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   swarm: {
     key: "swarm",
     title: "Swarm",
-    path: "/dashboard/swarm",
-    publicHref: "/deployments",
+    path: DASHBOARD_ROUTE_PATHS.swarm,
+    publicHref: DASHBOARD_ROUTE_PATHS.swarm,
     description: "Grouped agent topology and scaling posture with native runtime context.",
     badge: "support",
     section: "support",
@@ -257,9 +290,9 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   },
   security: {
     key: "security",
-    title: "Security",
-    path: "/dashboard/security",
-    publicHref: "/access",
+    title: "Access",
+    path: DASHBOARD_ROUTE_PATHS.security,
+    publicHref: DASHBOARD_ROUTE_PATHS.security,
     description: "Operator session posture, token state, key inventory, and trust boundaries.",
     badge: "admin",
     section: "admin",
@@ -270,8 +303,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   orchestration: {
     key: "orchestration",
     title: "Orchestration",
-    path: "/dashboard/orchestration",
-    publicHref: "/settings",
+    path: DASHBOARD_ROUTE_PATHS.orchestration,
+    publicHref: DASHBOARD_ROUTE_PATHS.orchestration,
     description: "Workflow lanes, automation posture, and native desktop orchestration context.",
     badge: "admin",
     section: "admin",
@@ -284,8 +317,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   memory: {
     key: "memory",
     title: "Memory",
-    path: "/dashboard/memory",
-    publicHref: "/settings",
+    path: DASHBOARD_ROUTE_PATHS.memory,
+    publicHref: DASHBOARD_ROUTE_PATHS.memory,
     description: "Context retention posture, workspace memory readiness, and future memory controls.",
     badge: "admin",
     section: "admin",
@@ -298,8 +331,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   analytics: {
     key: "analytics",
     title: "Analytics",
-    path: "/dashboard/analytics",
-    publicHref: "/analytics",
+    path: DASHBOARD_ROUTE_PATHS.analytics,
+    publicHref: DASHBOARD_ROUTE_PATHS.analytics,
     description: "Trends, latency, and fleet activity summaries rendered in the native shell.",
     badge: "admin",
     section: "admin",
@@ -310,8 +343,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   channels: {
     key: "channels",
     title: "Channels",
-    path: "/dashboard/channels",
-    publicHref: "/settings",
+    path: DASHBOARD_ROUTE_PATHS.channels,
+    publicHref: DASHBOARD_ROUTE_PATHS.channels,
     description: "Channel posture, assistant bindings, and local communication defaults.",
     badge: "support",
     section: "support",
@@ -325,8 +358,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   templates: {
     key: "templates",
     title: "Templates",
-    path: "/dashboard/templates",
-    publicHref: "/dashboard/templates",
+    path: DASHBOARD_ROUTE_PATHS.templates,
+    publicHref: DASHBOARD_ROUTE_PATHS.templates,
     description: "Starter and custom agent templates backed by the workspace catalog.",
     badge: "workspace",
     section: "support",
@@ -339,8 +372,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   notifications: {
     key: "notifications",
     title: "Notifications",
-    path: "/dashboard/notifications",
-    publicHref: "/dashboard/notifications",
+    path: DASHBOARD_ROUTE_PATHS.notifications,
+    publicHref: DASHBOARD_ROUTE_PATHS.notifications,
     description: "Live operator notifications and read state from the dashboard contract.",
     badge: "support",
     section: "support",
@@ -353,8 +386,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   standup: {
     key: "standup",
     title: "Standup",
-    path: "/dashboard/standup",
-    publicHref: "/dashboard/standup",
+    path: DASHBOARD_ROUTE_PATHS.standup,
+    publicHref: DASHBOARD_ROUTE_PATHS.standup,
     description: "Current standup summary, blockers, and recent execution context.",
     badge: "support",
     section: "support",
@@ -367,8 +400,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   history: {
     key: "history",
     title: "History",
-    path: "/dashboard/history",
-    publicHref: "/environments",
+    path: DASHBOARD_ROUTE_PATHS.history,
+    publicHref: DASHBOARD_ROUTE_PATHS.history,
     description: "Native audit trail entrypoint for recent operator actions and local recovery context.",
     badge: "support",
     section: "support",
@@ -381,8 +414,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   skills: {
     key: "skills",
     title: "Skills",
-    path: "/dashboard/skills",
-    publicHref: "/settings",
+    path: DASHBOARD_ROUTE_PATHS.skills,
+    publicHref: DASHBOARD_ROUTE_PATHS.skills,
     description: "Installed assistant capabilities and native workspace skill posture.",
     badge: "support",
     section: "support",
@@ -396,8 +429,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   spawn: {
     key: "spawn",
     title: "Spawn",
-    path: "/dashboard/spawn",
-    publicHref: "/agents",
+    path: DASHBOARD_ROUTE_PATHS.spawn,
+    publicHref: DASHBOARD_ROUTE_PATHS.spawn,
     description: "Native entrypoint for creating new assistants and local operator seat expansion.",
     badge: "support",
     section: "support",
@@ -410,8 +443,8 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   logs: {
     key: "logs",
     title: "Logs",
-    path: "/dashboard/logs",
-    publicHref: "/environments",
+    path: DASHBOARD_ROUTE_PATHS.logs,
+    publicHref: DASHBOARD_ROUTE_PATHS.logs,
     description: "Real-time step timeline and execution log stream for agent runs.",
     badge: "execution trace",
     section: "support",
@@ -423,9 +456,9 @@ export const DESKTOP_ROUTE_META: Record<DesktopRouteKey, DesktopRouteMeta> = {
   },
   control: {
     key: "control",
-    title: "Advanced",
-    path: "/dashboard/control",
-    publicHref: "/settings",
+    title: "Settings",
+    path: DASHBOARD_ROUTE_PATHS.control,
+    publicHref: DASHBOARD_ROUTE_PATHS.control,
     description: "Bridge diagnostics, runtime repair, governance control, and desktop environment inspection.",
     badge: "advanced diagnostics",
     section: "support",

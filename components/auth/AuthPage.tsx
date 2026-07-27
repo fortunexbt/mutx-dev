@@ -290,7 +290,7 @@ export function AuthPage({
           className={
             isPicoPreview
               ? "flex items-center gap-3 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[rgba(113,145,103,0.72)]"
-              : "flex items-center gap-3 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[rgba(77,58,45,0.58)]"
+              : "flex items-center gap-3 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[#675b53]"
           }
         >
           <span

@@ -52,6 +52,11 @@ type Webhook = {
   created_at: string;
 };
 
+const WEBHOOK_SEARCH_ID = "webhook-search";
+const WEBHOOK_URL_ID = "webhook-url";
+const WEBHOOK_EVENTS_ID = "webhook-events";
+const WEBHOOK_FORM_ERROR_ID = "webhook-form-error";
+
 function normalizeStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
@@ -113,6 +118,7 @@ export default function WebhooksPageClient() {
   const [deliverySignals, setDeliverySignals] = useState<Record<string, WebhookDeliverySignal>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingWebhook, setEditingWebhook] = useState<Webhook | null>(null);
   const [viewingDeliveries, setViewingDeliveries] = useState<Webhook | null>(null);
@@ -267,6 +273,7 @@ export default function WebhooksPageClient() {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
+    setFormError(null);
     try {
       const method = editingWebhook ? "PATCH" : "POST";
       const url = editingWebhook
@@ -288,7 +295,9 @@ export default function WebhooksPageClient() {
       setFormData({ url: "", events: "", is_active: true });
       await fetchWebhooks();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setError(message);
+      setFormError(message);
     } finally {
       setSubmitting(false);
     }
@@ -326,6 +335,7 @@ export default function WebhooksPageClient() {
   }
 
   function startEdit(webhook: Webhook) {
+    setFormError(null);
     setEditingWebhook(webhook);
     setFormData({
       url: webhook.url,
@@ -345,8 +355,14 @@ export default function WebhooksPageClient() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        className="flex items-center justify-center p-12"
+      >
+        <Loader2 aria-hidden="true" className="h-8 w-8 animate-spin text-muted-foreground" />
+        <span className="sr-only">Loading webhooks</span>
       </div>
     );
   }
@@ -354,15 +370,23 @@ export default function WebhooksPageClient() {
   return (
     <div className="space-y-6">
       {error && (
-        <div className="flex items-center gap-2 p-4 bg-destructive/10 text-destructive rounded-md">
-          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+        <div
+          id={formError ? WEBHOOK_FORM_ERROR_ID : undefined}
+          role="alert"
+          className="flex items-center gap-2 p-4 bg-destructive/10 text-destructive rounded-md"
+        >
+          <AlertCircle aria-hidden="true" className="h-4 w-4 flex-shrink-0" />
           <span className="flex-1">{error}</span>
           <button
-            onClick={() => setError(null)}
+            type="button"
+            onClick={() => {
+              setError(null);
+              setFormError(null);
+            }}
             className="p-1 hover:bg-destructive/20 rounded"
             aria-label="Dismiss error"
           >
-            <X className="h-4 w-4" />
+            <X aria-hidden="true" className="h-4 w-4" />
           </button>
         </div>
       )}
@@ -397,22 +421,30 @@ export default function WebhooksPageClient() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Delivery History</h2>
             <button
+              type="button"
               onClick={() => {
                 setViewingDeliveries(null);
                 setDeliveries([]);
                 setExpandedDelivery(null);
               }}
               className="p-2 hover:bg-accent rounded-md"
+              aria-label="Close delivery history"
             >
-              <X className="h-4 w-4" />
+              <X aria-hidden="true" className="h-4 w-4" />
             </button>
           </div>
           <p className="text-sm text-muted-foreground mb-4">
             {viewingDeliveries.url}
           </p>
           {loadingDeliveries ? (
-            <div className="flex items-center justify-center p-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <div
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+              className="flex items-center justify-center p-8"
+            >
+              <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin text-muted-foreground" />
+              <span className="sr-only">Loading delivery history</span>
             </div>
           ) : deliveries.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">
@@ -486,12 +518,19 @@ export default function WebhooksPageClient() {
         </Card>
       )}
 
-            {!showForm && !viewingDeliveries && webhooks.length > 0 && (
+      {!showForm && !viewingDeliveries && webhooks.length > 0 && (
         <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+          <label htmlFor={WEBHOOK_SEARCH_ID} className="sr-only">
+            Search webhooks
+          </label>
+          <Search
+            aria-hidden="true"
+            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500"
+          />
           <input
+            id={WEBHOOK_SEARCH_ID}
             ref={searchInputRef}
-            type="text"
+            type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={isMac ? "Search webhooks... (⌘K)" : "Search webhooks... (Ctrl+K)"}
@@ -505,6 +544,7 @@ export default function WebhooksPageClient() {
           <button
             onClick={() => {
               setShowForm(true);
+              setFormError(null);
               setEditingWebhook(null);
               setFormData({ url: "", events: "", is_active: true });
             }}
@@ -521,28 +561,36 @@ export default function WebhooksPageClient() {
           <h2 className="text-lg font-semibold mb-4">
             {editingWebhook ? "Edit Webhook" : "Add New Webhook"}
           </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} aria-busy={submitting} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">URL</label>
+              <label htmlFor={WEBHOOK_URL_ID} className="block text-sm font-medium mb-1">
+                URL
+              </label>
               <input
+                id={WEBHOOK_URL_ID}
                 type="url"
                 value={formData.url}
                 onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                aria-invalid={Boolean(formError)}
+                aria-describedby={formError ? WEBHOOK_FORM_ERROR_ID : undefined}
                 placeholder="https://your-server.com/webhook"
                 className="w-full px-3 py-2 border rounded-md bg-background"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">
+              <label htmlFor={WEBHOOK_EVENTS_ID} className="block text-sm font-medium mb-1">
                 Events (comma-separated)
               </label>
               <input
+                id={WEBHOOK_EVENTS_ID}
                 type="text"
                 value={formData.events}
                 onChange={(e) =>
                   setFormData({ ...formData, events: e.target.value })
                 }
+                aria-invalid={Boolean(formError)}
+                aria-describedby={formError ? WEBHOOK_FORM_ERROR_ID : undefined}
                 placeholder="agent.started, deployment.finished"
                 className="w-full px-3 py-2 border rounded-md bg-background"
               />
@@ -570,7 +618,10 @@ export default function WebhooksPageClient() {
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
               >
                 {submitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <>
+                    <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+                    <span className="sr-only">Saving webhook</span>
+                  </>
                 ) : (
                   "Save"
                 )}
@@ -579,6 +630,7 @@ export default function WebhooksPageClient() {
                 type="button"
                 onClick={() => {
                   setShowForm(false);
+                  setFormError(null);
                   setEditingWebhook(null);
                 }}
                 className="px-4 py-2 border rounded-md hover:bg-accent"
@@ -603,7 +655,10 @@ export default function WebhooksPageClient() {
             Add a webhook to receive real-time notifications
           </p>
           <button
-            onClick={() => setShowForm(true)}
+            onClick={() => {
+              setShowForm(true);
+              setFormError(null);
+            }}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
           >
             <Plus className="h-4 w-4 mr-2 inline" />

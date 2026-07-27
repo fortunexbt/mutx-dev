@@ -2694,6 +2694,78 @@
             "anchorPrice": "后续原价 €10,000+"
           }
         }
+      },
+      "livePlans": {
+        "label": "方案",
+        "title": "免费开始。等工作证明价值后再升级。",
+        "body": "选择能够覆盖眼前工作的最小方案，之后可以随时调整。",
+        "badge": "按月",
+        "badgePopular": "运营者默认选择",
+        "currentPlan": "当前方案",
+        "loading": "正在开始结账...",
+        "checkoutError": "结账失败，请重试。",
+        "truths": [
+          "免费方案无需信用卡",
+          "付费方案包含托管式进度同步",
+          "Enterprise 从 rollout 计划开始"
+        ],
+        "tiers": {
+          "free": {
+            "name": "免费",
+            "price": "US$0",
+            "period": "/月",
+            "description": "付费前先了解 onboarding、Academy 和产品形态。",
+            "features": [
+              "开放 onboarding 和 Academy",
+              "查看 Tutor 与 Autopilot 的产品形态",
+              "登录后使用托管式进度",
+              "适合结账前评估"
+            ],
+            "cta": "打开 onboarding"
+          },
+          "starter": {
+            "name": "入门版",
+            "price": "US$9",
+            "period": "/月",
+            "description": "一条完整的 setup 路径，包含 Academy 全部访问和 Tutor 支持。",
+            "features": [
+              "每月 1,000 credits",
+              "Academy 全部访问",
+              "Tutor 支持",
+              "Autopilot 模式",
+              "最佳首个付费步骤"
+            ],
+            "cta": "选择 Starter"
+          },
+          "pro": {
+            "name": "专业版",
+            "price": "US$29",
+            "period": "/月",
+            "description": "为活跃 workflow 提供更多 runtime 可见性、BYOK 和更快支持。",
+            "features": [
+              "每月 10,000 credits",
+              "完整 Tutor + BYOK",
+              "API 访问",
+              "优先支持",
+              "适合活跃 workflow 负责人"
+            ],
+            "cta": "选择 Pro"
+          },
+          "enterprise": {
+            "name": "企业版",
+            "price": "定制",
+            "period": "",
+            "description": "带有身份、控制和直接实施支持的团队 rollout 规划。",
+            "features": [
+              "SSO 和团队管理",
+              "专属 rollout 规划",
+              "符合 SLA 的支持",
+              "定制 workflow 设计",
+              "直接联系创始人"
+            ],
+            "cta": "预约规划通话"
+          }
+        }
       }
     },
     "lessonPage": {

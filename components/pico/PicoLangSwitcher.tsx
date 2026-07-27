@@ -1,7 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { type ChangeEvent, useEffect, useState } from 'react'
 import { useLocale } from 'next-intl'
 
 const LOCALES = [
@@ -15,87 +14,46 @@ const LOCALES = [
   { code: 'ko', flag: '🇰🇷', label: '한국어' },
   { code: 'zh', flag: '🇨🇳', label: '中文' },
   { code: 'ar', flag: '🇸🇦', label: 'العربية' },
-]
+] as const
 
 export function PicoLangSwitcher() {
-  const router = useRouter()
   const locale = useLocale()
-  const [open, setOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const current = LOCALES.find((l) => l.code === locale) ?? LOCALES[0]
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    if (!open) return
-    function handleClick(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [open])
+    setReady(true)
+  }, [])
 
-  useEffect(() => {
-    if (!open) return
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  }, [open])
-
-  const handleSelect = useCallback((code: string) => {
+  function handleSelect(event: ChangeEvent<HTMLSelectElement>) {
+    const code = event.target.value
     document.cookie = `NEXT_LOCALE=${code}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`
-    setOpen(false)
-    router.refresh()
-  }, [router])
+    window.location.reload()
+  }
 
   return (
-    <div ref={containerRef} className="relative inline-flex">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        className="inline-flex min-h-11 items-center justify-center gap-2 border border-[color:var(--pico-border)] bg-[#0a0a09] px-3 py-2 text-sm font-semibold text-[color:var(--pico-text)] transition duration-200 hover:border-[color:var(--pico-accent)] hover:text-[color:var(--pico-accent)]"
+    <div className="relative inline-flex">
+      <label htmlFor="pico-interface-language" className="sr-only">
+        Interface language
+      </label>
+      <select
+        id="pico-interface-language"
+        value={locale}
+        onChange={handleSelect}
+        disabled={!ready}
+        className="min-h-11 cursor-pointer appearance-none border border-[color:var(--pico-border)] bg-[#0a0a09] py-2 pl-3 pr-9 text-sm font-semibold text-[color:var(--pico-text)] outline-none transition duration-200 hover:border-[color:var(--pico-accent)] focus-visible:border-[color:var(--pico-accent)] focus-visible:ring-2 focus-visible:ring-[color:var(--pico-accent)]"
       >
-        <span aria-hidden="true">{current.flag}</span>
-        <span className="hidden text-[11px] uppercase tracking-[0.18em] text-[color:var(--pico-text-muted)] sm:inline">
-          {current.code}
-        </span>
-        <span className="sr-only">{current.label}</span>
-        <span className="text-[0.68rem] text-[color:var(--pico-text-muted)]">▾</span>
-      </button>
-
-      {open && (
-        <div
-          role="listbox"
-          className="absolute right-0 top-[calc(100%+0.45rem)] z-[100] flex max-h-80 min-w-[14rem] flex-col gap-1 overflow-y-auto border border-[color:var(--pico-border)] bg-[#0a0a09] p-2"
-        >
-          {LOCALES.map((l) => (
-            <button
-              key={l.code}
-              type="button"
-              role="option"
-              aria-selected={l.code === locale}
-              onClick={() => handleSelect(l.code)}
-              className={`flex min-h-11 items-center gap-3 border px-3 py-2 text-left text-sm transition duration-150 ${
-                l.code === locale
-                  ? 'border-[color:var(--pico-border-hover)] bg-[rgba(var(--pico-accent-rgb),0.12)] text-[color:var(--pico-text)]'
-                  : 'border-transparent bg-transparent text-[color:var(--pico-text-secondary)] hover:border-[color:rgba(255,255,255,0.05)] hover:bg-[rgba(255,255,255,0.03)] hover:text-[color:var(--pico-text)]'
-              }`}
-            >
-              <span className="text-base">{l.flag}</span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-medium">{l.label}</span>
-                <span className="block text-[11px] uppercase tracking-[0.18em] text-[color:var(--pico-text-muted)]">
-                  {l.code.toUpperCase()}
-                </span>
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+        {LOCALES.map((item) => (
+          <option key={item.code} value={item.code}>
+            {item.flag} {item.label}
+          </option>
+        ))}
+      </select>
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-[0.68rem] text-[color:var(--pico-text-muted)]"
+      >
+        ▾
+      </span>
     </div>
   )
 }

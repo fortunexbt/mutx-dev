@@ -3,8 +3,9 @@ import './pico.css'
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { NextIntlClientProvider } from 'next-intl'
-import { getMessages, getLocale } from 'next-intl/server'
-import { routing } from '@/i18n/routing'
+import { getLocale } from 'next-intl/server'
+
+import { loadPicoMessages } from '@/lib/pico/messages'
 
 const RTL_LOCALES = new Set(['ar'])
 
@@ -32,11 +33,7 @@ type Props = {
 export default async function PicoLayout({ children }: Props) {
   // getLocale() reads NEXT_LOCALE cookie — matches what proxy.ts sets
   const requestedLocale = await getLocale()
-  const locale = routing.locales.includes(requestedLocale as (typeof routing.locales)[number])
-    ? requestedLocale
-    : 'en'
-
-  const messages = await getMessages({ locale })
+  const { locale, messages } = await loadPicoMessages(requestedLocale)
   const direction = getDirection(locale)
 
   return (

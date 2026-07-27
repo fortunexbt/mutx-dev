@@ -16,6 +16,7 @@
   --marketing-accent-dark: #c83b00;
   position: relative;
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--marketing-bg);
   color: var(--marketing-text);
   font-family: var(--font-site-body), sans-serif;
@@ -45,7 +46,6 @@
 .main {
   position: relative;
   display: block;
-  overflow: clip;
 }
 
 .routeDarkSection,
@@ -99,7 +99,7 @@
   margin: 0;
   color: var(--marketing-accent-dark, #c83b00);
   font-family: var(--font-mono), monospace;
-  font-size: 0.63rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.16em;
   line-height: 1.4;
@@ -113,8 +113,8 @@
 .displayTitle,
 .sectionTitle {
   margin: 0;
-  font-family: var(--font-site-body), sans-serif;
-  font-weight: 750;
+  font-family: var(--font-site-display), var(--font-display), sans-serif;
+  font-weight: 300;
   letter-spacing: -0.075em;
   text-wrap: balance;
 }
@@ -187,7 +187,7 @@
   border: 1px solid var(--marketing-border-strong, #0a0a09);
   border-radius: 4px;
   font-family: var(--font-mono), monospace;
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1;
@@ -270,7 +270,7 @@
   background: transparent;
   color: var(--marketing-text, #0a0a09);
   font-family: var(--font-mono), monospace;
-  font-size: 0.61rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-decoration: underline;
@@ -313,7 +313,7 @@
 .fieldLabel {
   color: var(--marketing-text, #0a0a09);
   font-family: var(--font-mono), monospace;
-  font-size: 0.61rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1.35;
@@ -463,7 +463,8 @@
   padding: clamp(1.4rem, 3vw, 2.5rem);
   border-bottom: 1px solid #0a0a09;
   font-size: clamp(2.75rem, 5vw, 5.8rem);
-  font-weight: 750;
+  font-family: var(--font-site-display), var(--font-display), sans-serif;
+  font-weight: 300;
   letter-spacing: -0.065em;
   line-height: 0.9;
 }
@@ -474,7 +475,7 @@
 
 .routePoster i {
   font-family: var(--font-mono), monospace;
-  font-size: 0.6rem;
+  font-size: 0.72rem;
   font-style: normal;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -494,7 +495,7 @@
   margin: 0 0 0.25rem;
   color: #8f8b82;
   font-family: var(--font-mono), monospace;
-  font-size: 0.59rem;
+  font-size: 0.72rem;
   letter-spacing: 0.09em;
   line-height: 1.5;
   text-transform: uppercase;
@@ -669,7 +670,7 @@
 .routeMetaLabel {
   color: var(--marketing-text-muted, #7c776d);
   font-family: var(--font-mono), monospace;
-  font-size: 0.57rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -678,7 +679,7 @@
 .routeMetaValue {
   margin-top: 0.45rem;
   color: var(--marketing-text, #0a0a09);
-  font-size: 0.84rem;
+  font-size: 0.92rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -724,7 +725,7 @@
   color: #c83b00;
   content: counter(policy-section, decimal-leading-zero);
   font-family: var(--font-mono), monospace;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.1em;
 }
@@ -749,7 +750,7 @@
 
 .routeMetaPanel {
   position: sticky;
-  top: 1.5rem;
+  top: 6.5rem;
   border-color: #0a0a09;
   background: #ff4d00;
 }
@@ -816,11 +817,11 @@
   }
 
   .displayTitle {
-    font-size: clamp(3.6rem, 17vw, 6.2rem);
+    font-size: clamp(3.55rem, 15vw, 4.75rem);
   }
 
   .sectionTitle {
-    font-size: clamp(2.65rem, 13vw, 4.6rem);
+    font-size: clamp(2.65rem, 12vw, 4.5rem);
   }
 
   .routeDownloadCards,

@@ -2022,6 +2022,78 @@
             "anchorPrice": "€10,000+"
           }
         }
+      },
+      "livePlans": {
+        "label": "Planos",
+        "title": "Comece grátis. Faça upgrade quando o trabalho justificar.",
+        "body": "Escolha o menor plano que cobre o trabalho à sua frente. Você pode alterá-lo depois.",
+        "badge": "Mensal",
+        "badgePopular": "Padrão do operador",
+        "currentPlan": "Atual",
+        "loading": "Iniciando checkout...",
+        "checkoutError": "Falha no checkout. Tente novamente.",
+        "truths": [
+          "O plano gratuito não exige cartão de crédito",
+          "Os planos pagos incluem sincronização hospedada de progresso",
+          "O Enterprise começa com um plano de rollout"
+        ],
+        "tiers": {
+          "free": {
+            "name": "Grátis",
+            "price": "$0",
+            "period": "/mês",
+            "description": "Conheça o onboarding, a Academy e o formato do produto antes de gastar.",
+            "features": [
+              "Onboarding e Academy abertos",
+              "Conheça o Tutor e o Autopilot",
+              "Use progresso hospedado ao entrar",
+              "Ideal para avaliar antes do checkout"
+            ],
+            "cta": "Abrir onboarding"
+          },
+          "starter": {
+            "name": "Starter",
+            "price": "$9",
+            "period": "/mês",
+            "description": "Um caminho de setup sério com acesso completo à Academy e suporte do Tutor.",
+            "features": [
+              "1.000 créditos mensais",
+              "Acesso completo à Academy",
+              "Suporte do Tutor",
+              "Modo Autopilot",
+              "Melhor primeiro plano pago"
+            ],
+            "cta": "Escolher Starter"
+          },
+          "pro": {
+            "name": "Pro",
+            "price": "$29",
+            "period": "/mês",
+            "description": "Mais visibilidade de runtime, BYOK e suporte rápido para workflows ativos.",
+            "features": [
+              "10.000 créditos mensais",
+              "Tutor completo + BYOK",
+              "Acesso à API",
+              "Suporte prioritário",
+              "Ideal para responsáveis por workflows ativos"
+            ],
+            "cta": "Escolher Pro"
+          },
+          "enterprise": {
+            "name": "Enterprise",
+            "price": "Personalizado",
+            "period": "",
+            "description": "Planejamento de rollout em equipe com identidade, controles e suporte direto de implementação.",
+            "features": [
+              "SSO e gestão de equipe",
+              "Planejamento dedicado de rollout",
+              "Suporte alinhado a SLA",
+              "Design de workflow personalizado",
+              "Acesso direto aos fundadores"
+            ],
+            "cta": "Agendar conversa de planejamento"
+          }
+        }
       }
     },
     "shell": {

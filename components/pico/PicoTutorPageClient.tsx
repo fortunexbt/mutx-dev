@@ -30,6 +30,11 @@ const examplePrompts = PICO_GENERATED_CONTENT.tutor.examplePrompts
 const questionProtocol = PICO_GENERATED_CONTENT.tutor.questionProtocol
 
 const RECENT_QUESTIONS_KEY = 'pico.tutor.recent.v1'
+const TUTOR_QUESTION_ID = 'pico-tutor-question'
+const TUTOR_QUESTION_HELP_ID = 'pico-tutor-question-help'
+const TUTOR_QUESTION_ERROR_ID = 'pico-tutor-question-error'
+const OPENAI_KEY_ID = 'pico-tutor-openai-key'
+const OPENAI_CONNECTION_ERROR_ID = 'pico-tutor-openai-error'
 
 type TutorApiResponse = Partial<PicoTutorReply> & {
   detail?: string
@@ -660,7 +665,7 @@ export function PicoTutorPageClient() {
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr),22rem]">
         <div className={picoPanel('overflow-hidden p-0')}>
           <div className="grid gap-0 border-b border-[color:var(--pico-border)] lg:grid-cols-[minmax(0,1fr),18rem]">
-            <form onSubmit={submit} className="p-6 sm:p-7">
+            <form onSubmit={submit} aria-busy={loading} className="p-6 sm:p-7">
               <p className={picoClasses.label}>Tutor desk</p>
               <div className="mt-3 flex items-center gap-4">
                 <span
@@ -727,7 +732,10 @@ export function PicoTutorPageClient() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className={picoClasses.label}>Question packet</p>
-                    <p className="mt-2 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
+                    <p
+                      id={TUTOR_QUESTION_HELP_ID}
+                      className="mt-2 text-sm leading-6 text-[color:var(--pico-text-secondary)]"
+                    >
                       Bring just enough context for a useful answer: page, failure, and expected result.
                     </p>
                   </div>
@@ -775,10 +783,20 @@ export function PicoTutorPageClient() {
                 </div>
               </div>
 
+              <label htmlFor={TUTOR_QUESTION_ID} className="sr-only">
+                Describe your setup blocker
+              </label>
               <textarea
+                id={TUTOR_QUESTION_ID}
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
                 disabled={!formReady || loading}
+                aria-invalid={Boolean(error)}
+                aria-describedby={
+                  error
+                    ? `${TUTOR_QUESTION_HELP_ID} ${TUTOR_QUESTION_ERROR_ID}`
+                    : TUTOR_QUESTION_HELP_ID
+                }
                 placeholder="Describe the blocker, the exact step, and what you expected to happen."
                 className="mt-6 min-h-[240px] w-full rounded-[28px] border border-[color:var(--pico-border)] bg-[color:var(--pico-bg-surface)] px-5 py-5 text-sm leading-7 text-[color:var(--pico-text-secondary)] outline-none placeholder:text-[color:var(--pico-text-muted)]"
               />
@@ -859,10 +877,15 @@ export function PicoTutorPageClient() {
               ) : null}
 
               <div className={picoInset('mt-4 p-4')}>
-                <div data-testid="pico-openai-connect-panel">
+                <div
+                  data-testid="pico-openai-connect-panel"
+                  aria-busy={openAIConnectionLoading || openAIConnectionSaving}
+                >
                   <p className={picoClasses.label}>OpenAI connection</p>
                   <div className="mt-3 rounded-[18px] border border-[color:var(--pico-border)] bg-[color:var(--pico-bg-surface)] p-4">
                     <p
+                      role="status"
+                      aria-live="polite"
                       className="text-sm leading-6 text-[color:var(--pico-text-secondary)]"
                       data-testid="pico-openai-connect-status"
                     >
@@ -898,12 +921,20 @@ export function PicoTutorPageClient() {
                           </div>
                         ) : (
                           <>
-                            <label className="block text-sm text-[color:var(--pico-text-secondary)]">
+                            <label
+                              htmlFor={OPENAI_KEY_ID}
+                              className="block text-sm text-[color:var(--pico-text-secondary)]"
+                            >
                               <span className={picoClasses.label}>Bring your own OpenAI key</span>
                               <input
+                                id={OPENAI_KEY_ID}
                                 type="password"
                                 value={openAIApiKey}
                                 onChange={(event) => setOpenAIApiKey(event.target.value)}
+                                aria-invalid={Boolean(openAIConnectionError)}
+                                aria-describedby={
+                                  openAIConnectionError ? OPENAI_CONNECTION_ERROR_ID : undefined
+                                }
                                 placeholder="sk-proj-..."
                                 className="mt-3 w-full rounded-[18px] border border-[color:var(--pico-border)] bg-[color:var(--pico-bg-surface)] px-4 py-3 text-sm text-[color:var(--pico-text-secondary)] outline-none placeholder:text-[color:var(--pico-text-muted)]"
                               />
@@ -926,7 +957,13 @@ export function PicoTutorPageClient() {
                       </div>
                     ) : null}
                     {openAIConnectionError ? (
-                      <p className="mt-3 text-sm leading-6 text-rose-200">{openAIConnectionError}</p>
+                      <p
+                        id={OPENAI_CONNECTION_ERROR_ID}
+                        role="alert"
+                        className="mt-3 text-sm leading-6 text-rose-200"
+                      >
+                        {openAIConnectionError}
+                      </p>
                     ) : null}
                   </div>
                 </div>
@@ -946,10 +983,17 @@ export function PicoTutorPageClient() {
         </div>
 
         <aside className="space-y-6 xl:sticky xl:top-6 xl:self-start">
-          <section className={picoPanel('p-5')}>
+          <section aria-busy={loading} className={picoPanel('p-5')}>
             <p className={picoClasses.label}>Tutor answer</p>
+            <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+              {loading ? 'Tutor is finding the next step.' : reply ? 'Tutor answer ready.' : ''}
+            </p>
             {error ? (
-              <div className="mt-4 rounded-[24px] border border-rose-400/20 bg-rose-400/10 p-5 text-sm leading-6 text-rose-50">
+              <div
+                id={TUTOR_QUESTION_ERROR_ID}
+                role="alert"
+                className="mt-4 rounded-[24px] border border-rose-400/20 bg-rose-400/10 p-5 text-sm leading-6 text-rose-50"
+              >
                 {error}
               </div>
             ) : null}

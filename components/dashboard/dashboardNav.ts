@@ -3,6 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   DESKTOP_ROUTE_META,
   PRIMARY_DESKTOP_ROUTE_ORDER,
+  type DashboardRoutePath,
   type DesktopRouteKey,
   type DesktopRouteSection,
 } from "@/components/desktop/desktopRouteConfig";
@@ -11,8 +12,8 @@ export interface DashboardNavItem {
   key: DesktopRouteKey;
   title: string;
   description: string;
-  href: string;
-  publicHref: string;
+  href: DashboardRoutePath;
+  publicHref: DashboardRoutePath | null;
   icon: LucideIcon;
   group: DesktopRouteSection;
 }
@@ -93,7 +94,10 @@ function normalizePathname(pathname: string): string {
   return pathname;
 }
 
-export function getDashboardNavHref(pathname: string, item: DashboardNavItem): string {
+export function getDashboardNavHref(
+  pathname: string,
+  item: DashboardNavItem,
+): DashboardRoutePath | null {
   const normalizedPath = normalizePathname(pathname);
   const usesInternalDashboardPath =
     normalizedPath === "/dashboard" ||
@@ -106,7 +110,9 @@ export function getDashboardNavHref(pathname: string, item: DashboardNavItem): s
 
 export function isDashboardNavItemActive(pathname: string, item: DashboardNavItem): boolean {
   const normalizedPath = normalizePathname(pathname);
-  const activeRoots = [item.href, item.publicHref].map(normalizePathname);
+  const activeRoots = [item.href, item.publicHref]
+    .filter((href): href is DashboardRoutePath => href !== null)
+    .map(normalizePathname);
 
   if (activeRoots.includes("/dashboard") || activeRoots.includes("/")) {
     return normalizedPath === "/" || normalizedPath === "/dashboard" || normalizedPath === "/overview";

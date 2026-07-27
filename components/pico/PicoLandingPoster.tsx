@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { ArrowRight, ArrowUpRight } from 'lucide-react'
 
@@ -14,6 +14,11 @@ const PRICING_TIERS = ['trial', 'starter', 'pro', 'enterprise'] as const
 export function PicoLandingPoster() {
   const t = useTranslations('pico')
   const [formOpen, setFormOpen] = useState(false)
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    setReady(true)
+  }, [])
   const steps = Array.from({ length: 3 }, (_, index) => ({
     title: t(`platform.howItWorks.${index}.title`),
     body: t(`platform.howItWorks.${index}.body`),
@@ -105,7 +110,7 @@ export function PicoLandingPoster() {
         <nav aria-label={t('nav.sectionsLabel')}>
           <a href="#method">{t('platform.eyebrow')}</a>
           <PicoLangSwitcher />
-          <button type="button" onClick={() => setFormOpen(true)}>{t('nav.cta')}</button>
+          <button type="button" onClick={() => setFormOpen(true)} disabled={!ready}>{t('nav.cta')}</button>
         </nav>
       </header>
 
@@ -122,7 +127,7 @@ export function PicoLandingPoster() {
             <p className={s.lede}>{t('hero.subtitle')}</p>
             <p className={s.support}>{t('problem.body')}</p>
             <div className={s.heroActions}>
-              <button type="button" onClick={() => setFormOpen(true)}>
+              <button type="button" onClick={() => setFormOpen(true)} disabled={!ready}>
                 {t('hero.cta')} <ArrowRight aria-hidden="true" />
               </button>
               <a href="#method">{t('hero.ctaSecondary')}</a>
@@ -230,6 +235,7 @@ export function PicoLandingPoster() {
           <section
             className={s.agentGallery}
             aria-label={t('agentSlider.ariaLabel')}
+            tabIndex={0}
             data-interactive="false"
             data-pause="false"
           >
@@ -277,7 +283,7 @@ export function PicoLandingPoster() {
                   {tier.anchorPrice ? <del>{tier.anchorPrice}</del> : null}
                   <span>{tier.priceNote}</span>
                 </p>
-                <button type="button" onClick={() => setFormOpen(true)}>
+                <button type="button" onClick={() => setFormOpen(true)} disabled={!ready}>
                   {tier.cta} <ArrowRight aria-hidden="true" />
                 </button>
               </article>
@@ -293,7 +299,7 @@ export function PicoLandingPoster() {
           <div className={s.finalCopy}>
             <p>{t('finalCta.body')}</p>
             <div className={s.finalActions}>
-              <button type="button" onClick={() => setFormOpen(true)}>
+              <button type="button" onClick={() => setFormOpen(true)} disabled={!ready}>
                 {t('nav.cta')} <ArrowRight aria-hidden="true" />
               </button>
               <Link href="/">

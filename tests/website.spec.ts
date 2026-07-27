@@ -547,6 +547,37 @@ test.describe('mutx.dev QA', () => {
     await expect(page.getByRole('link', { name: /download/i }).first()).toBeVisible();
   });
 
+  test('public mobile navigation behaves as a modal and releases state on resize', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    const opener = page.getByRole('button', { name: /open navigation/i });
+    await opener.click();
+
+    const dialog = page.getByRole('dialog', { name: /control plane navigation/i });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('button', { name: /close navigation/i })).toBeFocused();
+    expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden');
+    expect(
+      await page.evaluate(() =>
+        Array.from(document.body.children).some(
+          (element) => element instanceof HTMLElement && element.inert,
+        ),
+      ),
+    ).toBe(true);
+
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(opener).toBeFocused();
+    expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
+
+    await opener.click();
+    await expect(dialog).toBeVisible();
+    await page.setViewportSize({ width: 1100, height: 844 });
+    await expect(dialog).toHaveCount(0);
+    expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
+  });
+
   test('homepage remains scrollable with motion enabled or reduced', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -562,6 +593,18 @@ test.describe('mutx.dev QA', () => {
     expect(after).toBeGreaterThan(0);
     await expect(page.getByRole('heading', { name: /one line from intent to evidence/i })).toBeVisible();
   });
+
+  test('product artifacts clearly identify illustrative operational data', async ({ page }) => {
+    await page.goto('/ai-agent-control-plane', { waitUntil: 'domcontentloaded' });
+
+    const recorder = page.getByLabel(/illustrative flight recorder/i);
+    await expect(recorder).toBeVisible();
+    await expect(recorder.getByText(/product example/i)).toBeVisible();
+    await expect(recorder.getByText(/sample \/ plane \/ healthy/i)).toBeVisible();
+    await expect(recorder.getByText(/sha-256 \/ sample/i)).toBeVisible();
+    await expect(recorder.getByText(/live record/i)).toHaveCount(0);
+  });
+
   test('download page exposes the mac release notes and checksum path', async ({ page }) => {
     await page.goto('/download/macos', { waitUntil: 'domcontentloaded' });
 
@@ -805,8 +848,28 @@ test.describe('mutx.dev QA', () => {
     await expect(livePlans).toContainText(/\$29\/mo/i);
     await expect(livePlans.getByRole('heading', { name: /^enterprise$/i })).toBeVisible();
     await expect(livePlans.getByRole('link', { name: /book planning call/i })).toBeVisible();
-    await expect(page.getByText(/start free\.\s*pay when it works\./i)).toBeVisible();
+    await expect(
+      page.getByText(/start free\. upgrade when pico is doing enough work/i).last(),
+    ).toBeVisible();
     expect(new URL(page.url()).pathname).toBe('/pico/pricing');
+  });
+
+  test('pico pricing localizes navigation, plan state, and checkout actions', async ({
+    page,
+  }) => {
+    await page.goto('/pico/pricing', { waitUntil: 'domcontentloaded' });
+
+    await page.getByLabel(/interface language/i).selectOption('it');
+    await expect(
+      page.getByRole('heading', { name: /scegli il piano adatto alle tue esigenze/i }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: /richiedi accesso/i })).toBeVisible();
+
+    const plans = page.getByTestId('pico-pricing-live-plans');
+    await expect(plans).toContainText(/predefinito per operatori/i);
+    await expect(plans.getByRole('button', { name: /scegli starter/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /torna alla landing/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /parla con il supporto/i })).toBeVisible();
   });
 
   test('pico support route keeps setup context, packet, and return step together', async ({
@@ -1018,7 +1081,10 @@ test.describe('mutx.dev QA', () => {
 
     await page.goto('/pico/tutor?lesson=install-hermes-locally', { waitUntil: 'domcontentloaded' });
     await expect(page.getByText(/you are asking about install hermes locally/i)).toBeVisible();
-    await page.getByRole('link', { name: 'Return to blocked lesson', exact: true }).click();
+    await Promise.all([
+      page.waitForURL('**/pico/academy/install-hermes-locally', { waitUntil: 'domcontentloaded' }),
+      page.getByRole('link', { name: 'Return to blocked lesson', exact: true }).click(),
+    ]);
     await expect(page.getByRole('heading', { level: 1, name: /install hermes locally/i })).toBeVisible();
     expect(new URL(page.url()).pathname).toBe('/pico/academy/install-hermes-locally');
 

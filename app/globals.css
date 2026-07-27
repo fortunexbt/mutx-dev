@@ -116,8 +116,8 @@
   body {
     min-height: 100%;
     min-height: 100vh;
+    min-height: 100dvh;
     color: var(--foreground);
-    overflow-x: clip;
     text-rendering: optimizeLegibility;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
     -webkit-font-smoothing: antialiased;
@@ -128,7 +128,12 @@
   body:not(:has(.pico-root)) {
     min-height: 100%;
     min-height: 100vh;
+    min-height: 100dvh;
     background: #0a0a09;
+  }
+
+  [id] {
+    scroll-margin-top: 6rem;
   }
 
   body:not(:has(.pico-root)) ::selection {
@@ -315,8 +320,8 @@
 
   .site-page {
     min-height: 100vh;
+    min-height: 100dvh;
     position: relative;
-    overflow-x: clip;
     color: var(--site-text);
     background:
       radial-gradient(circle at 14% 0%, rgba(255, 77, 0, 0.12), transparent 24%),
@@ -1377,8 +1382,22 @@
 
 .skip-link:focus { transform: translateY(0); }
 
+.safe-area-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto !important; }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
   .dashboard-app .dashboard-entry,
   .dashboard-app .dashboard-live-dot { animation: none !important; }
 }

@@ -3,8 +3,7 @@ import path from "path";
 import type { Metadata } from "next";
 import matter from "gray-matter";
 import { DocsLayout } from "@/components/site/docs/DocsLayout";
-import { remark } from "remark";
-import remarkGfm from "remark-gfm";
+import { DocsRenderer } from "@/components/site/docs/DocsRenderer";
 import { buildPageMetadata, buildWebPageStructuredData } from "@/lib/seo";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -36,13 +35,7 @@ export default async function ManifestoPage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <article className="docs-prose">
-        <div
-          dangerouslySetInnerHTML={{
-            __html: String(await remark().use(remarkGfm).process(content)),
-          }}
-        />
-      </article>
+      <DocsRenderer source={content} currentSlug={["manifesto"]} />
     </DocsLayout>
   );
 }

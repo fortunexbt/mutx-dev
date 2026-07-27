@@ -327,6 +327,7 @@ export function PicoAcademyDashboard() {
       description="One setup step, one saved output, one next move."
       railCollapsed={progress.platform.railCollapsed}
       helpLaneOpen={progress.platform.helpLaneOpen}
+      preferencesReady={ready}
       onToggleRail={() =>
         actions.setPlatform({ railCollapsed: !progress.platform.railCollapsed })
       }

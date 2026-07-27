@@ -12,7 +12,6 @@
   --warning: #e5a93a;
   --critical: #d94a43;
   --trace: #69afff;
-  overflow: clip;
   background: var(--bone);
   color: var(--carbon);
   font-family: var(--font-site-body), sans-serif;
@@ -60,7 +59,7 @@
   color: rgba(11, 12, 11, 0.55);
   content: "MUTX / FLIGHT RECORD 001";
   font-family: var(--font-mono), monospace;
-  font-size: 0.58rem;
+  font-size: 0.7rem;
   letter-spacing: 0.16em;
 }
 
@@ -92,7 +91,7 @@
 .sectionIndex {
   margin: 0;
   font-family: var(--font-mono), monospace;
-  font-size: 0.64rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.16em;
   line-height: 1.4;
@@ -157,7 +156,7 @@
   padding: 0 1.3rem;
   border: 1px solid var(--carbon);
   font-family: var(--font-mono), monospace;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-decoration: none;
@@ -204,7 +203,7 @@
   margin: 2.1rem 0 0;
   color: var(--ink-muted);
   font-family: var(--font-mono), monospace;
-  font-size: 0.58rem;
+  font-size: 0.7rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -261,7 +260,7 @@
 .intentStrip > span,
 .receipt span {
   font-family: var(--font-mono), monospace;
-  font-size: 0.58rem;
+  font-size: 0.7rem;
   font-weight: 500;
   letter-spacing: 0.15em;
   text-transform: uppercase;
@@ -375,7 +374,7 @@
   gap: 0.32rem;
   color: #777c73;
   font-family: var(--font-mono), monospace;
-  font-size: 0.52rem;
+  font-size: 0.64rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -404,7 +403,7 @@
   margin-top: 0.42rem;
   color: #8f948a;
   font-family: var(--font-mono), monospace;
-  font-size: 0.6rem;
+  font-size: 0.68rem;
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -413,7 +412,7 @@
 .eventState {
   color: #8d9288;
   font-family: var(--font-mono), monospace;
-  font-size: 0.52rem;
+  font-size: 0.64rem;
   letter-spacing: 0.11em;
   text-transform: uppercase;
 }
@@ -463,7 +462,7 @@
   margin: 0;
   color: var(--ink-muted);
   font-family: var(--font-mono), monospace;
-  font-size: 0.56rem;
+  font-size: 0.68rem;
   letter-spacing: 0.06em;
   line-height: 1.5;
   text-align: right;
@@ -479,7 +478,7 @@
   margin: 0.8rem 0 0;
   color: var(--ink-muted);
   font-family: var(--font-mono), monospace;
-  font-size: 0.54rem;
+  font-size: 0.66rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -589,7 +588,7 @@
 
 .controlNumber {
   font-family: var(--font-mono), monospace;
-  font-size: 0.58rem;
+  font-size: 0.7rem;
   letter-spacing: 0.12em;
 }
 
@@ -702,7 +701,7 @@
   gap: 0.65rem;
   border-bottom: 1px solid currentColor;
   font-family: var(--font-mono), monospace;
-  font-size: 0.6rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-decoration: none;
@@ -731,7 +730,7 @@
   padding: 0 1rem;
   border-bottom: 1px solid var(--carbon);
   font-family: var(--font-mono), monospace;
-  font-size: 0.52rem;
+  font-size: 0.64rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -795,7 +794,7 @@
   border-top: 1px solid var(--rule);
   color: var(--ink-muted);
   font-family: var(--font-mono), monospace;
-  font-size: 0.48rem;
+  font-size: 0.64rem;
   letter-spacing: 0.08em;
   line-height: 1.5;
   text-transform: uppercase;
@@ -823,7 +822,7 @@
 .runTableHead,
 .previewFooter {
   font-family: var(--font-mono), monospace;
-  font-size: 0.5rem;
+  font-size: 0.64rem;
   letter-spacing: 0.09em;
   text-transform: uppercase;
 }
@@ -907,7 +906,7 @@
   place-items: center;
   border: 1px solid var(--carbon);
   font-family: var(--font-mono), monospace;
-  font-size: 0.62rem;
+  font-size: 0.72rem;
 }
 
 .interventionRow small,
@@ -923,7 +922,7 @@
 
 .interventionRow > span:last-child {
   font-family: var(--font-mono), monospace;
-  font-size: 0.52rem;
+  font-size: 0.64rem;
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }
@@ -957,7 +956,7 @@
 
 .runRow code {
   font-family: var(--font-mono), monospace;
-  font-size: 0.58rem;
+  font-size: 0.68rem;
 }
 
 .runRow strong {
@@ -965,7 +964,7 @@
   padding-left: 0.75rem;
   border-left: 3px solid var(--rule);
   font-family: var(--font-mono), monospace;
-  font-size: 0.5rem;
+  font-size: 0.64rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1038,7 +1037,7 @@
 .boundaryFooter span,
 .sourcePanel > p:first-child {
   font-family: var(--font-mono), monospace;
-  font-size: 0.58rem;
+  font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1148,7 +1147,7 @@
 .setupSteps span,
 .setupSteps small {
   font-family: var(--font-mono), monospace;
-  font-size: 0.6rem;
+  font-size: 0.72rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -1439,7 +1438,7 @@
   }
 
   .hero h1 {
-    font-size: clamp(4.45rem, 21vw, 6.6rem);
+    font-size: clamp(3.9rem, 17vw, 4.9rem);
   }
 
   .heroLede {
@@ -1490,7 +1489,7 @@
   }
 
   .ledgerStatus {
-    font-size: 0.5rem;
+    font-size: 0.64rem;
   }
 
   .intentStrip {
@@ -1558,7 +1557,7 @@
   .sectionIntro h2,
   .productCopy h2,
   .boundaryHeader h2 {
-    font-size: clamp(3.8rem, 18vw, 5.8rem);
+    font-size: clamp(3.35rem, 14vw, 4.75rem);
   }
 
   .controlRail {
@@ -1726,7 +1725,7 @@
   }
 
   .finalSection h2 {
-    font-size: clamp(4.1rem, 19vw, 6.3rem);
+    font-size: clamp(3.55rem, 15vw, 4.75rem);
   }
 
   .finalActions {
