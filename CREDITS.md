@@ -87,13 +87,17 @@ distributed; the main-branch relicense does not retroactively change either tag.
 
 - **Repository:** https://github.com/builderz-labs/mission-control
 - **License:** MIT — Copyright (c) 2026 Builderz Labs
-- **Current upstream release:** `v2.1.0`
+- **Current upstream release:** `v2.2.0`
+  (`0552b00b3b743ed12949e6deb19597655b02bbcc`), verified 2026-07-22
+- **Comparison baseline:** `v2.1.0`
   (`b4ebc5418bea4fa9288a5c17fbddb9ba99740964`)
-- **MUTX use:** dashboard briefing and signal-display patterns.
+- **MUTX use:** dashboard briefing and signal-display patterns, plus an adapted
+  fail-closed autonomy-runner working-directory and change-scope contract.
 
 The direct adaptation is pinned to immutable upstream paths and the local port
-commit in the attribution ledger. The current upstream release is newer than
-that provenance pin; the two are intentionally reported separately.
+commit in the attribution ledger. The v2.2.0 dispatch contract is pinned to
+immutable source in the machine-readable evidence file; the historical UI
+provenance and current behavioral review are intentionally reported separately.
 
 ### Orchestra Research AI-Research-SKILLs
 

@@ -100,19 +100,31 @@
       "repository": "https://github.com/builderz-labs/mission-control",
       "license": "MIT",
       "copyright": "Copyright (c) 2026 Builderz Labs",
-      "current_ref": "b4ebc5418bea4fa9288a5c17fbddb9ba99740964",
-      "current_version": "v2.1.0",
-      "release_url": "https://github.com/builderz-labs/mission-control/commit/b4ebc5418bea4fa9288a5c17fbddb9ba99740964",
-      "license_url": "https://github.com/builderz-labs/mission-control/blob/b4ebc5418bea4fa9288a5c17fbddb9ba99740964/LICENSE",
+      "verified_at": "2026-07-22",
+      "current_ref": "0552b00b3b743ed12949e6deb19597655b02bbcc",
+      "current_version": "v2.2.0",
+      "release_url": "https://github.com/builderz-labs/mission-control/commit/0552b00b3b743ed12949e6deb19597655b02bbcc",
+      "license_url": "https://github.com/builderz-labs/mission-control/blob/0552b00b3b743ed12949e6deb19597655b02bbcc/LICENSE",
+      "comparison_baseline_version": "v2.1.0",
+      "comparison_baseline_ref": "b4ebc5418bea4fa9288a5c17fbddb9ba99740964",
       "provenance_ref": "eb7c35e950b83f73d6fd61e89f7d4b377db2ad50",
       "source_urls": [
         "https://github.com/builderz-labs/mission-control/blob/eb7c35e950b83f73d6fd61e89f7d4b377db2ad50/src/components/dashboard/widgets/briefing-bar-widget.tsx",
         "https://github.com/builderz-labs/mission-control/blob/eb7c35e950b83f73d6fd61e89f7d4b377db2ad50/src/components/dashboard/widget-primitives.tsx"
       ],
       "local_port_commit": "972ab49b0af83d15042b2301679246103cbdbab6",
+      "reviewed_contract_source_urls": [
+        "https://github.com/builderz-labs/mission-control/blob/0552b00b3b743ed12949e6deb19597655b02bbcc/src/lib/task-dispatch.ts",
+        "https://github.com/builderz-labs/mission-control/blob/0552b00b3b743ed12949e6deb19597655b02bbcc/src/lib/__tests__/task-dispatch-sandbox.test.ts"
+      ],
       "local_paths": [
         "components/dashboard/DashboardOverviewPageClient.tsx",
-        "components/dashboard/livePrimitives.tsx"
+        "components/dashboard/livePrimitives.tsx",
+        "scripts/autonomy/work_order_sandbox.py",
+        "scripts/autonomy/run_codex_lane.py",
+        "scripts/autonomy/run_opencode_lane.py",
+        "scripts/autonomy/run_main_lane.py",
+        "tests/test_autonomy_work_order_sandbox.py"
       ]
     },
     {

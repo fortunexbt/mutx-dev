@@ -1,6 +1,6 @@
 # MUTX upstream dependency report
 
-Last verified: 2026-07-15
+Full inventory last verified: 2026-07-15. Mission Control re-verified: 2026-07-22.
 
 This report separates three facts that older revisions conflated:
 
@@ -19,7 +19,7 @@ Immutable license and source evidence is maintained in
 | AARM docs | Main `8eff208b98786b2c9a578b26cb7eaca440ec4020` | MIT, Copyright (c) 2023 Mintlify | MUTX’s old R1–R9 numbering drifted from the current model | Use the current mapping; close technical and organizational gaps before any conformance claim |
 | Faramesh Core | Main `e230a9ac2d12d80ed6f632db42b6e1983ccbce82`; pinned published release `v0.2.0` / `ae3ebc9066d65e4e930164881c2f2ce2be554c7f`; historical semver tag `v1.2.9` / `c85237e4e6b13745169291f60b9c6b985285dbaa` | Main: Apache-2.0; `v0.2.0` and `v1.2.9`: MPL-2.0 | CLI and gateway fetch an immutable installer and request `v0.2.0` explicitly | Run the pinned compatibility lane before changing either installer ref or release |
 | FPL | Main `b7aa0b7ad56f60428d692278a435c5e6640cec2b` | Apache-2.0 | MUTX ships FPL policy files and CLI integration | Validate parser/daemon compatibility; retain Apache-2.0 text and any future `NOTICE` |
-| Mission Control | `v2.1.0` / `b4ebc5418bea4fa9288a5c17fbddb9ba99740964` | MIT, Copyright (c) 2026 Builderz Labs | Direct dashboard pattern provenance predates the current release | Treat `v2.1.0` as the comparison baseline, not proof of compatibility |
+| Mission Control | `v2.2.0` / `0552b00b3b743ed12949e6deb19597655b02bbcc` | MIT, Copyright (c) 2026 Builderz Labs | Historical dashboard provenance remains pinned; v2.2.0's dispatch-boundary contract is adapted and tested locally | Keep `v2.1.0` as the behavioral comparison baseline and review future releases against the enforced runner boundary |
 | Orchestra Research AI-Research-SKILLs | `v1.7.2` / `773a52944ba4747a18bd4ae9ade53fff041adcbc` | MIT, Copyright (c) 2025 Claude AI Research Skills Contributors | Catalog is pinned to `05f1958727bfc2bc22240f41d060504473c4f236` | Regenerate and validate the catalog against `v1.7.2` in a dedicated migration |
 | predict-rlm | `v0.7.2` / `4ff334dea79a2f27e96b7a50a358b0427050899e` | MIT, Copyright (c) 2026 Trampoline AI | Workflow provenance is pinned to `5c7387afa1980b62b21a34ad0261256a95d8caa1` | Validate templates, runtime prerequisites, and output contracts against `v0.7.2` |
 | Guild AI | Tag `0.9.0`; audited main `dfbefedb6ca5ce3a1341f9f00a4016420f6fc76d` | Apache-2.0 | Candidate only; no direct reuse recorded | Keep out of the distribution unless a scoped adoption decision records exact provenance |
@@ -65,11 +65,40 @@ evidence satisfying those conditions. See
 
 ## Mission Control comparison baseline
 
-Mission Control `v2.1.0` supersedes the `v2.0.1` baseline used by the previous
-report. MUTX should compare behavior rather than copy its API breadth wholesale.
-The durable direct-port evidence is intentionally pinned to the upstream source
-commit that introduced the briefing pattern and to MUTX port commit
+Mission Control `v2.2.0` is pinned at
+[`0552b00b`](https://github.com/builderz-labs/mission-control/commit/0552b00b3b743ed12949e6deb19597655b02bbcc),
+with `v2.1.0` / `b4ebc5418bea4fa9288a5c17fbddb9ba99740964`
+retained as the comparison baseline. MUTX compares behavior rather than copying
+Mission Control's API breadth wholesale. The historical dashboard port remains
+pinned to upstream source commit
+`eb7c35e950b83f73d6fd61e89f7d4b377db2ad50`, which introduced the briefing
+pattern, and to MUTX port commit
 `972ab49b0af83d15042b2301679246103cbdbab6`.
+
+The v2.2.0 release adds strict workspace isolation and a host-CLI dispatch
+sandbox. The directly applicable contract is the
+[`task-dispatch.ts`](https://github.com/builderz-labs/mission-control/blob/0552b00b3b743ed12949e6deb19597655b02bbcc/src/lib/task-dispatch.ts)
+realpath-confined working directory and clamped execution-boundary design. MUTX
+adapts that contract to its repository-native autonomous lanes:
+
+- every runner resolves the exact Git worktree root before dispatch;
+- declared path scopes reject traversal, `.git`, and symlink escapes;
+- a dirty worktree blocks execution before an agent process starts;
+- post-worker and post-verification changes outside `allowed_paths`, or above
+  the clamped `max_changed_files` limit, fail closed before publication;
+- rename checks inspect both the old and new paths; and
+- the pre-dispatch commit is pinned, so worker-created commits cannot hide
+  changes or bypass the orchestrator-owned publication step.
+
+The implementation lives in `scripts/autonomy/work_order_sandbox.py` and is
+enforced by the Codex, OpenCode, and main-lane runners. Focused regression
+coverage lives in `tests/test_autonomy_work_order_sandbox.py`.
+
+The broader upstream workspace database model, host-administration routes,
+gateway registry, and filesystem API are not copied: MUTX uses a different
+authenticated FastAPI control plane and resource ownership model. The two
+historically adapted briefing components changed only Tailwind utility names in
+v2.2.0, so there is no behavioral dashboard delta to port from this release.
 
 High-value comparison areas remain:
 
@@ -100,9 +129,20 @@ MUTX conformance.
 3. Validate the pinned Faramesh Core `v0.2.0` release and current FPL in an isolated compatibility lane.
 4. Regenerate Orchestra metadata against `v1.7.2` and review the resulting content.
 5. Exercise predict-rlm `v0.7.2` through every managed/local workflow contract.
-6. Re-audit Mission Control `v2.1.0` only for roadmap-backed capabilities.
+6. Keep Mission Control's v2.2.0 runner-boundary adaptation covered while
+   reviewing later releases only for roadmap-backed behavioral contracts.
 
 ## Changelog
+
+### 2026-07-22
+
+- Verified Mission Control `v2.2.0` at immutable commit
+  `0552b00b3b743ed12949e6deb19597655b02bbcc` and retained `v2.1.0` as the
+  explicit comparison baseline.
+- Adapted its host-CLI working-directory and bounded-dispatch contract to all
+  MUTX autonomy runners with fail-closed path and change-count checks.
+- Confirmed the historical briefing port has no applicable v2.2.0 behavioral
+  delta; its immutable source and local-port provenance remain unchanged.
 
 ### 2026-07-15
 

@@ -43,9 +43,9 @@ def test_upstream_versions_licenses_and_refs_are_pinned() -> None:
             "b7aa0b7ad56f60428d692278a435c5e6640cec2b",
         ),
         "mission-control": (
-            "v2.1.0",
+            "v2.2.0",
             "MIT",
-            "b4ebc5418bea4fa9288a5c17fbddb9ba99740964",
+            "0552b00b3b743ed12949e6deb19597655b02bbcc",
         ),
         "orchestra-research": (
             "v1.7.2",
@@ -112,6 +112,16 @@ def test_evidence_uses_immutable_source_and_license_links() -> None:
     assert faramesh["installer_license"] == "MPL-2.0"
     assert faramesh["installer_ref"] in faramesh["installer_source_url"]
     assert faramesh["installer_ref"] in faramesh["installer_license_url"]
+
+    mission_control = projects["mission-control"]
+    assert mission_control["verified_at"] == "2026-07-22"
+    assert mission_control["comparison_baseline_version"] == "v2.1.0"
+    assert mission_control["comparison_baseline_ref"] == (
+        "b4ebc5418bea4fa9288a5c17fbddb9ba99740964"
+    )
+    assert mission_control["provenance_ref"] == ("eb7c35e950b83f73d6fd61e89f7d4b377db2ad50")
+    for source_url in mission_control["reviewed_contract_source_urls"]:
+        assert mission_control["current_ref"] in source_url
 
 
 def test_required_apache_and_mpl_license_texts_are_verbatim() -> None:
@@ -180,6 +190,26 @@ def test_direct_port_ledger_has_durable_evidence() -> None:
     assert "UI-PORT-PLAN.md" not in ledger
     assert "Record the exact upstream repo URL" not in ledger
     assert "LACP (`MIT`)" not in ledger
+
+
+def test_mission_control_refresh_preserves_history_and_pins_v220_contract() -> None:
+    current_ref = "0552b00b3b743ed12949e6deb19597655b02bbcc"
+    comparison_ref = "b4ebc5418bea4fa9288a5c17fbddb9ba99740964"
+    historical_port_ref = "eb7c35e950b83f73d6fd61e89f7d4b377db2ad50"
+    report = (ROOT / "docs/upstream-dep-report.md").read_text(encoding="utf-8")
+    credits = (ROOT / "CREDITS.md").read_text(encoding="utf-8")
+    sandbox = (ROOT / "scripts/autonomy/work_order_sandbox.py").read_text(encoding="utf-8")
+
+    for text in (report, credits):
+        assert "v2.2.0" in text
+        assert current_ref in text
+        assert comparison_ref in text
+        assert "2026-07-22" in text
+
+    assert historical_port_ref in report
+    assert current_ref in sandbox
+    assert "src/lib/task-dispatch.ts" in sandbox
+    assert "Copyright (c) 2026 Builderz Labs" in sandbox
 
 
 def test_public_legal_docs_expose_attribution_and_alignment_pages() -> None:
