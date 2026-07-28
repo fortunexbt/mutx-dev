@@ -114,6 +114,8 @@ jobs:
               - 'tailwind.config.*'
               - 'docs/api/openapi.json'
               - 'app/types/api.ts'
+              - 'scripts/check-js-dependency-compat.mjs'
+              - 'scripts/verify-generated-artifacts.sh'
               - '.github/workflows/**'
             infrastructure:
               - 'infrastructure/**'
@@ -309,6 +311,9 @@ jobs:
             --require-hashes \
             --only-binary=:all: \
             --requirement requirements-ci.lock
+
+      - name: Validate JavaScript dependency compatibility
+        run: npm run test:dependency-compat
 
       - name: Run frontend unit tests
         run: npm run test:app
