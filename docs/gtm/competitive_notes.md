@@ -7,6 +7,7 @@ icon: chart-bar
 
 Last full competitive review: 2026-04-20
 OWASP mapping updated: 2026-07-16
+MCP scanner status updated: 2026-07-16
 Primary benchmark: Microsoft Agent Governance Toolkit v3.1.0
 
 ## Market Positioning
@@ -29,7 +30,7 @@ These are **adjacent, not identical**. AGT is SDK-first (developer tooling). MUT
 | Runtime supervision | ✅ Faramesh 13-framework | ❌ SDK-level only | **MUTX ahead** |
 | [OWASP Top 10 for Agentic Applications 2026](../security/agentic_risk_matrix.md) | ⚠️ All 10 mapped: 8 partial, 2 gaps; not 10/10 coverage | ✅ Claims 10/10 | AGT evidence stronger; mapping parity only |
 | Shadow AI discovery | ❌ None | ✅ agent-discovery | AGT ahead |
-| MCP security scanner | ❌ None | ✅ MCPServerPolicy | AGT ahead |
+| MCP security scanner | ⚠️ Deterministic definition scan + reusable registration policy; no registry/runtime sandbox | ✅ MCPServerPolicy | AGT operational integration broader |
 | Prompt injection eval | ❌ None | ✅ 12-vector audit | AGT ahead |
 | Multi-language SDK | Python only | 5 languages | AGT ahead |
 | Quantum-safe crypto | ❌ None | ✅ ML-DSA-65 | AGT ahead |
@@ -54,7 +55,7 @@ These are **adjacent, not identical**. AGT is SDK-first (developer tooling). MUT
   not comprehensive coverage)
 - Multi-language SDK (TypeScript priority)
 - Shadow AI discovery
-- MCP security scanning
+- MCP registry enforcement or runtime sandboxing beyond the static definition scanner
 
 ### Competitive defense vs AGT
 - AGT is an SDK, not a platform. It governs code, not deployed agents.
@@ -77,6 +78,14 @@ MUTX: Source-available, €9-29/mo for PicoMUTX tiers. Revenue via SaaS.
 This means AGT is not a direct revenue competitor — it's a mindshare competitor. The risk is developers adopting AGT's SDK patterns and then expecting those patterns in every tool.
 
 ## Weekly Delta Log
+
+### 2026-07-16
+- Added authenticated static MCP definition scanning for high-signal tool
+  poisoning, name-integrity, hidden-instruction, command, URL, annotation, and
+  excessive-capability findings.
+- Added a reusable pre-registration decision hook. MUTX still has no MCP server
+  registry or runtime sandbox, so end-to-end registration enforcement is not
+  claimed.
 
 ### 2026-04-20
 - AGT stable at v3.1.0 (no new releases since April 11)

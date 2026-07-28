@@ -56,7 +56,7 @@
 | "Governance — Policy enforcement (PERMIT/DENY/DEFER) via FPL" | surfaces.md | Code exists in `src/security/` and policies routes `/v1/policies/*` in OpenAPI | SHIPPED |
 | "Governance — Credential broker (Vault, AWS, GCP, Azure, 1Password, Infisical)" | surfaces.md | `/v1/governance/credentials/*` routes in OpenAPI. Vault backend is stub; other backends have real implementations | PARTIAL |
 | "Governance — Supervised agents" | surfaces.md | `/v1/runtime/governance/supervised/*` routes in OpenAPI with start/stop/restart/profiles | SHIPPED |
-| "Security — Actions, approvals, compliance, metrics, receipts, sessions" | surfaces.md | All confirmed: `/v1/security/actions/evaluate`, `/v1/security/approvals/*`, `/v1/security/compliance`, `/v1/security/metrics`, `/v1/security/receipts/*`, `/v1/security/sessions/*` | SHIPPED |
+| "Security — Actions, approvals, compliance, MCP definition scanning, metrics, receipts, sessions" | surfaces.md | Confirmed routes include `/v1/security/actions/evaluate`, `/v1/security/approvals/*`, `/v1/security/compliance`, `/v1/security/mcp/scan`, `/v1/security/metrics`, `/v1/security/receipts/*`, and `/v1/security/sessions/*`; MCP registration/runtime sandboxing is not claimed | SHIPPED |
 | "Dashboard — RAG search and scheduler return 503 with feature flags" | surfaces.md | RAG now has real endpoints (gated by config flag). Scheduler has real implementation. **No longer 503 stubs.** | **CHANGED → SHIPPED** |
 
 ### 1.5 roadmap.md Claims
@@ -100,7 +100,7 @@
 | `/v1/runs` | `get_current_user` | POST, GET | runs, traces |
 | `/v1/runtime` | `get_current_user` | GET, PUT | providers, governance metrics/status/supervised |
 | `/v1/scheduler` | `get_current_user` + admin | GET, POST, DELETE, PATCH | real asyncio task engine with CRUD |
-| `/v1/security` | `get_current_user` | POST, GET, DELETE | actions, approvals, compliance, metrics, prometheus, receipts, sessions |
+| `/v1/security` | `get_current_user` | POST, GET, DELETE | actions, approvals, compliance, MCP definition scanning, metrics, prometheus, receipts, sessions |
 | `/v1/sessions` | `get_current_user` | POST, GET, DELETE | wired to OpenClaw gateway HTTP API; **local session discovery for Claude/Codex/Hermes** |
 | `/v1/swarms` | `get_current_user` | GET, POST, PATCH, DELETE | list, create, get, update, delete, scale; **real DB persistence** |
 | `/v1/telemetry` | `get_current_user` | GET, POST | config, health |

@@ -68,6 +68,13 @@ def test_normalize_openapi_document_keeps_multi_entry_allof() -> None:
     assert module.normalize_openapi_document(document) == document
 
 
+def test_normalize_openapi_document_preserves_open_object_contracts() -> None:
+    module = _load_generate_openapi_module()
+    document = {"type": "object", "additionalProperties": True}
+
+    assert module.normalize_openapi_document(document) == document
+
+
 def test_main_preserves_existing_snapshot_when_generation_fails(monkeypatch, tmp_path) -> None:
     module = _load_generate_openapi_module()
     openapi_path = tmp_path / "docs" / "api" / "openapi.json"

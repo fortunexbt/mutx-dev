@@ -61,7 +61,7 @@ The private `audit` route also mounts at `/v1/audit` but requires internal crede
 | `documents` | `/v1/documents` | — |
 | `reasoning` | `/v1/reasoning` | — |
 | `observability` | `/v1/observability` | — |
-| `security` | `/v1/security` | — |
+| `security` | `/v1/security` | [mcp-security.md](./mcp-security.md) |
 | `rag` | `/v1/rag` | — |
 | `usage` | `/v1/usage` | — |
 | `analytics` | `/v1/analytics` | [analytics.md](./analytics.md) |
@@ -86,6 +86,7 @@ The private `audit` route also mounts at `/v1/audit` but requires internal crede
 - OpenAPI JSON: [`openapi.json`](./openapi.json)
 - Authentication: [authentication.md](./authentication.md)
 - API keys: [api-keys.md](./api-keys.md)
+- MCP definition scanning: [mcp-security.md](./mcp-security.md)
 - Agents: [agents.md](./agents.md)
 - Analytics: [analytics.md](./analytics.md)
 - Deployments: [deployments.md](./deployments.md)

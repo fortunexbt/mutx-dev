@@ -8,6 +8,7 @@
 * [API reference](docs/api/reference.md)
   * [Authentication](docs/api/authentication.md)
   * [API keys](docs/api/api-keys.md)
+  * [MCP definition scanning](docs/api/mcp-security.md)
   * [Agents](docs/api/agents.md)
   * [Deployments](docs/api/deployments.md)
   * [Webhooks and ingestion](docs/api/webhooks.md)

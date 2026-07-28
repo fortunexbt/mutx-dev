@@ -8012,6 +8012,66 @@
         }
       }
     },
+    "/v1/security/mcp/scan": {
+      "post": {
+        "tags": [
+          "security"
+        ],
+        "summary": "Scan Mcp Server Definition",
+        "description": "Statically scan untrusted MCP metadata without contacting or launching it.\n\nThis authenticated read-only analysis endpoint is available to every MUTX\nuser role.  ``registration_allowed`` is the reusable policy hook: medium\nfindings require review and high/critical findings deny registration.",
+        "operationId": "scan_mcp_server_definition_v1_security_mcp_scan_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCPScanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPScanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/security/actions/evaluate": {
       "post": {
         "tags": [
@@ -21120,6 +21180,348 @@
         "type": "object",
         "title": "LogoutRequest"
       },
+      "MCPFindingResponse": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/MCPFindingSeverity"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          },
+          "evidence": {
+            "type": "string",
+            "title": "Evidence"
+          },
+          "recommendation": {
+            "type": "string",
+            "title": "Recommendation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "severity",
+          "category",
+          "path",
+          "title",
+          "explanation",
+          "evidence",
+          "recommendation"
+        ],
+        "title": "MCPFindingResponse",
+        "description": "One structured MCP scanner finding."
+      },
+      "MCPFindingSeverity": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "critical"
+        ],
+        "title": "MCPFindingSeverity",
+        "description": "Severity assigned to an MCP definition finding."
+      },
+      "MCPRegistrationDecision": {
+        "type": "string",
+        "enum": [
+          "allow",
+          "review",
+          "deny"
+        ],
+        "title": "MCPRegistrationDecision",
+        "description": "Pre-registration disposition for a scanned definition."
+      },
+      "MCPScanRequest": {
+        "properties": {
+          "server": {
+            "$ref": "#/components/schemas/MCPServerDefinition"
+          },
+          "trustedToolNames": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 256,
+            "title": "Trustedtoolnames"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "server"
+        ],
+        "title": "MCPScanRequest",
+        "description": "Request to statically inspect an MCP definition."
+      },
+      "MCPScanResponse": {
+        "properties": {
+          "scanner_version": {
+            "type": "string",
+            "title": "Scanner Version"
+          },
+          "protocol_revision": {
+            "type": "string",
+            "title": "Protocol Revision"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/MCPRegistrationDecision"
+          },
+          "registration_allowed": {
+            "type": "boolean",
+            "title": "Registration Allowed"
+          },
+          "highest_severity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MCPFindingSeverity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scanned_tools": {
+            "type": "integer",
+            "title": "Scanned Tools"
+          },
+          "finding_count": {
+            "type": "integer",
+            "title": "Finding Count"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/MCPFindingResponse"
+            },
+            "type": "array",
+            "title": "Findings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scanner_version",
+          "protocol_revision",
+          "decision",
+          "registration_allowed",
+          "highest_severity",
+          "scanned_tools",
+          "finding_count",
+          "findings"
+        ],
+        "title": "MCPScanResponse",
+        "description": "Static scan result and pre-registration policy disposition."
+      },
+      "MCPServerDefinition": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 8192
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "transport": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "stdio",
+                  "streamable_http",
+                  "sse"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transport"
+          },
+          "command": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Command"
+          },
+          "args": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 128,
+            "title": "Args"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "env": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Env"
+          },
+          "requestedPermissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 128,
+            "title": "Requestedpermissions"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/MCPToolDefinition"
+            },
+            "type": "array",
+            "maxItems": 128,
+            "minItems": 1,
+            "title": "Tools"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "tools"
+        ],
+        "title": "MCPServerDefinition",
+        "description": "Static MCP server configuration and advertised tools."
+      },
+      "MCPToolDefinition": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 8192
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "inputSchema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputschema"
+          },
+          "outputSchema": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outputschema"
+          },
+          "annotations": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Annotations"
+          },
+          "execution": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution"
+          },
+          "icons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 32,
+            "title": "Icons"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "name",
+          "inputSchema"
+        ],
+        "title": "MCPToolDefinition",
+        "description": "MCP 2025-11-25 tool fields relevant to static scanning."
+      },
       "MessageResponse": {
         "properties": {
           "message": {
@@ -23295,6 +23697,7 @@
             "default": false
           }
         },
+        "additionalProperties": true,
         "type": "object",
         "title": "OnboardingState",
         "description": "Structured state extracted from the onboarding conversation."
@@ -23883,6 +24286,7 @@
             "default": false
           }
         },
+        "additionalProperties": true,
         "type": "object",
         "required": [
           "reply"
@@ -23892,6 +24296,7 @@
       },
       "PicoProgressPayload": {
         "properties": {},
+        "additionalProperties": true,
         "type": "object",
         "title": "PicoProgressPayload"
       },
@@ -24300,6 +24705,7 @@
             "title": "Currentsurface"
           }
         },
+        "additionalProperties": true,
         "type": "object",
         "title": "PicoTutorSetupContext"
       },

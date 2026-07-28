@@ -27,11 +27,6 @@ def normalize_openapi_document(value: Any) -> Any:
         merged.update((key, item) for key, item in normalized.items() if key != "allOf")
         return merged
 
-    if normalized.get("type") == "object" and normalized.get("additionalProperties") is True:
-        normalized = {
-            key: item for key, item in normalized.items() if key != "additionalProperties"
-        }
-
     return normalized
 
 
