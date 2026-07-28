@@ -13,7 +13,7 @@ Install the following on your machine:
 
 * Git
 * Node.js `>=24.15.0`
-* npm `>=11.12.1 <12` (the repository pins `npm@11.12.1`)
+* npm `>=11.18.0 <12` (the repository pins `npm@11.18.0`)
 * Python `3.10+`
 * Docker + Docker Compose v2
 * `make` and `curl` (recommended for local verification commands)

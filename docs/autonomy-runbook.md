@@ -305,7 +305,7 @@ Keep `node` and `npm` on the same installation prefix:
 
 ```bash
 /node24/bin/node --version   # 24.15+ recommended
-/node24/bin/npm --version    # 11.12.1+ for this repo
+/node24/bin/npm --version    # 11.18.0+ for this repo
 ```
 
 With `nvm`:
@@ -326,7 +326,7 @@ If you test OpenClaw on Node 22.22.3+ or 25.9+, isolate that runtime with `nvm`,
 
 ```bash
 node --version  # 24.15+ for the shared lane
-npm --version   # 11.12.1+ and lower than 12 for MUTX
+npm --version   # 11.18.0+ and lower than 12 for MUTX
 npm run typecheck
 ```
 
