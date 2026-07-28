@@ -219,7 +219,11 @@ jobs:
         run: python -m pip install 'pytest==9.0.3' 'PyYAML==6.0.3'
 
       - name: Run workflow contract tests
-        run: python -m pytest tests/unit/python/test_ci_workflow_contract.py -q
+        run: >-
+          python -m pytest
+          --confcutdir=tests/unit/python
+          tests/unit/python/test_ci_workflow_contract.py
+          -q
 
   python-validation:
     name: Python ${{ matrix.python-version }}

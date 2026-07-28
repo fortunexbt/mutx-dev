@@ -10,6 +10,8 @@ pydantic-settings==2.10.1
 # Database
 sqlalchemy==2.0.25
 asyncpg==0.29.0
+# Keep universal hashed locks complete for asyncpg 0.29 on Python 3.10/3.11.
+async-timeout==5.0.1
 psycopg[binary]>=3.2.13
 greenlet==3.0.3
 alembic==1.13.1
