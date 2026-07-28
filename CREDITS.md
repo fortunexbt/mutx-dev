@@ -101,14 +101,15 @@ that provenance pin; the two are intentionally reported separately.
 - **License:** MIT — Copyright (c) 2025 Claude AI Research Skills Contributors
 - **Current upstream release:** `v1.7.2`
   (`773a52944ba4747a18bd4ae9ade53fff041adcbc`)
-- **MUTX integration pin:**
-  `05f1958727bfc2bc22240f41d060504473c4f236`
+- **MUTX integration pin:** `v1.7.2`
+  (`773a52944ba4747a18bd4ae9ade53fff041adcbc`)
 
 MUTX imports catalog metadata, curates install bundles and swarm blueprints, and
-provides `scripts/sync_orchestra_research_skills.py`. The upstream skill content
+provides deterministic catalog generation and runtime sync scripts. The v1.7.2
+catalog contains 98 upstream skills, including the three Agent-Native Research
+Artifact roles. The upstream skill content
 remains attributed to Orchestra Research and to the upstream authors documented
-in that repository. The difference between the current release and the MUTX pin
-is an explicit upgrade gap, not hidden drift.
+in that repository.
 
 ### predict-rlm
 

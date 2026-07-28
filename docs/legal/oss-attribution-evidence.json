@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "verified_at": "2026-07-15",
+  "verified_at": "2026-07-22",
   "projects": [
     {
       "id": "agent-run",
@@ -118,7 +118,7 @@
     {
       "id": "orchestra-research",
       "name": "Orchestra Research AI-Research-SKILLs",
-      "status": "integrated-behind-upstream",
+      "status": "integrated-current",
       "repository": "https://github.com/Orchestra-Research/AI-Research-SKILLs",
       "license": "MIT",
       "copyright": "Copyright (c) 2025 Claude AI Research Skills Contributors",
@@ -126,8 +126,10 @@
       "current_version": "v1.7.2",
       "release_url": "https://github.com/Orchestra-Research/AI-Research-SKILLs/commit/773a52944ba4747a18bd4ae9ade53fff041adcbc",
       "license_url": "https://github.com/Orchestra-Research/AI-Research-SKILLs/blob/773a52944ba4747a18bd4ae9ade53fff041adcbc/LICENSE",
-      "integration_ref": "05f1958727bfc2bc22240f41d060504473c4f236",
+      "integration_ref": "773a52944ba4747a18bd4ae9ade53fff041adcbc",
+      "integration_version": "v1.7.2",
       "local_paths": [
+        "scripts/build_orchestra_research_catalog.py",
         "scripts/sync_orchestra_research_skills.py",
         "src/api/data/orchestra_research_catalog.json",
         "docs/orchestra-research.md"

@@ -9,7 +9,8 @@ import tempfile
 from pathlib import Path
 
 DEFAULT_REPO_URL = "https://github.com/Orchestra-Research/AI-Research-SKILLs.git"
-DEFAULT_COMMIT = "05f1958727bfc2bc22240f41d060504473c4f236"
+DEFAULT_RELEASE = "v1.7.2"
+DEFAULT_COMMIT = "773a52944ba4747a18bd4ae9ade53fff041adcbc"
 DEFAULT_DEST = Path.home() / ".mutx" / "skills" / "orchestra-research"
 SKIP_ROOTS = {"packages", "docs", "demos", "dev_data", "anthropic_official_docs", ".git", ".github"}
 
@@ -60,6 +61,7 @@ def sync_skills(source_root: Path, dest_root: Path, *, clean: bool) -> dict[str,
 
     manifest = {
         "repo_url": DEFAULT_REPO_URL,
+        "version": DEFAULT_RELEASE,
         "commit": run("git", "rev-parse", "HEAD", cwd=source_root),
         "skill_count": len(copied),
         "skills": copied,

@@ -14,7 +14,7 @@ EVIDENCE_PATH = ROOT / "docs/legal/oss-attribution-evidence.json"
 def _projects() -> dict[str, dict[str, object]]:
     payload = json.loads(EVIDENCE_PATH.read_text(encoding="utf-8"))
     assert payload["schema_version"] == 1
-    assert payload["verified_at"] == "2026-07-15"
+    assert payload["verified_at"] == "2026-07-22"
     return {project["id"]: project for project in payload["projects"]}
 
 
@@ -112,6 +112,11 @@ def test_evidence_uses_immutable_source_and_license_links() -> None:
     assert faramesh["installer_license"] == "MPL-2.0"
     assert faramesh["installer_ref"] in faramesh["installer_source_url"]
     assert faramesh["installer_ref"] in faramesh["installer_license_url"]
+
+    orchestra = projects["orchestra-research"]
+    assert orchestra["status"] == "integrated-current"
+    assert orchestra["integration_version"] == "v1.7.2"
+    assert orchestra["integration_ref"] == orchestra["current_ref"]
 
 
 def test_required_apache_and_mpl_license_texts_are_verbatim() -> None:

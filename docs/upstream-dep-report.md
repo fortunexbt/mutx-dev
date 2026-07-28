@@ -1,6 +1,6 @@
 # MUTX upstream dependency report
 
-Last verified: 2026-07-15
+Last verified: 2026-07-22
 
 This report separates three facts that older revisions conflated:
 
@@ -20,7 +20,7 @@ Immutable license and source evidence is maintained in
 | Faramesh Core | Main `e230a9ac2d12d80ed6f632db42b6e1983ccbce82`; pinned published release `v0.2.0` / `ae3ebc9066d65e4e930164881c2f2ce2be554c7f`; historical semver tag `v1.2.9` / `c85237e4e6b13745169291f60b9c6b985285dbaa` | Main: Apache-2.0; `v0.2.0` and `v1.2.9`: MPL-2.0 | CLI and gateway fetch an immutable installer and request `v0.2.0` explicitly | Run the pinned compatibility lane before changing either installer ref or release |
 | FPL | Main `b7aa0b7ad56f60428d692278a435c5e6640cec2b` | Apache-2.0 | MUTX ships FPL policy files and CLI integration | Validate parser/daemon compatibility; retain Apache-2.0 text and any future `NOTICE` |
 | Mission Control | `v2.1.0` / `b4ebc5418bea4fa9288a5c17fbddb9ba99740964` | MIT, Copyright (c) 2026 Builderz Labs | Direct dashboard pattern provenance predates the current release | Treat `v2.1.0` as the comparison baseline, not proof of compatibility |
-| Orchestra Research AI-Research-SKILLs | `v1.7.2` / `773a52944ba4747a18bd4ae9ade53fff041adcbc` | MIT, Copyright (c) 2025 Claude AI Research Skills Contributors | Catalog is pinned to `05f1958727bfc2bc22240f41d060504473c4f236` | Regenerate and validate the catalog against `v1.7.2` in a dedicated migration |
+| Orchestra Research AI-Research-SKILLs | `v1.7.2` / `773a52944ba4747a18bd4ae9ade53fff041adcbc` | MIT, Copyright (c) 2025 Claude AI Research Skills Contributors | Catalog and runtime sync are pinned to v1.7.2; all 98 skills and curated references validate | Regenerate with the deterministic builder whenever the release pin moves |
 | predict-rlm | `v0.7.2` / `4ff334dea79a2f27e96b7a50a358b0427050899e` | MIT, Copyright (c) 2026 Trampoline AI | Workflow provenance is pinned to `5c7387afa1980b62b21a34ad0261256a95d8caa1` | Validate templates, runtime prerequisites, and output contracts against `v0.7.2` |
 | Guild AI | Tag `0.9.0`; audited main `dfbefedb6ca5ce3a1341f9f00a4016420f6fc76d` | Apache-2.0 | Candidate only; no direct reuse recorded | Keep out of the distribution unless a scoped adoption decision records exact provenance |
 | LACP | Unresolved identity | Unknown | No direct reuse recorded | Do not port or make a license claim until owner, canonical repo, ref, and license are established |
@@ -98,11 +98,18 @@ MUTX conformance.
 1. Keep agent-run quarantined and use only MUTX’s local adapted schema.
 2. Close the AARM naming and claim drift before adding new conformance features.
 3. Validate the pinned Faramesh Core `v0.2.0` release and current FPL in an isolated compatibility lane.
-4. Regenerate Orchestra metadata against `v1.7.2` and review the resulting content.
+4. Keep the regenerated Orchestra v1.7.2 catalog and curated reference checks green.
 5. Exercise predict-rlm `v0.7.2` through every managed/local workflow contract.
 6. Re-audit Mission Control `v2.1.0` only for roadmap-backed capabilities.
 
 ## Changelog
+
+### 2026-07-22
+
+- Regenerated the Orchestra Research catalog from the immutable v1.7.2 commit.
+- Added the three Agent-Native Research Artifact skills introduced upstream.
+- Added deterministic catalog generation and closed the dangling multimodal
+  template/blueprint references in the original integration.
 
 ### 2026-07-15
 

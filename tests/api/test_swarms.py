@@ -7,6 +7,15 @@ import pytest
 from httpx import AsyncClient
 
 
+@pytest.mark.asyncio
+async def test_list_blueprints_includes_multimodal_review_loop(client: AsyncClient):
+    response = await client.get("/v1/swarms/blueprints")
+
+    assert response.status_code == 200
+    blueprint_ids = {item["id"] for item in response.json()}
+    assert "multimodal-review-loop" in blueprint_ids
+
+
 class TestListSwarms:
     """Tests for GET /swarms endpoint."""
 

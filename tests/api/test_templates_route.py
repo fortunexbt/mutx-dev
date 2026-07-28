@@ -39,6 +39,7 @@ async def test_list_templates_includes_orchestra_research_presets(client: AsyncC
     template_ids = {item["id"] for item in response.json()}
     assert "orchestra_research_foundation" in template_ids
     assert "orchestra_rag_lab" in template_ids
+    assert "orchestra_multimodal_guardrails" in template_ids
 
 
 # ---------------------------------------------------------------------------
