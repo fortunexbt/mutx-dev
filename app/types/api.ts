@@ -3606,6 +3606,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/policies/evaluate-and-request-approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate Policies And Request Approval
+         * @description Evaluate policies and create one linked approval when approval is required.
+         */
+        post: operations["evaluate_policies_and_request_approval_v1_policies_evaluate_and_request_approval_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/policies/{name}": {
         parameters: {
             query?: never;
@@ -7695,6 +7715,37 @@ export interface components {
             created_at?: string | null;
             /** Updated At */
             updated_at?: string | null;
+        };
+        /**
+         * PolicyApprovalEvaluationResult
+         * @description Policy evaluation result plus optional linked approval request.
+         */
+        PolicyApprovalEvaluationResult: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "allow" | "warn" | "block" | "require_approval";
+            /** Reason */
+            reason: string;
+            /** Matches */
+            matches?: components["schemas"]["PolicyRuleMatch"][];
+            /** Evaluated Policy Count */
+            evaluated_policy_count: number;
+            /** Run Id */
+            run_id?: string | null;
+            /** Agent Id */
+            agent_id?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+            approval_request?: components["schemas"]["ApprovalRequest"] | null;
+            /**
+             * Approval Created
+             * @default false
+             */
+            approval_created: boolean;
+            /** Approval Dedupe Key */
+            approval_dedupe_key?: string | null;
         };
         /**
          * PolicyEvaluationContext
@@ -16986,6 +17037,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PolicyEvaluationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evaluate_policies_and_request_approval_v1_policies_evaluate_and_request_approval_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyEvaluationContext"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyApprovalEvaluationResult"];
                 };
             };
             /** @description Validation Error */

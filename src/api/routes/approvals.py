@@ -142,17 +142,12 @@ class ApprovalListResponse(BaseModel):
     agent_id: Optional[str] = None
 
 
-@router.post("", response_model=ApprovalRequest, status_code=status.HTTP_201_CREATED)
-async def create_approval(
+async def create_approval_record(
     body: ApprovalCreate,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """
-    Submit a new approval request.
-
-    Stored in the existing user_settings table so approvals survive process restarts.
-    """
+    db: AsyncSession,
+    user: User,
+) -> ApprovalRequest:
+    """Persist an approval request using the same path as the public route."""
     req = ApprovalRequest(
         agent_id=body.agent_id,
         session_id=body.session_id,
@@ -182,6 +177,20 @@ async def create_approval(
         req.requester,
     )
     return req
+
+
+@router.post("", response_model=ApprovalRequest, status_code=status.HTTP_201_CREATED)
+async def create_approval(
+    body: ApprovalCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Submit a new approval request.
+
+    Stored in the existing user_settings table so approvals survive process restarts.
+    """
+    return await create_approval_record(body, db, user)
 
 
 @router.get("", response_model=ApprovalListResponse)
