@@ -1,0 +1,40 @@
+name: Upstream Drift
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    name: Audit tracked upstream releases and refs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Compare registry with GitHub metadata
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          python scripts/check_upstream_drift.py
+          --markdown-output "$GITHUB_STEP_SUMMARY"
+          --json-output upstream-drift-report.json
+
+      - name: Upload machine-readable report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-drift-report
+          path: upstream-drift-report.json
+          if-no-files-found: warn
+          retention-days: 30

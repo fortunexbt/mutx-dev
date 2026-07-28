@@ -102,6 +102,20 @@ MUTX conformance.
 5. Exercise predict-rlm `v0.7.2` through every managed/local workflow contract.
 6. Re-audit Mission Control `v2.1.0` only for roadmap-backed capabilities.
 
+## Automated drift reporting
+
+[`docs/upstream-tracking.json`](upstream-tracking.json) maps this attribution
+evidence and the Pico engine release pins to explicit GitHub metadata checks.
+Run `python scripts/check_upstream_drift.py` for a live report. The checker only
+reads repository, commit, tag, and release metadata; it never clones, imports,
+vendors, or executes upstream code.
+
+The `Upstream Drift` workflow runs weekly and on manual dispatch. Live mutable
+network checks are deliberately isolated from ordinary pull-request CI, while
+offline unit tests enforce the registry and report contracts. A drift result is
+a review signal, not authorization to update or import an upstream. Triage and
+compatibility work is tracked in [SOTA modernization epic #3688](https://github.com/mutx-dev/mutx-dev/issues/3688).
+
 ## Changelog
 
 ### 2026-07-15
