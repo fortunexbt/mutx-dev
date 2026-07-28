@@ -24,6 +24,17 @@ on:
       release_identity_url:
         required: false
         type: string
+    secrets:
+      RAILWAY_TOKEN:
+        required: true
+      RAILWAY_PROJECT_ID:
+        required: true
+      RAILWAY_FRONTEND_SERVICE_ID:
+        required: true
+      RAILWAY_API_SERVICE_ID:
+        required: true
+      RAILWAY_ENVIRONMENT_ID:
+        required: true
 permissions:
   contents: read
 

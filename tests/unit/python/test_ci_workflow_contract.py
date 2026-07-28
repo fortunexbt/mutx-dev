@@ -292,6 +292,8 @@ def test_release_deployment_and_drift_workflows_remain_fail_safe() -> None:
     assert "-detailed-exitcode" in drift_text
     assert "TF_VARS_STAGING" in drift_text
     assert "TF_VARS_PRODUCTION" in drift_text
+    assert "secrets[matrix.tfvars_secret]" not in drift_text
+    assert "tfvars_secret:" not in drift_text
     assert "terraform_version: '1.15.8'" in drift_text
     assert "printf '%s\\n' \"${TF_VARS}\"" in drift_text
     assert 'var-file="${RUNNER_TEMP}/terraform-${{ matrix.environment }}.tfvars"' in drift_text

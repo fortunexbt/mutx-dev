@@ -143,7 +143,8 @@ async def test_scheduler_mutations_use_persisted_role_matrix(
         await client.patch(f"/v1/scheduler/{task_id}", json={"name": "role-updated"})
     ).status_code == 200
     assert (await client.post(f"/v1/scheduler/{task_id}/trigger")).status_code == 200
-    assert (await client.delete(f"/v1/scheduler/{task_id}")).status_code == 204
+    deleted = await client.delete(f"/v1/scheduler/{task_id}")
+    assert deleted.status_code == 204
 
 
 @pytest.mark.parametrize(
@@ -229,7 +230,8 @@ async def test_scheduler_list_and_crud_are_scoped_to_owner(
     triggered = await client.post(f"/v1/scheduler/{task_id}/trigger")
     assert triggered.status_code == 200
     assert triggered.json()["task_id"] == task_id
-    assert (await client.delete(f"/v1/scheduler/{task_id}")).status_code == 204
+    deleted = await client.delete(f"/v1/scheduler/{task_id}")
+    assert deleted.status_code == 204
     assert (await client.get(f"/v1/scheduler/{task_id}")).status_code == 404
 
 

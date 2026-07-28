@@ -141,7 +141,7 @@ describe('deterministic docs publication', () => {
       'Keep **backups** and read [setup](./quickstart.md).',
       '{% endhint %}',
       '',
-      '<table data-view="cards"><thead><tr><th>Title</th><th>Description</th><th data-card-target>Target</th><th data-card-cover>Cover</th></tr></thead><tbody><tr><td><strong>Setup</strong><script>alert(1)</script></td><td>Safe path</td><td><a href="./quickstart.md" onclick="alert(1)">quickstart.md</a></td><td><img src="../../public/landing/victory-core.png" onerror="alert(1)"></td></tr></tbody></table>',
+      '<table data-view="cards"><thead><tr><th>Title</th><th>Description</th><th data-card-target>Target</th><th data-card-cover>Cover</th></tr></thead><tbody><tr><td><strong>Setup &amp;lt;safe&amp;gt;</strong><script>alert(1)</script></td><td>Safe path</td><td><a href="./quickstart.md" onclick="alert(1)">quickstart.md</a></td><td><img src="../../public/landing/victory-core.png" onerror="alert(1)"></td></tr></tbody></table>',
       '',
       '<script>alert("raw")</script>',
     ].join('\n')
@@ -156,6 +156,8 @@ describe('deterministic docs publication', () => {
     expect(preprocessed).toContain('> Keep **backups** and read [setup](./quickstart.md).')
     expect(preprocessed).toContain('| __MUTX_DOCS_CARD_TABLE__ | Description | Target | Cover |')
     expect(preprocessed).toContain('[quickstart.md](./quickstart.md)')
+    expect(preprocessed).toContain('Setup &lt;safe&gt;')
+    expect(preprocessed).not.toContain('Setup <safe>')
     expect(preprocessed).not.toContain('<table')
     expect(preprocessed).not.toContain('onclick')
     expect(preprocessed).not.toContain('onerror')

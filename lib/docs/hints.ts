@@ -29,14 +29,20 @@ export function preprocessHints(source: string): string {
   });
 }
 
+const HTML_ENTITIES: Record<string, string> = {
+  "&nbsp;": " ",
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&apos;": "'",
+};
+
 function decodeHtmlEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'");
+  return value.replace(/&(nbsp|amp|lt|gt|quot|#39|apos);/gi, (entity) => {
+    return HTML_ENTITIES[entity.toLowerCase()] ?? entity;
+  });
 }
 
 function htmlText(value: string): string {

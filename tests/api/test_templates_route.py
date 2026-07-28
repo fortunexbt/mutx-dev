@@ -263,7 +263,8 @@ async def test_custom_template_crud_is_user_scoped_and_cleans_catalog_state(
     assert state["pinned_template_ids"] == []
     assert state["recent_template_ids"] == []
     assert state["deployment_count_by_template"] == {}
-    assert (await client.delete("/v1/templates/custom/custom-contract")).status_code == 404
+    second_delete = await client.delete("/v1/templates/custom/custom-contract")
+    assert second_delete.status_code == 404
 
 
 @pytest.mark.asyncio

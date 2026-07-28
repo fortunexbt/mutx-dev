@@ -658,26 +658,40 @@ jobs:
 
   promote-production:
     needs: [resolve_target, publish-desktop-release]
+    permissions:
+      contents: read
     if: >-
       needs.resolve_target.outputs.promote_production == 'true' &&
       needs.publish-desktop-release.result == 'success' &&
       (github.event_name == 'push' ||
       inputs.confirm_production == format('PROMOTE {0}', needs.resolve_target.outputs.target_tag))
     uses: ./.github/workflows/railway-production-promotion.yml
-    secrets: inherit
+    secrets:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+      RAILWAY_FRONTEND_SERVICE_ID: ${{ secrets.RAILWAY_FRONTEND_SERVICE_ID }}
+      RAILWAY_API_SERVICE_ID: ${{ secrets.RAILWAY_API_SERVICE_ID }}
+      RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
     with:
       release_tag: ${{ needs.resolve_target.outputs.target_tag }}
       target_commit: ${{ needs.resolve_target.outputs.target_commit }}
 
   promote-production-recovery:
     needs: [resolve_target, desktop-launch-smoke]
+    permissions:
+      contents: read
     if: >-
       github.event_name == 'workflow_dispatch' &&
       inputs.operation == 'promote_existing' &&
       needs.desktop-launch-smoke.result == 'success' &&
       inputs.confirm_production == format('PROMOTE {0}', needs.resolve_target.outputs.target_tag)
     uses: ./.github/workflows/railway-production-promotion.yml
-    secrets: inherit
+    secrets:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+      RAILWAY_FRONTEND_SERVICE_ID: ${{ secrets.RAILWAY_FRONTEND_SERVICE_ID }}
+      RAILWAY_API_SERVICE_ID: ${{ secrets.RAILWAY_API_SERVICE_ID }}
+      RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
     with:
       release_tag: ${{ needs.resolve_target.outputs.target_tag }}
       target_commit: ${{ needs.resolve_target.outputs.target_commit }}

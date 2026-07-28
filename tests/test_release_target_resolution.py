@@ -471,7 +471,15 @@ def test_release_workflow_consumes_one_resolved_target_and_preserves_desktop_gat
     assert promotion["with"]["target_commit"] == (
         "${{ needs.resolve_target.outputs.target_commit }}"
     )
-    assert promotion["secrets"] == "inherit"
+    railway_secrets = {
+        "RAILWAY_TOKEN": "${{ secrets.RAILWAY_TOKEN }}",
+        "RAILWAY_PROJECT_ID": "${{ secrets.RAILWAY_PROJECT_ID }}",
+        "RAILWAY_FRONTEND_SERVICE_ID": "${{ secrets.RAILWAY_FRONTEND_SERVICE_ID }}",
+        "RAILWAY_API_SERVICE_ID": "${{ secrets.RAILWAY_API_SERVICE_ID }}",
+        "RAILWAY_ENVIRONMENT_ID": "${{ secrets.RAILWAY_ENVIRONMENT_ID }}",
+    }
+    assert promotion["permissions"] == {"contents": "read"}
+    assert promotion["secrets"] == railway_secrets
     assert jobs["desktop-launch-smoke"]["strategy"]["matrix"]["include"] == [
         {"arch": "arm64", "runner": "macos-26", "app_dir": "mac-arm64"},
         {"arch": "x64", "runner": "macos-26-intel", "app_dir": "mac"},
@@ -491,7 +499,8 @@ def test_release_workflow_consumes_one_resolved_target_and_preserves_desktop_gat
         "resolve_target",
         "desktop-launch-smoke",
     ]
-    assert jobs["promote-production-recovery"]["secrets"] == "inherit"
+    assert jobs["promote-production-recovery"]["permissions"] == {"contents": "read"}
+    assert jobs["promote-production-recovery"]["secrets"] == railway_secrets
     assert jobs["promote-production-recovery"]["if"].endswith(
         "inputs.confirm_production == format('PROMOTE {0}', "
         "needs.resolve_target.outputs.target_tag)"

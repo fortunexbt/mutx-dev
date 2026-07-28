@@ -269,7 +269,8 @@ async def test_developer_and_admin_can_manage_owned_webhooks(
     )
 
     assert created.status_code == 201
-    assert (await client.delete(f"/v1/webhooks/{created.json()['id']}")).status_code == 204
+    deleted = await client.delete(f"/v1/webhooks/{created.json()['id']}")
+    assert deleted.status_code == 204
 
 
 @pytest.mark.asyncio

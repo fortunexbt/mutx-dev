@@ -2,7 +2,33 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const RELEASE_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?$/;
+function isNumericIdentifier(value) {
+  return /^(0|[1-9]\d*)$/.test(value);
+}
+
+function isReleaseSemver(value) {
+  if (typeof value !== "string" || value.length === 0 || value.length > 128 || value.includes("+")) {
+    return false;
+  }
+
+  const separator = value.indexOf("-");
+  const core = separator === -1 ? value : value.slice(0, separator);
+  const prerelease = separator === -1 ? null : value.slice(separator + 1);
+  const coreIdentifiers = core.split(".");
+  if (coreIdentifiers.length !== 3 || !coreIdentifiers.every(isNumericIdentifier)) {
+    return false;
+  }
+  if (prerelease === null) {
+    return true;
+  }
+
+  return prerelease.split(".").every((identifier) => {
+    if (!identifier || !/^[0-9A-Za-z-]+$/.test(identifier)) {
+      return false;
+    }
+    return !/^\d+$/.test(identifier) || isNumericIdentifier(identifier);
+  });
+}
 
 function expectedArtifactNames(version) {
   return [
@@ -103,7 +129,7 @@ function parseArgs(argv) {
   const directory = values.get("--dir");
   const version = values.get("--version");
   const arch = values.get("--arch");
-  if (!directory || !version || !RELEASE_SEMVER.test(version)) {
+  if (!directory || !isReleaseSemver(version)) {
     throw new Error(
       "Usage: node desktop/scripts/verify-checksum-manifest.js --dir <path> --version <release-semver>",
     );

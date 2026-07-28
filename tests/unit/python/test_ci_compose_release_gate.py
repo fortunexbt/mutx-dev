@@ -446,7 +446,15 @@ def test_railway_workflow_promotes_only_after_fail_closed_validation() -> None:
     assert "Refusing to move an already-published release back to draft" in release_workflow
     assert "remote_asset_names" in release_workflow
     assert "promote_production == 'true'" in release_workflow
-    assert release_workflow.count("secrets: inherit") == 2
+    assert "secrets: inherit" not in release_workflow
+    for secret_name in (
+        "RAILWAY_TOKEN",
+        "RAILWAY_PROJECT_ID",
+        "RAILWAY_FRONTEND_SERVICE_ID",
+        "RAILWAY_API_SERVICE_ID",
+        "RAILWAY_ENVIRONMENT_ID",
+    ):
+        assert release_workflow.count(f"{secret_name}: ${{{{ secrets.{secret_name} }}}}") == 2
 
     assert 'verify-release-http.mjs" release' in verify_script
     assert 'wait_for_release_identity "API"' in verify_script

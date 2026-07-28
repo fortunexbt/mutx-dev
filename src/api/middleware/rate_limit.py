@@ -6,7 +6,7 @@ import asyncio
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
-import hashlib
+import hmac
 from ipaddress import ip_address
 import logging
 import math
@@ -276,6 +276,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.auth_requests = auth_requests or settings.auth_rate_limit_requests
         self.auth_window_seconds = auth_window_seconds or settings.auth_rate_limit_window_seconds
         self.key_prefix = key_prefix or settings.rate_limit_redis_key_prefix
+        self._identity_hash_key = hmac.digest(
+            settings.jwt_secret.encode("utf-8"),
+            f"mutx-rate-limit:{self.key_prefix}".encode("utf-8"),
+            "sha256",
+        )
         self._backend = backend
         if (
             backend is None
@@ -312,14 +317,22 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     def _fingerprint(self, client_id: str) -> str:
         """Return a non-reversible shorthand suitable for structured logs."""
-        return hashlib.sha256(client_id.encode("utf-8")).hexdigest()[:16]
+        return self._identity_digest(client_id)[:16]
 
     def _mask_client_for_logging(self, client_id: str) -> str:
         return self._fingerprint(client_id)
 
     def _build_bucket_key(self, policy_name: str, client_id: str) -> str:
-        digest = hashlib.sha256(client_id.encode("utf-8")).hexdigest()
+        digest = self._identity_digest(client_id)
         return f"{self.key_prefix}:{policy_name}:{digest}"
+
+    def _identity_digest(self, client_id: str) -> str:
+        """Pseudonymize an authenticated identifier with a deployment-scoped key."""
+        return hmac.digest(
+            self._identity_hash_key,
+            client_id.encode("utf-8"),
+            "sha256",
+        ).hex()
 
     @classmethod
     def _resolve_policy(cls, path: str) -> tuple[str, bool]:

@@ -97,7 +97,10 @@ def test_checksum_verifier_rejects_an_actual_digest_mismatch(tmp_path: Path) -> 
     assert "SHA-256 mismatch" in result.stderr
 
 
-@pytest.mark.parametrize("version", ("1.4.0-01", "1.4.0+build.1", "1.4.0-rc..1"))
+@pytest.mark.parametrize(
+    "version",
+    ("1.4.0-01", "1.4.0+build.1", "1.4.0-rc..1", "1.4.0-" + "--." * 1000),
+)
 def test_checksum_verifier_rejects_invalid_release_versions(
     tmp_path: Path,
     version: str,
