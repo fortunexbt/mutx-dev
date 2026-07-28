@@ -7,6 +7,8 @@ import logging
 
 import httpx
 
+from mutx._http import api_path, normalize_api_base_url
+
 logger = logging.getLogger(__name__)
 
 
@@ -62,10 +64,11 @@ class MutxPolicyClient:
         api_key: str,
     ) -> None:
         self.api_url = api_url.rstrip("/")
+        self.api_base_url = normalize_api_base_url(api_url)
         self.policy_name = policy_name
         self._api_key = api_key
         self._http = httpx.Client(
-            base_url=self.api_url,
+            base_url=self.api_base_url,
             headers={"Authorization": f"Bearer {self._api_key}"},
             timeout=30.0,
         )
@@ -174,7 +177,7 @@ class MutxPolicyClient:
 
     async def _fetch_and_update(self) -> None:
         try:
-            resp = self._http.get(f"/v1/policies/{self.policy_name}")
+            resp = self._http.get(api_path("policies/{policy_name}", policy_name=self.policy_name))
             resp.raise_for_status()
             data = resp.json()
         except Exception as exc:

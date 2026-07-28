@@ -22,14 +22,16 @@ rsync -a --exclude='.git' --exclude='node_modules' --exclude='.next' \
   ~/Documents/GitHub/mutx-dev/docs/ ~/MUTX/docs/
 ```
 
-## Node.js Runtime Separation
+## Node.js Runtime Alignment
 
-MUTX and OpenClaw require different Node versions. PATH must not shadow one with the other.
+MUTX and OpenClaw share Node 24.15+ as the recommended runtime lane. If OpenClaw is
+deliberately tested on another supported major, keep that executable isolated on PATH.
 
-- **MUTX toolchain** (build/test): Node 24 (CI standard)
-- **OpenClaw runtime**: Node 22.14+ (agent execution)
+- **MUTX toolchain** (build/test): Node 24.15+ (CI standard)
+- **OpenClaw runtime**: Node 24.15+ recommended; 22.22.3+ and 25.9+ supported
 
-Explicitly qualify `node` paths in scripts and cron jobs. Do not rely on default `node` being correct.
+Use the shared Node 24.15+ path by default. Explicitly qualify `node` paths in scripts and cron
+jobs that exercise an alternate OpenClaw major.
 
 ## Stale Node Backup
 

@@ -13,7 +13,7 @@ Use the canonical overview in [`../../api/index.md`](../../api/index.md).
 
 - public control-plane routes are mounted under `/v1/*`
 - root health routes remain at `/`, `/health`, `/ready`, and `/metrics`
-- the generated OpenAPI snapshot lives at [`../../api/openapi.json`](../../api/openapi.json)
+- the generated OpenAPI snapshot lives at [`docs/api/openapi.json`](https://github.com/mutx-dev/mutx-dev/blob/main/docs/api/openapi.json)
 - canonical auth endpoints include `POST /v1/auth/register`, `POST /v1/auth/login`, and `GET /v1/auth/me`
 
 ```bash

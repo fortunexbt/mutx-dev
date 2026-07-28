@@ -8,7 +8,7 @@ This page documents the current truth of `app.mutx.dev`.
 
 Right now it has two distinct browser roles:
 
-- `/dashboard` is the supported authenticated operator shell for stable routes backed by live `/v1/*` API calls
+- `/dashboard` is the authenticated operator shell; each panel's maturity depends on its same-origin proxy and upstream `/v1/*` contract
 - `/control/*` is the browser demo shell for the control-plane story
 
 ## What exists today
@@ -54,36 +54,35 @@ The app exposes current resource routes such as:
 
 ### Rendered shells
 
-The current dashboard shell is split between stable operator pages and preview/demo or redirect-backed pages.
+The dashboard shell publishes source-backed operator pages and keeps the simulated `/control/*` story in a separate route tree.
 
-Stable pages:
+Pages with source-backed control-plane proxy contracts include:
 
 - overview
 - auth
 - agents
 - deployments
 - runs and traces
+- approvals and audit evidence
 - sessions and swarms
 - budgets and monitoring
-- skills and bundles
+- document and reasoning jobs when their feature flags and workers are configured
+- skills and bundles as catalog/configuration records
+- orchestration, retained memory, assistant channels, templates, notifications, and standup synthesis
+- runtime security, analytics, observability, logs, and machine-local autonomy posture
+- execution history backed by the live runs and traces APIs
 - API keys
 - webhooks
 
-Preview/demo or redirect-backed pages:
+The compatibility entry point `/dashboard/spawn` redirects to agent creation. `/dashboard/history` is a first-class execution-history surface; `/dashboard/audit` remains the governance evidence ledger.
 
-- channels
-- orchestration
-- memory
-- spawn
-- logs
-
-Release hardening now adds:
+Release-oriented source contracts include:
 
 - a composed `GET /api/dashboard/overview` route for the first-view dashboard contract
-- fail-closed release validation for lint, typecheck, build, serial browser smoke, desktop cockpit smoke, and signed macOS artifact validation
-- first-party desktop download routes at `mutx.dev/download/macos/*` that resolve to the current signed GitHub release assets
+- CI gates for lint, typecheck, build, browser smoke, desktop checks, and signing/notarization validation when the required Apple credentials are present
+- first-party desktop download routes at `mutx.dev/download/macos/*` that offer a handoff only when the resolver finds the complete expected GitHub artifact set
 - explicit desktop lifecycle diagnostics for the UI server, bridge, runtime, control plane, and assistant binding
-- primary-nav gating for preview or redirect-backed routes such as channels, skills, orchestration, memory, spawn, and logs
+- grouped Essential and Full Mode navigation backed by one canonical route registry
 
 The control demo is rendered from `app/control/[[...slug]]/page.tsx`.
 
@@ -102,18 +101,19 @@ When describing behavior:
 | Surface | Main job |
 | --- | --- |
 | `mutx.dev` | public product narrative and entry point |
-| `mutx.dev/releases` | public release summary and download posture |
-| `docs.mutx.dev` | canonical docs and API explanation |
+| `mutx.dev/releases` | public release summary and conditional artifact availability |
+| `mutx.dev/docs` | canonical docs and API explanation |
 | `app.mutx.dev/dashboard` | supported operator-facing authenticated shell for stable routes |
 | `app.mutx.dev/control/*` | demo surface for the browser control-plane story |
 
-## Known gaps
+## Operational boundaries
 
-- no full write-complete dashboard for all resources
-- dashboard maturity still trails the backend resource model
-- some flows remain easier through the CLI or direct API
-- some backend capabilities remain placeholder-backed, especially scheduler and full RAG search
-- preview-labeled or redirect-backed routes must stay out of the primary stable navigation until their live contracts are complete
-- the control demo and preview-backed routes should stay explicitly preview even while the stable dashboard lane is supported
+- the CLI and direct API remain the preferred interfaces for automation and bulk workflows
+- RAG is implemented but opt-in and disabled by default; search/ingest durability depends on the configured vector store
+- the internal scheduler stores tenant-owned tasks and execution outcomes in the database; each API worker may poll, while lease-token claims ensure only one worker executes a due task and expired claims are recoverable
+- deployment actions update control-plane lifecycle records; applying and verifying provider state remains operator-owned
+- repository tests can validate resolver, Railway manifest, and HTTP contracts, but they do not prove a Railway rollout or a published signed/notarized desktop asset set
+- machine-local autonomy and assistant-provider surfaces report unavailable state when their host dependencies are absent
+- `/control/*` remains explicitly simulated and never presents its sample records as operator state
 
-That gap should be documented plainly so the product surface stays trustworthy.
+These boundaries are exposed in the UI so an unavailable integration cannot look like an empty or successful live result.

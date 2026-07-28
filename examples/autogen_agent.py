@@ -82,10 +82,12 @@ def example_two_agent_chat():
 
     # Initiate a conversation
     response = assistant.generate_reply(
-        messages=[{
-            "role": "user",
-            "content": "Hello! Can you help me write a Python function to calculate fibonacci?",
-        }],
+        messages=[
+            {
+                "role": "user",
+                "content": "Hello! Can you help me write a Python function to calculate fibonacci?",
+            }
+        ],
         sender=coder,
     )
 

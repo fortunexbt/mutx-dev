@@ -1,22 +1,50 @@
 from functools import lru_cache
+from ipaddress import ip_address, ip_network
 from json import JSONDecodeError, loads
 import os
 import secrets
-from typing import Optional
+from typing import Literal, Optional
+from urllib.parse import urlsplit
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
+_SETTINGS_ENV_FILE = os.getenv("MUTX_SETTINGS_ENV_FILE", ".env").strip() or None
+_DEFAULT_DATABASE_URL = "postgresql://user:password@localhost:5432/mutx"
+_SUPPORTED_ENVIRONMENTS = frozenset({"development", "test", "staging", "production"})
 
-    environment: str = Field(
+
+def _is_loopback_hostname(hostname: str | None) -> bool:
+    if not hostname:
+        return False
+
+    normalized = hostname.strip().casefold().rstrip(".")
+    if normalized == "localhost" or normalized.endswith(".localhost"):
+        return True
+    try:
+        address = ip_address(normalized)
+        return address.is_loopback or bool(
+            address.version == 6 and address.ipv4_mapped and address.ipv4_mapped.is_loopback
+        )
+    except ValueError:
+        return False
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=_SETTINGS_ENV_FILE,
+        case_sensitive=False,
+        extra="ignore",
+        hide_input_in_errors=True,
+    )
+
+    environment: Literal["development", "test", "staging", "production"] = Field(
         default="development",
         validation_alias=AliasChoices("ENVIRONMENT", "ENV"),
     )
     database_url: str = Field(
-        default="postgresql://user:password@localhost:5432/mutx",
+        default=_DEFAULT_DATABASE_URL,
         validation_alias=AliasChoices("DATABASE_URL", "DB_URL"),
     )
     database_ssl_mode: str | None = Field(
@@ -27,6 +55,12 @@ class Settings(BaseSettings):
     api_port: int = Field(
         default=8000,
         validation_alias=AliasChoices("API_PORT", "PORT"),
+    )
+    web_concurrency: int = Field(
+        default=1,
+        ge=1,
+        validation_alias=AliasChoices("WEB_CONCURRENCY", "UVICORN_WORKERS"),
+        description="Number of API worker processes serving this database.",
     )
     cors_origins: list[str] | str = [
         "http://localhost:3000",
@@ -62,9 +96,32 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("SECRET_ENCRYPTION_KEY"),
     )
+    receipt_signing_key_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RECEIPT_SIGNING_KEY_ID"),
+        description="Immutable platform Ed25519 key ID bound into newly signed receipts.",
+    )
+    receipt_signing_private_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RECEIPT_SIGNING_PRIVATE_KEY"),
+        description="Hex-encoded raw platform Ed25519 private key used to sign receipts.",
+        repr=False,
+    )
+    receipt_trusted_public_keys: dict[str, str] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("RECEIPT_TRUSTED_PUBLIC_KEYS"),
+        description="JSON object mapping trusted receipt key IDs to raw Ed25519 public keys.",
+    )
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
     refresh_token_max_sliding_days: int = 30  # Max days for sliding expiry
+    refresh_token_rotation_grace_seconds: int = Field(
+        default=10,
+        ge=1,
+        le=60,
+        validation_alias=AliasChoices("REFRESH_TOKEN_ROTATION_GRACE_SECONDS"),
+        description="Short overlap window for idempotent refresh-token rotation retries.",
+    )
     expose_api_docs_in_production: bool = Field(
         default=False,
         validation_alias=AliasChoices(
@@ -74,11 +131,11 @@ class Settings(BaseSettings):
         description="Expose /docs, /redoc, and /openapi.json in production.",
     )
     require_email_verification: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices(
             "REQUIRE_EMAIL_VERIFICATION",
         ),
-        description="Require email verification before allowing password-based login.",
+        description="Require email verification before allowing password-account access.",
     )
     email_verification_token_expire_hours: int = Field(
         default=72,
@@ -96,6 +153,29 @@ class Settings(BaseSettings):
     smtp_from_name: str = Field(default="MUTX")
     # Frontend URL for email links
     frontend_url: str = Field(default="http://localhost:3000")
+    auth_redirect_origins: list[str] | str = Field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://app.localhost:3000",
+            "http://pico.localhost:3000",
+            "https://mutx.dev",
+            "https://app.mutx.dev",
+            "https://pico.mutx.dev",
+        ],
+        validation_alias=AliasChoices("AUTH_REDIRECT_ORIGINS"),
+        description="Exact browser origins allowed for auth links and OAuth callbacks.",
+    )
+    public_api_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("PUBLIC_API_URL", "API_PUBLIC_URL"),
+        description="Public API origin used for OAuth/SSO callbacks.",
+    )
+    oauth_state_ttl_seconds: int = Field(
+        default=600,
+        ge=60,
+        le=1800,
+        validation_alias=AliasChoices("OAUTH_STATE_TTL_SECONDS"),
+    )
     pico_tutor_model: str = Field(
         default="gpt-5-mini",
         validation_alias=AliasChoices("PICO_TUTOR_MODEL"),
@@ -139,6 +219,32 @@ class Settings(BaseSettings):
     apple_private_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("APPLE_PRIVATE_KEY"),
+    )
+    okta_domain: str | None = Field(default=None, validation_alias=AliasChoices("OKTA_DOMAIN"))
+    okta_client_id: str | None = Field(
+        default=None, validation_alias=AliasChoices("OKTA_CLIENT_ID")
+    )
+    okta_client_secret: str | None = Field(
+        default=None, validation_alias=AliasChoices("OKTA_CLIENT_SECRET")
+    )
+    auth0_domain: str | None = Field(default=None, validation_alias=AliasChoices("AUTH0_DOMAIN"))
+    auth0_client_id: str | None = Field(
+        default=None, validation_alias=AliasChoices("AUTH0_CLIENT_ID")
+    )
+    auth0_client_secret: str | None = Field(
+        default=None, validation_alias=AliasChoices("AUTH0_CLIENT_SECRET")
+    )
+    keycloak_domain: str | None = Field(
+        default=None, validation_alias=AliasChoices("KEYCLOAK_DOMAIN")
+    )
+    keycloak_realm: str | None = Field(
+        default=None, validation_alias=AliasChoices("KEYCLOAK_REALM")
+    )
+    keycloak_client_id: str | None = Field(
+        default=None, validation_alias=AliasChoices("KEYCLOAK_CLIENT_ID")
+    )
+    keycloak_client_secret: str | None = Field(
+        default=None, validation_alias=AliasChoices("KEYCLOAK_CLIENT_SECRET")
     )
     oidc_issuer: str | None = Field(
         default=None,
@@ -205,6 +311,41 @@ class Settings(BaseSettings):
         ),
         description="Time window in seconds for auth-sensitive rate limiting",
     )
+    rate_limit_backend: Literal["memory", "redis"] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RATE_LIMIT_BACKEND"),
+        description="Rate-limit backend; defaults to Redis in production and memory otherwise.",
+    )
+    redis_url: str = Field(
+        default="redis://redis:6379/0",
+        validation_alias=AliasChoices("REDIS_URL"),
+        description="Redis connection URL shared by distributed API rate limiting.",
+    )
+    rate_limit_redis_key_prefix: str = Field(
+        default="mutx:rate-limit:v1",
+        min_length=1,
+        max_length=64,
+        validation_alias=AliasChoices("RATE_LIMIT_REDIS_KEY_PREFIX"),
+    )
+    rate_limit_redis_max_connections: int = Field(
+        default=20,
+        ge=1,
+        le=1000,
+        validation_alias=AliasChoices("RATE_LIMIT_REDIS_MAX_CONNECTIONS"),
+    )
+    rate_limit_redis_timeout_seconds: float = Field(
+        default=1.0,
+        gt=0,
+        le=30,
+        validation_alias=AliasChoices("RATE_LIMIT_REDIS_TIMEOUT_SECONDS"),
+    )
+    rate_limit_memory_max_buckets: int = Field(
+        default=10_000,
+        ge=1,
+        le=1_000_000,
+        validation_alias=AliasChoices("RATE_LIMIT_MEMORY_MAX_BUCKETS"),
+        description="Hard bucket cap for the development/test in-memory backend.",
+    )
 
     internal_user_email_domains: list[str] = Field(
         default=["mutx.dev"],
@@ -255,7 +396,7 @@ class Settings(BaseSettings):
         description="Optional directory that bounds user-selectable Faramesh policy files.",
     )
     forwarded_allow_ips: list[str] | str = Field(
-        default_factory=lambda: ["*"],
+        default_factory=lambda: ["127.0.0.1"],
         validation_alias=AliasChoices("FORWARDED_ALLOW_IPS"),
         description="Trusted proxy IPs for forwarded headers.",
     )
@@ -265,6 +406,20 @@ class Settings(BaseSettings):
             "BACKGROUND_MONITOR_ENABLED",
             "ENABLE_BACKGROUND_MONITOR",
         ),
+    )
+    monitor_heartbeat_file: str = Field(
+        default="/tmp/mutx-monitor-heartbeat",
+        validation_alias=AliasChoices("MONITOR_HEARTBEAT_FILE"),
+    )
+    monitor_heartbeat_max_age_seconds: int = Field(
+        default=30,
+        ge=1,
+        validation_alias=AliasChoices("MONITOR_HEARTBEAT_MAX_AGE_SECONDS"),
+    )
+    monitor_max_consecutive_failures: int = Field(
+        default=3,
+        ge=1,
+        validation_alias=AliasChoices("MONITOR_MAX_CONSECUTIVE_FAILURES"),
     )
     enable_rag_api: bool = Field(
         default=False,
@@ -356,7 +511,21 @@ class Settings(BaseSettings):
     # Store whether JWT_SECRET was user-provided or auto-generated
     _jwt_secret_was_auto_generated: bool = False
 
-    @field_validator("cors_origins", mode="before")
+    @field_validator("environment", mode="before")
+    @classmethod
+    def normalize_environment(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("ENVIRONMENT must be a string")
+
+        normalized = value.strip().casefold()
+        if normalized == "prod":
+            normalized = "production"
+        if normalized not in _SUPPORTED_ENVIRONMENTS:
+            supported = ", ".join(sorted(_SUPPORTED_ENVIRONMENTS))
+            raise ValueError(f"ENVIRONMENT must be one of: {supported}")
+        return normalized
+
+    @field_validator("cors_origins", "auth_redirect_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, value: object) -> object:
         if not isinstance(value, str):
@@ -442,6 +611,121 @@ class Settings(BaseSettings):
 
         return parsed_value
 
+    @field_validator("receipt_trusted_public_keys", mode="before")
+    @classmethod
+    def parse_receipt_trusted_public_keys(cls, value: object) -> object:
+        if value is None or value == "":
+            return {}
+        if isinstance(value, dict):
+            return value
+        if not isinstance(value, str):
+            raise ValueError("RECEIPT_TRUSTED_PUBLIC_KEYS must be a JSON object")
+        try:
+            parsed_value = loads(value)
+        except JSONDecodeError as exc:
+            raise ValueError("RECEIPT_TRUSTED_PUBLIC_KEYS must be a JSON object") from exc
+        if not isinstance(parsed_value, dict):
+            raise ValueError("RECEIPT_TRUSTED_PUBLIC_KEYS must be a JSON object")
+        return parsed_value
+
+    @field_validator(
+        "frontend_url",
+        "public_api_url",
+        "okta_domain",
+        "auth0_domain",
+        "keycloak_domain",
+        mode="after",
+    )
+    @classmethod
+    def validate_auth_origin(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+            or parsed.path not in {"", "/"}
+        ):
+            raise ValueError("Auth origins must be absolute HTTP(S) origins without paths")
+        return value.rstrip("/")
+
+    @field_validator("auth_redirect_origins", mode="after")
+    @classmethod
+    def validate_auth_redirect_origins(cls, value: list[str] | str) -> list[str]:
+        if not isinstance(value, list) or not value:
+            raise ValueError("AUTH_REDIRECT_ORIGINS must contain at least one origin")
+
+        normalized: list[str] = []
+        for origin in value:
+            parsed = urlsplit(origin)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.query
+                or parsed.fragment
+                or parsed.path not in {"", "/"}
+            ):
+                raise ValueError("AUTH_REDIRECT_ORIGINS entries must be absolute HTTP(S) origins")
+            normalized.append(origin.rstrip("/"))
+        return list(dict.fromkeys(normalized))
+
+    @field_validator("oidc_issuer", "oidc_jwks_uri", mode="after")
+    @classmethod
+    def validate_oidc_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("OIDC URLs must be absolute HTTP(S) URLs")
+        return value
+
+    @field_validator("pico_tutor_model", mode="after")
+    @classmethod
+    def validate_pico_tutor_model(cls, value: str) -> str:
+        normalized = value.strip()
+        model_identifier = normalized.removeprefix("openai/")
+        if (
+            not model_identifier
+            or any(character.isspace() for character in normalized)
+            or model_identifier.startswith("/")
+        ):
+            raise ValueError("PICO_TUTOR_MODEL must be a non-empty model identifier")
+        return normalized
+
+    @field_validator("redis_url", mode="after")
+    @classmethod
+    def validate_redis_url(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"redis", "rediss"} or not parsed.hostname or parsed.fragment:
+            raise ValueError("REDIS_URL must be a valid redis:// or rediss:// URL")
+        return value
+
+    @field_validator("rate_limit_redis_key_prefix", mode="after")
+    @classmethod
+    def validate_rate_limit_redis_key_prefix(cls, value: str) -> str:
+        allowed_characters = frozenset(
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:_-"
+        )
+        if any(character not in allowed_characters for character in value):
+            raise ValueError(
+                "RATE_LIMIT_REDIS_KEY_PREFIX may contain only letters, numbers, ':', '_', or '-'"
+            )
+        return value
+
     @model_validator(mode="after")
     def validate_environment_variables(self) -> "Settings":
         """Validate required environment variables on startup."""
@@ -449,7 +733,7 @@ class Settings(BaseSettings):
         warnings: list[str] = []
 
         # Check if running in production
-        is_production = self.environment.lower() in ("production", "prod")
+        is_production = self.environment == "production"
 
         # Validate JWT_SECRET
         jwt_secret_was_provided = "jwt_secret" in self.model_fields_set
@@ -489,6 +773,30 @@ class Settings(BaseSettings):
                 "Use a dedicated encryption key to keep token signing and secret encryption separate."
             )
 
+        receipt_signing_values = {
+            "RECEIPT_SIGNING_KEY_ID": self.receipt_signing_key_id,
+            "RECEIPT_SIGNING_PRIVATE_KEY": self.receipt_signing_private_key,
+            "RECEIPT_TRUSTED_PUBLIC_KEYS": self.receipt_trusted_public_keys,
+        }
+        if is_production and not all(receipt_signing_values.values()):
+            missing = ", ".join(name for name, value in receipt_signing_values.items() if not value)
+            errors.append(
+                "Production receipt signing requires a platform Ed25519 key and trusted "
+                f"public key registry. Missing: {missing}"
+            )
+        if any(receipt_signing_values.values()):
+            try:
+                from src.security.receipts import ReceiptGenerator
+
+                ReceiptGenerator(
+                    signing_private_key=self.receipt_signing_private_key,
+                    signing_key_id=self.receipt_signing_key_id,
+                    trusted_public_keys=self.receipt_trusted_public_keys,
+                    signing_required=is_production,
+                )
+            except (RuntimeError, ValueError) as exc:
+                errors.append(f"Receipt signing configuration is invalid: {exc}")
+
         # OIDC is optional, but partial configuration is unsafe and unusable.
         oidc_values = {
             "OIDC_ISSUER": self.oidc_issuer,
@@ -501,6 +809,135 @@ class Settings(BaseSettings):
                 f"OIDC configuration must be provided as a complete set. Missing: {missing}"
             )
 
+        provider_groups = {
+            "Google OAuth": {
+                "GOOGLE_CLIENT_ID": self.google_client_id,
+                "GOOGLE_CLIENT_SECRET": self.google_client_secret,
+            },
+            "GitHub OAuth": {
+                "GITHUB_CLIENT_ID": self.github_client_id,
+                "GITHUB_CLIENT_SECRET": self.github_client_secret,
+            },
+            "Discord OAuth": {
+                "DISCORD_CLIENT_ID": self.discord_client_id,
+                "DISCORD_CLIENT_SECRET": self.discord_client_secret,
+            },
+            "Apple OAuth": {
+                "APPLE_CLIENT_ID": self.apple_client_id,
+                "APPLE_TEAM_ID": self.apple_team_id,
+                "APPLE_KEY_ID": self.apple_key_id,
+                "APPLE_PRIVATE_KEY": self.apple_private_key,
+            },
+            "Okta SSO": {
+                "OKTA_DOMAIN": self.okta_domain,
+                "OKTA_CLIENT_ID": self.okta_client_id,
+                "OKTA_CLIENT_SECRET": self.okta_client_secret,
+            },
+            "Auth0 SSO": {
+                "AUTH0_DOMAIN": self.auth0_domain,
+                "AUTH0_CLIENT_ID": self.auth0_client_id,
+                "AUTH0_CLIENT_SECRET": self.auth0_client_secret,
+            },
+            "Keycloak SSO": {
+                "KEYCLOAK_DOMAIN": self.keycloak_domain,
+                "KEYCLOAK_REALM": self.keycloak_realm,
+                "KEYCLOAK_CLIENT_ID": self.keycloak_client_id,
+                "KEYCLOAK_CLIENT_SECRET": self.keycloak_client_secret,
+            },
+        }
+        for label, values in provider_groups.items():
+            if any(values.values()) and not all(values.values()):
+                missing = ", ".join(name for name, value in values.items() if not value)
+                errors.append(f"{label} configuration is incomplete. Missing: {missing}")
+
+        legacy_sso_configured = any(
+            (
+                self.okta_domain,
+                self.okta_client_id,
+                self.okta_client_secret,
+                self.auth0_domain,
+                self.auth0_client_id,
+                self.auth0_client_secret,
+                self.keycloak_domain,
+                self.keycloak_realm,
+                self.keycloak_client_id,
+                self.keycloak_client_secret,
+            )
+        )
+        if legacy_sso_configured and not self.public_api_url:
+            errors.append("PUBLIC_API_URL must be configured when SSO is enabled")
+
+        auth_origins = [
+            value
+            for value in (
+                self.public_api_url,
+                self.okta_domain,
+                self.auth0_domain,
+                self.keycloak_domain,
+                self.oidc_issuer,
+                self.oidc_jwks_uri,
+            )
+            if value
+        ]
+        if is_production:
+            if self.rate_limit_backend == "memory":
+                errors.append("RATE_LIMIT_BACKEND must be redis in production")
+
+            frontend_url_was_provided = "frontend_url" in self.model_fields_set
+            frontend_host = urlsplit(self.frontend_url).hostname
+            if not frontend_url_was_provided:
+                errors.append("FRONTEND_URL must be explicitly configured in production")
+            elif urlsplit(self.frontend_url).scheme != "https" or _is_loopback_hostname(
+                frontend_host
+            ):
+                errors.append(
+                    "FRONTEND_URL must use HTTPS and a non-loopback hostname in production"
+                )
+
+            insecure_origins = [
+                value for value in auth_origins if urlsplit(value).scheme != "https"
+            ]
+            if insecure_origins:
+                errors.append("OAuth, SSO, and OIDC URLs must use HTTPS in production")
+
+            redirect_origins = (
+                self.auth_redirect_origins if isinstance(self.auth_redirect_origins, list) else []
+            )
+            insecure_redirect_origins = [
+                origin
+                for origin in redirect_origins
+                if urlsplit(origin).scheme != "https"
+                or _is_loopback_hostname(urlsplit(origin).hostname)
+            ]
+            if insecure_redirect_origins:
+                errors.append(
+                    "AUTH_REDIRECT_ORIGINS must contain only HTTPS, non-loopback origins "
+                    "in production"
+                )
+            if self.frontend_url not in redirect_origins:
+                errors.append(
+                    "AUTH_REDIRECT_ORIGINS must include the canonical FRONTEND_URL in production"
+                )
+
+            resend_configured = bool(
+                self.resend_api_key
+                and self.resend_api_key.strip()
+                and self.resend_from_email
+                and self.resend_from_email.strip()
+            )
+            smtp_configured = bool(
+                self.smtp_host.strip()
+                and self.smtp_port
+                and self.smtp_user.strip()
+                and self.smtp_password.strip()
+                and self.smtp_from_email.strip()
+            )
+            if self.require_email_verification and not (resend_configured or smtp_configured):
+                errors.append(
+                    "Email verification requires either RESEND_API_KEY and "
+                    "RESEND_FROM_EMAIL or complete SMTP settings in production"
+                )
+
         # Validate DATABASE_URL when database is required on startup
         if self.database_required_on_startup:
             db_env_value = os.environ.get("DATABASE_URL") or os.environ.get("DB_URL")
@@ -512,17 +949,19 @@ class Settings(BaseSettings):
                         "DATABASE_REQUIRED_ON_STARTUP is true"
                     )
 
-        # Validate database URL format
+        # Validate database URL format without reflecting credentials in errors.
         if self.database_url:
             db_url = self.database_url.lower()
             if db_url.startswith(("sqlite://", "sqlite+")):
                 if is_production:
                     errors.append("DATABASE_URL must use PostgreSQL in production")
+                if self.web_concurrency != 1:
+                    errors.append(
+                        "SQLite requires WEB_CONCURRENCY=1 because process-local coordination "
+                        "cannot protect durable session updates across workers"
+                    )
             elif not db_url.startswith(("postgresql://", "postgres://")):
-                errors.append(
-                    f"DATABASE_URL must be a valid PostgreSQL connection string, "
-                    f"got: {self.database_url[:50]}..."
-                )
+                errors.append("DATABASE_URL must be a valid PostgreSQL connection string")
 
         # Enforce SSL for database connections in production
         if is_production and self.database_url:
@@ -538,8 +977,10 @@ class Settings(BaseSettings):
 
         # Production-specific validations
         if is_production:
-            # Check for default/insecure values
-            if self.database_url == "postgresql://user:***@localhost:5432/mutx":
+            # Deferred startup must not turn the development placeholder into a
+            # production database configuration.
+            database_url_was_provided = "database_url" in self.model_fields_set
+            if not database_url_was_provided or self.database_url == _DEFAULT_DATABASE_URL:
                 errors.append(
                     "DATABASE_URL appears to be using default values. "
                     "Please configure a production database."
@@ -556,20 +997,40 @@ class Settings(BaseSettings):
             hosts_list = (
                 self.allowed_hosts if isinstance(self.allowed_hosts, list) else [self.allowed_hosts]
             )
-            wildcard_hosts = [
-                h for h in hosts_list if h.startswith("*") or h == "test" or h == "testserver"
-            ]
+            wildcard_hosts = [h for h in hosts_list if "*" in h or h == "test" or h == "testserver"]
             if wildcard_hosts:
-                warnings.append(
+                errors.append(
                     f"ALLOWED_HOSTS contains permissive entries: {wildcard_hosts}. "
-                    "Review and restrict for production."
+                    "Set exact production hostnames instead."
                 )
 
-            if "*" in self.forwarded_allow_ips:
+            forwarded_allow_ips = (
+                self.forwarded_allow_ips
+                if isinstance(self.forwarded_allow_ips, list)
+                else [self.forwarded_allow_ips]
+            )
+            if not forwarded_allow_ips:
+                errors.append(
+                    "FORWARDED_ALLOW_IPS must contain deployment-specific trusted proxy "
+                    "addresses or CIDRs in production."
+                )
+            elif "*" in forwarded_allow_ips:
                 errors.append(
                     "FORWARDED_ALLOW_IPS must not trust all proxy sources ('*') in production. "
                     "Set explicit ingress proxy IPs instead."
                 )
+            else:
+                invalid_proxy_networks: list[str] = []
+                for proxy_network in forwarded_allow_ips:
+                    try:
+                        ip_network(proxy_network, strict=False)
+                    except ValueError:
+                        invalid_proxy_networks.append(proxy_network)
+                if invalid_proxy_networks:
+                    errors.append(
+                        "FORWARDED_ALLOW_IPS entries must be valid IP addresses or CIDRs: "
+                        f"{invalid_proxy_networks}"
+                    )
 
         # Raise errors if any
         if errors:
@@ -592,7 +1053,7 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         """Check if running in production mode."""
-        return self.environment.lower() in ("production", "prod")
+        return self.environment == "production"
 
 
 @lru_cache()

@@ -26,6 +26,11 @@ This surface is for file-heavy, operator-visible jobs that need structured outpu
 
 Every document job creates a linked MUTX run so the existing Runs and Traces surfaces remain the canonical observability layer.
 
+The dedicated worker is part of the full server installation, whose `requirements.txt` supplies
+SQLAlchemy and the backend runtime. The `mutx-cli` distribution intentionally does not publish a
+`mutx-document-worker` console script; Helm and other split deployments invoke the server module
+from the API image.
+
 ## Templates
 
 MUTX currently exposes these `predict-rlm` template contracts:
@@ -46,7 +51,7 @@ Required prerequisites:
 - `MUTX_DOCUMENTS_ENABLED=true`
 - Python `>= 3.11`
 - `deno` on `PATH`
-- `predict-rlm>=0.2.2,<1` in the backend environment
+- `predict-rlm>=0.7.3,<1` in the backend environment
 - model credentials for the configured providers
 
 Default model wiring:
@@ -136,7 +141,14 @@ MUTX does not claim authorship over `predict-rlm` or its upstream example design
 
 - Upstream project: [Trampoline-AI/predict-rlm](https://github.com/Trampoline-AI/predict-rlm)
 - License: MIT
-- Current upstream ref used for attribution: `5c7387afa1980b62b21a34ad0261256a95d8caa1`
+- Validated upstream release: `v0.7.3`
+  (`e7f1e5df7d0188861b39142094b4b738f456972f`)
+- Historical adaptation ref: `5c7387afa1980b62b21a34ad0261256a95d8caa1`
+
+The v0.7.3 core document API remains compatible with MUTX's use of `File`,
+`Skill`, and `PredictRLM`. The upstream release adds GPT-5.6 support to the
+optional `codex-lm` extra; MUTX's document engine uses the core package, so its
+template and artifact contracts do not require a migration.
 
 The integration, template alignment, and legal provenance are tracked in:
 

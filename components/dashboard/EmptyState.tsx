@@ -43,13 +43,13 @@ export function EmptyState({
       }}
       {...props}
     >
-      <span className="absolute left-0 top-0 h-px w-20" style={{ backgroundColor: dashboardTokens.brand }} aria-hidden="true" />
+      <span className="absolute start-0 top-0 h-px w-20" style={{ backgroundColor: dashboardTokens.brand }} aria-hidden="true" />
       <p
-        className="mb-4 font-[family:var(--font-mono)] text-[8px] font-semibold uppercase tracking-[0.2em]"
+        className="mb-4 font-[family:var(--font-mono)] text-[11px] font-semibold uppercase tracking-[0.14em]"
         style={{ color: dashboardTokens.textLabel }}
         aria-hidden="true"
       >
-        REC / no record
+        NO DATA / awaiting record
       </p>
       <div
         className="flex h-12 w-12 items-center justify-center rounded-[4px] border"
@@ -70,7 +70,7 @@ export function EmptyState({
       {!cta && ctaLabel && ctaHref ? (
         <Link
           href={ctaHref}
-          className="mt-5 inline-flex h-10 items-center rounded-[4px] border border-transparent px-5 text-xs font-semibold transition hover:brightness-110"
+          className="mt-5 inline-flex min-h-11 items-center rounded-[4px] border border-transparent px-5 text-xs font-semibold transition-colors hover:bg-[#ff7545]"
           style={{
             backgroundColor: dashboardTokens.brand,
             color: dashboardTokens.bgCanvas,
@@ -83,7 +83,7 @@ export function EmptyState({
         <button
           type="button"
           onClick={onCtaClick}
-          className="mt-5 inline-flex h-10 items-center rounded-[4px] border border-transparent px-5 text-xs font-semibold transition hover:brightness-110"
+          className="mt-5 inline-flex min-h-11 items-center rounded-[4px] border border-transparent px-5 text-xs font-semibold transition-colors hover:bg-[#ff7545]"
           style={{
             backgroundColor: dashboardTokens.brand,
             color: dashboardTokens.bgCanvas,

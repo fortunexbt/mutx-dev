@@ -337,7 +337,12 @@ def recover_orphaned_running_items(
     return recovered
 
 
-def enqueue_generated_tasks(queue_path: str | Path, tasks: list[dict[str, Any]], *, cooldown_seconds: int = DEFAULT_FLEET_REQUEUE_COOLDOWN) -> int:
+def enqueue_generated_tasks(
+    queue_path: str | Path,
+    tasks: list[dict[str, Any]],
+    *,
+    cooldown_seconds: int = DEFAULT_FLEET_REQUEUE_COOLDOWN,
+) -> int:
     if not tasks:
         return 0
     queue = load_queue(queue_path)
@@ -764,7 +769,15 @@ def main() -> int:
                 next_action="continue",
             ),
         )
-        tracker.update(queue_depth=len([item for item in load_queue(args.queue).get("items", []) if item.get("status") == "queued"]))
+        tracker.update(
+            queue_depth=len(
+                [
+                    item
+                    for item in load_queue(args.queue).get("items", [])
+                    if item.get("status") == "queued"
+                ]
+            )
+        )
 
     try:
         while not _STOP_REQUESTED:

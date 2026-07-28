@@ -1,7 +1,5 @@
 """Tests for pico_coach service — prompt construction, state extraction, and chat handling."""
 
-import json
-
 import pytest
 
 from src.api.models.pico_onboarding import CoachMessage, OnboardingState, PicoChatRequest
@@ -111,10 +109,7 @@ class TestBuildCoachMessages:
         assert "Reference Knowledge" in system_content
 
     def test_long_history_preserved(self):
-        history = [
-            CoachMessage(role="user", content=f"turn {i}")
-            for i in range(10)
-        ]
+        history = [CoachMessage(role="user", content=f"turn {i}") for i in range(10)]
         messages = build_coach_messages(history, "final")
         # system + 10 history + 1 user
         assert len(messages) == 12
@@ -132,10 +127,10 @@ class TestExtractOnboardingState:
     def test_valid_json_block_extracts_state(self):
         reply = (
             "Great choice! Let me set up Hermes for you.\n\n"
-            '```json\n'
+            "```json\n"
             '{"onboarding_state": {"stack": "hermes", "os": "macos", '
             '"provider": "openai", "goal": "install", "ready": true}}\n'
-            '```'
+            "```"
         )
         clean, state = extract_onboarding_state(reply)
 
@@ -158,24 +153,14 @@ class TestExtractOnboardingState:
         assert state.ready is False
 
     def test_malformed_json_returns_default_state(self):
-        reply = (
-            "Sure!\n\n"
-            '```json\n'
-            '{this is not valid json!!!}\n'
-            '```'
-        )
+        reply = "Sure!\n\n```json\n{this is not valid json!!!}\n```"
         clean, state = extract_onboarding_state(reply)
 
         assert clean == reply
         assert state == OnboardingState()
 
     def test_missing_onboarding_state_key(self):
-        reply = (
-            "Hello!\n\n"
-            '```json\n'
-            '{"wrong_key": {"stack": "hermes"}}\n'
-            '```'
-        )
+        reply = 'Hello!\n\n```json\n{"wrong_key": {"stack": "hermes"}}\n```'
         clean, state = extract_onboarding_state(reply)
 
         assert clean == reply
@@ -184,10 +169,10 @@ class TestExtractOnboardingState:
     def test_valid_json_ready_true_all_required_fields(self):
         reply = (
             "Your package is ready!\n\n"
-            '```json\n'
+            "```json\n"
             '{"onboarding_state": {"stack": "hermes", "os": "linux", '
             '"provider": "anthropic", "goal": "migrate"}}\n'
-            '```'
+            "```"
         )
         clean, state = extract_onboarding_state(reply)
 
@@ -199,12 +184,7 @@ class TestExtractOnboardingState:
         assert state.ready is True
 
     def test_partial_state_not_ready(self):
-        reply = (
-            "Got it.\n\n"
-            '```json\n'
-            '{"onboarding_state": {"stack": "hermes", "os": "macos"}}\n'
-            '```'
-        )
+        reply = 'Got it.\n\n```json\n{"onboarding_state": {"stack": "hermes", "os": "macos"}}\n```'
         clean, state = extract_onboarding_state(reply)
 
         assert state.stack == "hermes"
@@ -217,14 +197,14 @@ class TestExtractOnboardingState:
         """If there are multiple JSON blocks, the last one should be used."""
         reply = (
             "First answer.\n\n"
-            '```json\n'
+            "```json\n"
             '{"onboarding_state": {"stack": "openclaw"}}\n'
-            '```'
+            "```"
             "\n\nSecond answer.\n\n"
-            '```json\n'
+            "```json\n"
             '{"onboarding_state": {"stack": "hermes", "os": "linux", '
             '"provider": "openai", "goal": "install"}}\n'
-            '```'
+            "```"
         )
         clean, state = extract_onboarding_state(reply)
 
@@ -291,10 +271,10 @@ class TestHandleCoachChat:
         fake_message = MagicMock()
         fake_message.content = (
             "I recommend Hermes for your use case!\n\n"
-            '```json\n'
+            "```json\n"
             '{"onboarding_state": {"stack": "hermes", "os": "macos", '
             '"provider": "openai", "goal": "install", "channels": ["telegram"]}}\n'
-            '```'
+            "```"
         )
         fake_choice = MagicMock()
         fake_choice.message = fake_message
@@ -304,8 +284,10 @@ class TestHandleCoachChat:
         request = PicoChatRequest(message="I want to set up an agent on my Mac")
         history = []
 
-        with patch("src.api.services.pico_coach.AsyncOpenAI") as MockClient, \
-             patch("src.api.services.pico_coach.PicoChatResponse", _FakeResponse):
+        with (
+            patch("src.api.services.pico_coach.AsyncOpenAI") as MockClient,
+            patch("src.api.services.pico_coach.PicoChatResponse", _FakeResponse),
+        ):
             mock_instance = MockClient.return_value
             mock_instance.chat = mock_instance
             mock_instance.completions = mock_instance
@@ -329,8 +311,10 @@ class TestHandleCoachChat:
         request = PicoChatRequest(message="Hello")
         history = []
 
-        with patch("src.api.services.pico_coach.AsyncOpenAI") as MockClient, \
-             patch("src.api.services.pico_coach.PicoChatResponse", _FakeResponse):
+        with (
+            patch("src.api.services.pico_coach.AsyncOpenAI") as MockClient,
+            patch("src.api.services.pico_coach.PicoChatResponse", _FakeResponse),
+        ):
             mock_instance = MockClient.return_value
             mock_instance.chat = mock_instance
             mock_instance.completions = mock_instance

@@ -6,6 +6,7 @@
   --orange: #ff4d00;
   --orange-dark: #c83b00;
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--carbon);
   color: var(--carbon);
   font-family: var(--font-site-body), sans-serif;
@@ -23,7 +24,6 @@
 
 .main {
   display: block;
-  overflow: clip;
 }
 
 .shell {
@@ -70,7 +70,7 @@
   padding-bottom: 1rem;
   border-bottom: 1px solid var(--carbon);
   font-family: var(--font-mono), monospace;
-  font-size: 0.62rem;
+  font-size: 0.72rem;
   font-weight: 650;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -82,7 +82,7 @@
   margin: clamp(4rem, 8vw, 8rem) 0 1.25rem;
   color: var(--orange-dark);
   font-family: var(--font-mono), monospace;
-  font-size: 0.64rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.16em;
   line-height: 1.4;
@@ -93,8 +93,8 @@
 .sectionTitle,
 .ctaTitle {
   margin: 0;
-  font-family: var(--font-site-body), sans-serif;
-  font-weight: 750;
+  font-family: var(--font-site-display), var(--font-display), sans-serif;
+  font-weight: 300;
   letter-spacing: -0.08em;
   white-space: pre-line;
 }
@@ -134,7 +134,7 @@
   border: 1px solid var(--carbon);
   border-radius: 4px;
   font-family: var(--font-mono), monospace;
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.11em;
   line-height: 1;
@@ -205,7 +205,7 @@
 .recorderMast p {
   margin: 0 0 0.35rem;
   color: #9d998f;
-  font-size: 0.58rem;
+  font-size: 0.7rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
 }
@@ -220,7 +220,7 @@
   align-items: center;
   gap: 0.5rem;
   color: var(--bone);
-  font-size: 0.58rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -253,7 +253,7 @@
 .recordFacts dt {
   margin-bottom: 0.45rem;
   color: #8f8c84;
-  font-size: 0.55rem;
+  font-size: 0.68rem;
   letter-spacing: 0.13em;
   text-transform: uppercase;
 }
@@ -262,9 +262,169 @@
   overflow-wrap: anywhere;
   margin: 0;
   color: var(--bone);
-  font-size: 0.67rem;
+  font-size: 0.75rem;
   font-weight: 650;
   letter-spacing: 0.04em;
+}
+
+.storyArtifact {
+  margin: 0;
+  padding: 1.25rem;
+  background:
+    linear-gradient(rgba(243, 240, 232, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(243, 240, 232, 0.045) 1px, transparent 1px),
+    #0d0e0c;
+  background-size: 2rem 2rem;
+}
+
+.artifactCaption,
+.artifactMetric span,
+.artifactRowCopy,
+.artifactRowCopy code {
+  font-family: var(--font-mono), monospace;
+}
+
+.artifactCaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid rgba(243, 240, 232, 0.24);
+  color: #aaa69d;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
+.artifactCaption strong {
+  color: var(--orange);
+  font-weight: 650;
+  text-align: right;
+}
+
+.artifactMetric {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1rem;
+  align-items: end;
+  padding-block: 1.4rem 1.2rem;
+}
+
+.artifactMetric > strong {
+  color: var(--bone);
+  font-family: var(--font-site-display), var(--font-display), sans-serif;
+  font-size: clamp(2.8rem, 5vw, 4.6rem);
+  font-weight: 300;
+  letter-spacing: -0.065em;
+  line-height: 0.78;
+}
+
+.artifactMetric > span {
+  max-width: 12rem;
+  padding-bottom: 0.15rem;
+  color: #aaa69d;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.artifactRows {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid rgba(243, 240, 232, 0.24);
+  list-style: none;
+}
+
+.artifactRows li {
+  --artifact-tone: #8f8c84;
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.85fr) minmax(7rem, 1.15fr);
+  gap: 1rem;
+  align-items: center;
+  min-height: 3.75rem;
+  border-bottom: 1px solid rgba(243, 240, 232, 0.18);
+}
+
+.artifactRows li[data-tone='live'] { --artifact-tone: #2ecf82; }
+.artifactRows li[data-tone='signal'] { --artifact-tone: var(--orange); }
+.artifactRows li[data-tone='trace'] { --artifact-tone: #69afff; }
+
+.artifactRowCopy {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+  color: #d9d5cc;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.artifactRowCopy code {
+  overflow: hidden;
+  color: #8f8c84;
+  font-size: 0.65rem;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.artifactTrack {
+  position: relative;
+  display: block;
+  height: 0.7rem;
+  overflow: hidden;
+  border: 1px solid rgba(243, 240, 232, 0.24);
+  background: rgba(243, 240, 232, 0.045);
+}
+
+.artifactTrack i {
+  display: block;
+  width: var(--artifact-level);
+  height: 100%;
+  background: var(--artifact-tone);
+}
+
+.storyArtifact[data-kind='chain'] .artifactTrack i,
+.storyArtifact[data-kind='rollout'] .artifactTrack i {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--artifact-tone) 0,
+    var(--artifact-tone) calc(25% - 2px),
+    transparent calc(25% - 2px),
+    transparent 25%
+  );
+}
+
+.storyArtifact[data-kind='topology'] .artifactTrack {
+  height: 1rem;
+  border-style: dashed;
+}
+
+.storyArtifact[data-kind='spend'] .artifactTrack {
+  height: 1.15rem;
+}
+
+.storyArtifact[data-kind='policy'] .artifactTrack::after,
+.storyArtifact[data-kind='boundary'] .artifactTrack::after {
+  position: absolute;
+  inset: -0.2rem auto -0.2rem 62%;
+  width: 2px;
+  background: var(--bone);
+  content: '';
+}
+
+.storyArtifact[data-kind='trace'] .artifactRows li:nth-child(2) .artifactTrack,
+.storyArtifact[data-kind='trace'] .artifactRows li:nth-child(4) .artifactTrack {
+  margin-left: 16%;
+}
+
+.storyArtifact[data-kind='health'] .artifactTrack {
+  background-image: radial-gradient(circle, rgba(243, 240, 232, 0.22) 1px, transparent 1px);
+  background-size: 0.55rem 0.55rem;
 }
 
 .runRail {
@@ -285,7 +445,7 @@
 .timecode {
   padding-top: 0.08rem;
   color: #8f8c84;
-  font-size: 0.58rem;
+  font-size: 0.68rem;
   letter-spacing: 0.04em;
 }
 
@@ -322,7 +482,7 @@
 
 .eventCopy span {
   color: var(--orange);
-  font-size: 0.55rem;
+  font-size: 0.68rem;
   font-weight: 650;
   letter-spacing: 0.11em;
 }
@@ -334,7 +494,7 @@
   padding: 1rem 1.25rem;
   border-top: 1px solid rgba(243, 240, 232, 0.24);
   color: #8f8c84;
-  font-size: 0.55rem;
+  font-size: 0.68rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -440,7 +600,7 @@
   gap: 0.55rem;
   justify-self: end;
   margin: 0.15rem 0 0;
-  font-size: 0.57rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.11em;
 }
@@ -471,7 +631,7 @@
 .attachedState {
   margin: 0.35rem 0 0;
   color: #8f8c84;
-  font-size: 0.57rem;
+  font-size: 0.68rem;
   font-weight: 650;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -585,7 +745,8 @@
   }
 
   .heroCopy {
-    min-height: 42rem;
+    min-height: 0;
+    padding-top: 2rem;
   }
 
   .recorder {
@@ -632,11 +793,11 @@
   }
 
   .heroCopy {
-    min-height: 34rem;
+    min-height: 0;
   }
 
   .heroTitle {
-    font-size: clamp(3.7rem, 17vw, 6.4rem);
+    font-size: clamp(3.55rem, 15vw, 4.75rem);
   }
 
   .heroBody {
@@ -674,7 +835,7 @@
 
   .sectionTitle,
   .ctaTitle {
-    font-size: clamp(3.4rem, 15vw, 6rem);
+    font-size: clamp(3.3rem, 14vw, 4.75rem);
   }
 
   .ledgerRow {
@@ -708,11 +869,11 @@
 
 @media (max-width: 480px) {
   .heroFolio {
-    font-size: 0.54rem;
+    font-size: 0.68rem;
   }
 
   .heroCopy {
-    min-height: 31rem;
+    min-height: 0;
   }
 
   .heroActions,
@@ -728,6 +889,29 @@
   .recorderMast {
     flex-direction: column;
     gap: 1rem;
+  }
+
+  .storyArtifact {
+    padding: 1rem;
+  }
+
+  .artifactCaption,
+  .artifactMetric {
+    grid-template-columns: 1fr;
+  }
+
+  .artifactCaption {
+    display: grid;
+  }
+
+  .artifactCaption strong {
+    text-align: left;
+  }
+
+  .artifactRows li {
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+    padding-block: 0.8rem;
   }
 
   .runEvent {

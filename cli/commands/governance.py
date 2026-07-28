@@ -9,6 +9,10 @@ import time
 from pathlib import Path
 
 import click
+import httpx
+
+from cli.errors import CLIServiceError
+from cli.services.base import APIService
 
 from cli.faramesh_runtime import (
     FAREMESH_SOCKET_PATH,
@@ -56,7 +60,30 @@ def _ensure_faramesh() -> bool:
     return False
 
 
-@click.group(name="governance")
+class _GovernanceGroup(click.Group):
+    def invoke(self, ctx: click.Context):
+        try:
+            return super().invoke(ctx)
+        except httpx.HTTPStatusError as exc:
+            response = exc.response
+            try:
+                payload = response.json()
+            except Exception:
+                payload = None
+            detail = payload.get("detail") if isinstance(payload, dict) else None
+            message = detail if isinstance(detail, str) else "Governance request failed."
+            raise click.ClickException(message) from exc
+        except httpx.HTTPError as exc:
+            raise click.ClickException("Could not reach the MUTX API.") from exc
+        except CLIServiceError as exc:
+            raise click.ClickException(str(exc)) from exc
+        except json.JSONDecodeError as exc:
+            raise click.ClickException("API returned malformed JSON.") from exc
+        except (KeyError, TypeError, ValueError) as exc:
+            raise click.ClickException("API returned an unexpected response shape.") from exc
+
+
+@click.group(name="governance", cls=_GovernanceGroup)
 def governance_group():
     """Inspect Faramesh governance engine state (read-only)."""
     pass
@@ -70,7 +97,25 @@ def _governance_client():
         click.echo("Error: Not authenticated. Run 'mutx login' first.", err=True)
         sys.exit(1)
 
-    return get_client(config)
+    service = APIService(config=config, client_factory=get_client)
+
+    class GovernanceClient:
+        @staticmethod
+        def _request(method: str, path: str, ok_statuses: set[int], **kwargs):
+            response = service.request_response(method, path, **kwargs)
+            service._expect_status(response, ok_statuses)
+            return response
+
+        def get(self, path: str, *, ok_statuses: set[int] | None = None, **kwargs):
+            return self._request("get", path, ok_statuses or {200}, **kwargs)
+
+        def post(self, path: str, *, ok_statuses: set[int] | None = None, **kwargs):
+            return self._request("post", path, ok_statuses or {200}, **kwargs)
+
+        def delete(self, path: str, *, ok_statuses: set[int] | None = None, **kwargs):
+            return self._request("delete", path, ok_statuses or {200}, **kwargs)
+
+    return GovernanceClient()
 
 
 @governance_group.command(name="doctor")
@@ -629,24 +674,8 @@ def _parse_ttl(ttl_str: str) -> int:
 def credential_list_command(output_json: bool) -> None:
     """List registered credential backends."""
     try:
-        from cli.config import current_config, get_client
-
-        config = current_config()
-        if not config.is_authenticated():
-            click.echo("Error: Not authenticated. Run 'mutx login' first.", err=True)
-            sys.exit(1)
-
-        client = get_client(config)
+        client = _governance_client()
         response = client.get("/v1/governance/credentials/backends")
-
-        if response.status_code == 401:
-            click.echo("Error: Authentication expired. Run 'mutx login' again.", err=True)
-            sys.exit(1)
-
-        if response.status_code != 200:
-            click.echo(f"Error: {response.text}", err=True)
-            sys.exit(1)
-
         backends = response.json()
 
         if output_json:
@@ -696,20 +725,13 @@ def credential_register_command(
 ) -> None:
     """Register a credential backend for credential brokering."""
     try:
-        from cli.config import current_config, get_client
-
-        config = current_config()
-        if not config.is_authenticated():
-            click.echo("Error: Not authenticated. Run 'mutx login' first.", err=True)
-            sys.exit(1)
-
         config_data = {}
         if url:
             config_data["url"] = url
         if token:
             config_data["token"] = token
 
-        client = get_client(config)
+        client = _governance_client()
         payload = {
             "name": name,
             "backend": backend,
@@ -718,15 +740,11 @@ def credential_register_command(
             "config": config_data,
         }
 
-        response = client.post("/v1/governance/credentials/backends", json=payload)
-
-        if response.status_code == 401:
-            click.echo("Error: Authentication expired. Run 'mutx login' again.", err=True)
-            sys.exit(1)
-
-        if response.status_code not in (200, 201):
-            click.echo(f"Error: {response.text}", err=True)
-            sys.exit(1)
+        client.post(
+            "/v1/governance/credentials/backends",
+            ok_statuses={201},
+            json=payload,
+        )
 
         click.echo(f"Credential backend registered: {name} ({backend})")
 
@@ -740,27 +758,8 @@ def credential_register_command(
 def credential_unregister_command(name: str) -> None:
     """Unregister a credential backend."""
     try:
-        from cli.config import current_config, get_client
-
-        config = current_config()
-        if not config.is_authenticated():
-            click.echo("Error: Not authenticated. Run 'mutx login' first.", err=True)
-            sys.exit(1)
-
-        client = get_client(config)
-        response = client.delete(f"/v1/governance/credentials/backends/{name}")
-
-        if response.status_code == 401:
-            click.echo("Error: Authentication expired. Run 'mutx login' again.", err=True)
-            sys.exit(1)
-
-        if response.status_code == 404:
-            click.echo(f"Error: Backend '{name}' not found.", err=True)
-            sys.exit(1)
-
-        if response.status_code != 200:
-            click.echo(f"Error: {response.text}", err=True)
-            sys.exit(1)
+        client = _governance_client()
+        client.delete(f"/v1/governance/credentials/backends/{name}")
 
         click.echo(f"Credential backend unregistered: {name}")
 
@@ -774,31 +773,12 @@ def credential_unregister_command(name: str) -> None:
 def credential_health_command(name: str | None) -> None:
     """Check health of credential backends."""
     try:
-        from cli.config import current_config, get_client
-
-        config = current_config()
-        if not config.is_authenticated():
-            click.echo("Error: Not authenticated. Run 'mutx login' first.", err=True)
-            sys.exit(1)
-
-        client = get_client(config)
+        client = _governance_client()
 
         if name:
             response = client.get(f"/v1/governance/credentials/backends/{name}/health")
-            if response.status_code == 404:
-                click.echo(f"Error: Backend '{name}' not found.", err=True)
-                sys.exit(1)
         else:
             response = client.get("/v1/governance/credentials/health")
-
-        if response.status_code == 401:
-            click.echo("Error: Authentication expired. Run 'mutx login' again.", err=True)
-            sys.exit(1)
-
-        if response.status_code != 200:
-            click.echo(f"Error: {response.text}", err=True)
-            sys.exit(1)
-
         health_data = response.json()
 
         if name:
@@ -972,14 +952,7 @@ def webhook_create_command(url: str, events: tuple, all_events: bool, secret: st
         sys.exit(1)
 
     try:
-        from cli.config import current_config, get_client
-
-        config = current_config()
-        if not config.is_authenticated():
-            click.echo("Error: Not authenticated. Run 'mutx login' first.", err=True)
-            sys.exit(1)
-
-        client = get_client(config)
+        client = _governance_client()
         payload = {
             "url": url,
             "events": selected_events,
@@ -988,15 +961,7 @@ def webhook_create_command(url: str, events: tuple, all_events: bool, secret: st
         if secret:
             payload["secret"] = secret
 
-        response = client.post("/v1/webhooks/", json=payload)
-
-        if response.status_code == 401:
-            click.echo("Error: Authentication expired. Run 'mutx login' again.", err=True)
-            sys.exit(1)
-
-        if response.status_code not in (200, 201):
-            click.echo(f"Error: {response.text}", err=True)
-            sys.exit(1)
+        response = client.post("/v1/webhooks/", ok_statuses={201}, json=payload)
 
         webhook = response.json()
         click.echo("Webhook created successfully!")
@@ -1094,24 +1059,8 @@ def supervise_group():
 def supervise_list_command(output_json: bool) -> None:
     """List all supervised agents."""
     try:
-        from cli.config import current_config, get_client
-
-        config = current_config()
-        if not config.is_authenticated():
-            click.echo("Error: Not authenticated. Run 'mutx login' first.", err=True)
-            sys.exit(1)
-
-        client = get_client(config)
-        response = client.get("/v1/runtime/governance/supervised")
-
-        if response.status_code == 401:
-            click.echo("Error: Authentication expired. Run 'mutx login' again.", err=True)
-            sys.exit(1)
-
-        if response.status_code != 200:
-            click.echo(f"Error: {response.text}", err=True)
-            sys.exit(1)
-
+        client = _governance_client()
+        response = client.get("/v1/runtime/governance/supervised/")
         agents = response.json()
 
         if output_json:
@@ -1144,24 +1093,8 @@ def supervise_list_command(output_json: bool) -> None:
 def supervise_profiles_command(output_json: bool) -> None:
     """List configured supervised launch profiles."""
     try:
-        from cli.config import current_config, get_client
-
-        config = current_config()
-        if not config.is_authenticated():
-            click.echo("Error: Not authenticated. Run 'mutx login' first.", err=True)
-            sys.exit(1)
-
-        client = get_client(config)
+        client = _governance_client()
         response = client.get("/v1/runtime/governance/supervised/profiles")
-
-        if response.status_code == 401:
-            click.echo("Error: Authentication expired. Run 'mutx login' again.", err=True)
-            sys.exit(1)
-
-        if response.status_code != 200:
-            click.echo(f"Error: {response.text}", err=True)
-            sys.exit(1)
-
         profiles = response.json()
         if output_json:
             click.echo(json.dumps(profiles, indent=2))
@@ -1200,13 +1133,6 @@ def supervise_start_command(
 ) -> None:
     """Start an agent under Faramesh supervision."""
     try:
-        from cli.config import current_config, get_client
-
-        config = current_config()
-        if not config.is_authenticated():
-            click.echo("Error: Not authenticated. Run 'mutx login' first.", err=True)
-            sys.exit(1)
-
         env_dict = {}
         for e in env:
             if "=" in e:
@@ -1222,28 +1148,18 @@ def supervise_start_command(
             )
             sys.exit(1)
 
-        client = get_client(config)
+        client = _governance_client()
         payload = {
             "agent_id": agent_id,
+            "command": list(command) if has_command else [],
             "env": env_dict,
         }
-        if has_command:
-            payload["command"] = list(command)
         if has_profile:
             payload["profile"] = profile
         if policy:
             payload["faramesh_policy"] = policy
 
         response = client.post("/v1/runtime/governance/supervised/start", json=payload)
-
-        if response.status_code == 401:
-            click.echo("Error: Authentication expired. Run 'mutx login' again.", err=True)
-            sys.exit(1)
-
-        if response.status_code not in (200, 201):
-            click.echo(f"Error: {response.text}", err=True)
-            sys.exit(1)
-
         result = response.json()
         click.echo(f"Agent {agent_id} started with PID {result.get('pid')}")
 
@@ -1258,26 +1174,11 @@ def supervise_start_command(
 def supervise_stop_command(agent_id: str, timeout: float) -> None:
     """Stop a supervised agent."""
     try:
-        from cli.config import current_config, get_client
-
-        config = current_config()
-        if not config.is_authenticated():
-            click.echo("Error: Not authenticated. Run 'mutx login' first.", err=True)
-            sys.exit(1)
-
-        client = get_client(config)
-        response = client.post(
+        client = _governance_client()
+        client.post(
             f"/v1/runtime/governance/supervised/{agent_id}/stop",
             json={"timeout": timeout},
         )
-
-        if response.status_code == 401:
-            click.echo("Error: Authentication expired. Run 'mutx login' again.", err=True)
-            sys.exit(1)
-
-        if response.status_code not in (200, 204):
-            click.echo(f"Error: {response.text}", err=True)
-            sys.exit(1)
 
         click.echo(f"Agent {agent_id} stopped")
 
@@ -1291,24 +1192,8 @@ def supervise_stop_command(agent_id: str, timeout: float) -> None:
 def supervise_restart_command(agent_id: str) -> None:
     """Restart a supervised agent."""
     try:
-        from cli.config import current_config, get_client
-
-        config = current_config()
-        if not config.is_authenticated():
-            click.echo("Error: Not authenticated. Run 'mutx login' first.", err=True)
-            sys.exit(1)
-
-        client = get_client(config)
+        client = _governance_client()
         response = client.post(f"/v1/runtime/governance/supervised/{agent_id}/restart")
-
-        if response.status_code == 401:
-            click.echo("Error: Authentication expired. Run 'mutx login' again.", err=True)
-            sys.exit(1)
-
-        if response.status_code not in (200, 202):
-            click.echo(f"Error: {response.text}", err=True)
-            sys.exit(1)
-
         result = response.json()
         click.echo(f"Agent {agent_id} restarting (attempt {result.get('restart_count')})")
 
@@ -1323,28 +1208,8 @@ def supervise_restart_command(agent_id: str) -> None:
 def supervise_status_command(agent_id: str, output_json: bool) -> None:
     """Get status of a supervised agent."""
     try:
-        from cli.config import current_config, get_client
-
-        config = current_config()
-        if not config.is_authenticated():
-            click.echo("Error: Not authenticated. Run 'mutx login' first.", err=True)
-            sys.exit(1)
-
-        client = get_client(config)
+        client = _governance_client()
         response = client.get(f"/v1/runtime/governance/supervised/{agent_id}")
-
-        if response.status_code == 401:
-            click.echo("Error: Authentication expired. Run 'mutx login' again.", err=True)
-            sys.exit(1)
-
-        if response.status_code == 404:
-            click.echo(f"Agent {agent_id} not found", err=True)
-            sys.exit(1)
-
-        if response.status_code != 200:
-            click.echo(f"Error: {response.text}", err=True)
-            sys.exit(1)
-
         agent = response.json()
 
         if output_json:

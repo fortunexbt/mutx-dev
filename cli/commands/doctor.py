@@ -58,9 +58,17 @@ def doctor_command(output: str):
 
     try:
         response = httpx.get(f"{config.api_url}/health", timeout=2.0)
-        payload["api_health"] = (
-            response.json().get("status", "unknown") if response.status_code == 200 else "error"
-        )
+        if response.status_code == 200:
+            health_payload = response.json()
+            payload["api_health"] = (
+                health_payload.get("status", "unknown")
+                if isinstance(health_payload, dict)
+                else "invalid-response"
+            )
+        else:
+            payload["api_health"] = "error"
+    except ValueError:
+        payload["api_health"] = "invalid-response"
     except httpx.HTTPError:
         payload["api_health"] = "unreachable"
 

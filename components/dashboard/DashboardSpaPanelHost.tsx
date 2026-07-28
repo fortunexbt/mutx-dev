@@ -4,205 +4,152 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   ArrowRight,
-  Bot,
+  Check,
   ChevronRight,
   Gauge,
   Loader2,
   MessageSquare,
   PanelRight,
   ShieldCheck,
-  Sparkles,
+  TriangleAlert,
   X,
 } from 'lucide-react'
 
 import { ErrorBoundary } from '@/components/app/ErrorBoundary'
-import { DashboardContentRouter } from '@/components/dashboard/DashboardContentRouter'
-import { useDesktopStatus } from '@/components/desktop/useDesktopStatus'
 import {
-  isEssentialPanel,
-  resolveDashboardPanel,
-} from '@/lib/dashboardPanels'
+  DashboardContentRouter,
+  hasFullModeAccess,
+} from '@/components/dashboard/DashboardContentRouter'
+import { DashboardDialog } from '@/components/dashboard/DashboardDialog'
+import {
+  type BootStatus,
+  type BootStep,
+  type BootStepKey,
+  createInitialBootSteps,
+  extractCollection,
+  isRecord,
+  loadMemoryWarmup,
+  probeControlPlane,
+  readDashboardJson,
+  summarizeBoot,
+} from '@/components/dashboard/dashboardSpaBoot'
+import { useDesktopStatus } from '@/components/desktop/useDesktopStatus'
+import { isEssentialPanel, resolveDashboardPanel } from '@/lib/dashboardPanels'
 import { useDashboardPathname, useNavigateToPanel } from '@/lib/navigation'
-import { type CurrentUser, useMissionControl } from '@/lib/store'
+import { type Agent, type Session, useMissionControl } from '@/lib/store'
 import { cn } from '@/lib/utils'
 
-type BootStatus = 'pending' | 'running' | 'complete' | 'error'
-
-type BootStepKey =
-  | 'auth'
-  | 'capabilities'
-  | 'config'
-  | 'connect'
-  | 'agents'
-  | 'sessions'
-  | 'projects'
-  | 'memory'
-  | 'skills'
-
-type BootStep = {
-  key: BootStepKey
-  label: string
+type StepResult = {
   detail: string
-  status: BootStatus
-}
-
-const INITIAL_BOOT_STEPS: BootStep[] = [
-  { key: 'auth', label: 'Auth', detail: 'Resolve the active operator session.', status: 'pending' },
-  {
-    key: 'capabilities',
-    label: 'Capabilities',
-    detail: 'Detect local versus gateway shell mode.',
-    status: 'pending',
-  },
-  {
-    key: 'config',
-    label: 'Config',
-    detail: 'Load subscription, interface mode, and workspace identity.',
-    status: 'pending',
-  },
-  {
-    key: 'connect',
-    label: 'Connect',
-    detail: 'Initialize the runtime connection stub for live updates.',
-    status: 'pending',
-  },
-  {
-    key: 'agents',
-    label: 'Agents',
-    detail: 'Preload the fleet registry.',
-    status: 'pending',
-  },
-  {
-    key: 'sessions',
-    label: 'Sessions',
-    detail: 'Preload session presence.',
-    status: 'pending',
-  },
-  {
-    key: 'projects',
-    label: 'Projects',
-    detail: 'Prime template-backed project inventory.',
-    status: 'pending',
-  },
-  {
-    key: 'memory',
-    label: 'Memory',
-    detail: 'Reserve the memory lane until the route contract lands.',
-    status: 'pending',
-  },
-  {
-    key: 'skills',
-    label: 'Skills',
-    detail: 'Prime the skill catalog for operator context.',
-    status: 'pending',
-  },
-]
-
-function mapUser(payload: Record<string, unknown>): CurrentUser | null {
-  const id = typeof payload.id === 'string' ? payload.id : null
-  const email = typeof payload.email === 'string' ? payload.email : undefined
-  const name =
-    typeof payload.name === 'string'
-      ? payload.name
-      : typeof payload.display_name === 'string'
-        ? payload.display_name
-        : 'Operator'
-
-  if (!id) {
-    return null
-  }
-
-  return {
-    id,
-    email,
-    username: email?.split('@')[0] || name.toLowerCase().replace(/\s+/g, '-'),
-    display_name: name,
-    role: 'admin',
-  }
-}
-
-async function readJson(url: string) {
-  const response = await fetch(url, { cache: 'no-store' })
-  const payload = await response.json().catch(() => null)
-
-  if (!response.ok) {
-    const detail =
-      payload && typeof payload === 'object' && 'detail' in payload && typeof payload.detail === 'string'
-        ? payload.detail
-        : 'Request failed'
-    throw new Error(detail)
-  }
-
-  return payload
+  status?: Extract<BootStatus, 'complete' | 'warning'>
 }
 
 function getBootTone(status: BootStatus) {
   if (status === 'complete') {
-    return 'border-emerald-400/24 bg-emerald-400/10 text-emerald-100'
+    return 'border-emerald-400/30 bg-emerald-400/10 text-emerald-100'
+  }
+  if (status === 'warning') {
+    return 'border-amber-400/30 bg-amber-400/10 text-amber-100'
   }
   if (status === 'error') {
-    return 'border-rose-400/24 bg-rose-400/10 text-rose-100'
+    return 'border-rose-400/30 bg-rose-400/10 text-rose-100'
   }
   if (status === 'running') {
-    return 'border-sky-400/24 bg-sky-400/10 text-sky-100'
+    return 'border-sky-400/30 bg-sky-400/10 text-sky-100'
   }
-  return 'border-white/10 bg-white/5 text-slate-300'
+  return 'border-white/10 bg-white/[0.03] text-slate-300'
+}
+
+const BOOT_STATUS_LABELS: Record<BootStatus, string> = {
+  pending: 'Queued',
+  running: 'Checking',
+  complete: 'Verified',
+  warning: 'Partial',
+  error: 'Failed',
+}
+
+function BootStatusIcon({ status }: { status: BootStatus }) {
+  if (status === 'running') {
+    return <Loader2 className='h-3.5 w-3.5 animate-spin motion-reduce:animate-none' aria-hidden='true' />
+  }
+  if (status === 'complete') {
+    return <Check className='h-3.5 w-3.5' aria-hidden='true' />
+  }
+  if (status === 'warning') {
+    return <TriangleAlert className='h-3.5 w-3.5' aria-hidden='true' />
+  }
+  if (status === 'error') {
+    return <X className='h-3.5 w-3.5' aria-hidden='true' />
+  }
+  return null
 }
 
 function BootLedger({
   steps,
   compact = false,
+  announce = true,
 }: {
   steps: BootStep[]
   compact?: boolean
+  announce?: boolean
 }) {
+  const outcome = summarizeBoot(steps)
+
   return (
-    <div className={cn('space-y-2', compact ? 'text-xs' : 'text-sm')}>
-      {steps.map((step, index) => (
-        <div
-          key={step.key}
-          className={cn(
-            'rounded-[18px] border px-3 py-3',
-            compact ? 'space-y-1.5' : 'space-y-2',
-            getBootTone(step.status),
-          )}
-        >
-          <div className='flex items-center justify-between gap-3'>
-            <div className='flex items-center gap-2'>
-              <span className='font-[family:var(--font-mono)] text-[10px] uppercase tracking-[0.18em]'>
-                {String(index + 1).padStart(2, '0')}
+    <div
+      role={announce ? 'status' : undefined}
+      aria-live={announce ? 'polite' : undefined}
+      aria-atomic='false'
+      aria-busy={announce ? outcome.phase === 'running' : undefined}
+    >
+      <ol className={cn('space-y-2', compact ? 'text-xs' : 'text-sm')} aria-label='Startup checks'>
+        {steps.map((step, index) => (
+          <li
+            key={step.key}
+            className={cn(
+              'rounded-[5px] border px-3 py-3',
+              compact ? 'space-y-1.5' : 'space-y-2',
+              getBootTone(step.status),
+            )}
+          >
+            <div className='flex items-center justify-between gap-3'>
+              <div className='flex min-w-0 items-center gap-2'>
+                <span
+                  className='font-[family:var(--font-mono)] text-[10px] uppercase tracking-[0.18em] opacity-70'
+                  aria-hidden='true'
+                >
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+                <span className='truncate font-medium'>{step.label}</span>
+              </div>
+              <span className='flex shrink-0 items-center gap-1.5 font-[family:var(--font-mono)] text-[10px] uppercase tracking-[0.12em]'>
+                <BootStatusIcon status={step.status} />
+                {BOOT_STATUS_LABELS[step.status]}
               </span>
-              <span className='font-medium'>{step.label}</span>
             </div>
-            {step.status === 'running' ? (
-              <Loader2 className='h-3.5 w-3.5 animate-spin' />
-            ) : step.status === 'complete' ? (
-              <Sparkles className='h-3.5 w-3.5' />
-            ) : step.status === 'error' ? (
-              <X className='h-3.5 w-3.5' />
-            ) : null}
-          </div>
-          <p className='leading-5 text-slate-300/90'>{step.detail}</p>
-        </div>
-      ))}
+            <p className='leading-5 text-slate-300/90'>{step.detail}</p>
+          </li>
+        ))}
+      </ol>
     </div>
   )
 }
 
-function PanelErrorFallback({
-  panelLabel,
-}: {
-  panelLabel: string
-}) {
+function PanelErrorFallback({ panelLabel }: { panelLabel: string }) {
   return (
-    <div className='rounded-[28px] border border-rose-400/22 bg-[rgba(69,29,24,0.44)] p-6 text-rose-100'>
-      <p className='text-[11px] font-semibold uppercase tracking-[0.2em] text-rose-200'>Panel error</p>
+    <div
+      role='alert'
+      className='rounded-[6px] border border-rose-400/30 bg-[rgba(69,29,24,0.44)] p-6 text-rose-100'
+    >
+      <p className='font-[family:var(--font-mono)] text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-200'>
+        Surface unavailable
+      </p>
       <h2 className='mt-3 font-[family:var(--font-site-display)] text-[1.6rem] tracking-[-0.05em]'>
-        {panelLabel} failed inside the SPA shell
+        {panelLabel} could not be displayed
       </h2>
       <p className='mt-3 max-w-2xl text-sm leading-6 text-rose-100/80'>
-        The panel threw after boot, but the shell stayed alive. Use the route header actions or refresh
-        the panel to recover without losing the entire shell.
+        The rest of your workspace is still available. Refresh this surface or move to another
+        operator view while the issue is investigated.
       </p>
     </div>
   )
@@ -218,7 +165,7 @@ export function DashboardSpaPanelHost() {
     typeof window !== 'undefined' ? Boolean(window.mutxDesktop?.isDesktop) : false
 
   const [
-    bootComplete,
+    connection,
     currentUser,
     interfaceMode,
     subscription,
@@ -232,24 +179,17 @@ export function DashboardSpaPanelHost() {
     setActiveTab,
     setBootComplete,
     setCapabilitiesChecked,
-    setCurrentUser,
     setDashboardMode,
     setInterfaceMode,
     setSubscription,
     setConnection,
+    setAgents,
+    setSessions,
     toggleLiveFeed,
     setChatPanelOpen,
     dismissBanner,
-    fetchAgents,
-    fetchSessions,
-    fetchRuns,
-    fetchOverview,
-    fetchAnalyticsSummary,
-    fetchMonitoringAlerts,
-    fetchBudgets,
-    fetchDeployments,
   ] = useMissionControl((state) => [
-    state.bootComplete,
+    state.connection,
     state.currentUser,
     state.interfaceMode,
     state.subscription,
@@ -263,83 +203,67 @@ export function DashboardSpaPanelHost() {
     state.setActiveTab,
     state.setBootComplete,
     state.setCapabilitiesChecked,
-    state.setCurrentUser,
     state.setDashboardMode,
     state.setInterfaceMode,
     state.setSubscription,
     state.setConnection,
+    state.setAgents,
+    state.setSessions,
     state.toggleLiveFeed,
     state.setChatPanelOpen,
     state.dismissBanner,
-    state.fetchAgents,
-    state.fetchSessions,
-    state.fetchRuns,
-    state.fetchOverview,
-    state.fetchAnalyticsSummary,
-    state.fetchMonitoringAlerts,
-    state.fetchBudgets,
-    state.fetchDeployments,
   ])
 
   const [orgName, setOrgName] = useState('MUTX')
-  const [bootVisible, setBootVisible] = useState(!bootComplete)
-  const [bootSteps, setBootSteps] = useState<BootStep[]>(INITIAL_BOOT_STEPS)
+  const [bootVisible, setBootVisible] = useState(true)
+  const [bootSteps, setBootSteps] = useState<BootStep[]>(createInitialBootSteps)
 
   useEffect(() => {
     setActiveTab(panel)
   }, [panel, setActiveTab])
 
   useEffect(() => {
-    if (isDesktop || bootComplete || bootStartedRef.current) {
-      if (bootComplete) {
-        setBootVisible(false)
-      }
-      return
-    }
+    if (isDesktop || bootStartedRef.current) return
 
     bootStartedRef.current = true
-    setBootVisible(true)
+    let active = true
+    let nextSteps = createInitialBootSteps()
+    setBootSteps(nextSteps)
+    setBootComplete(false)
+    setCapabilitiesChecked(false)
+    setInterfaceMode('essential')
+    setSubscription(null)
+    setConnection({
+      isConnected: false,
+      lastConnected: undefined,
+      latency: undefined,
+      reconnectAttempts: 0,
+      sseConnected: false,
+      url: window.location.origin,
+    })
 
-    const updateStep = (
-      key: BootStepKey,
-      status: BootStatus,
-      detail?: string,
-    ) => {
-      setBootSteps((current) =>
-        current.map((step) =>
-          step.key === key
-            ? {
-                ...step,
-                status,
-                detail: detail || step.detail,
-              }
-            : step,
-        ),
+    const updateStep = (key: BootStepKey, status: BootStatus, detail?: string) => {
+      nextSteps = nextSteps.map((step) =>
+        step.key === key ? { ...step, status, detail: detail || step.detail } : step,
       )
+      if (active) setBootSteps(nextSteps)
+    }
+
+    const runStep = async (key: BootStepKey, task: () => Promise<StepResult>) => {
+      updateStep(key, 'running')
+      try {
+        const result = await task()
+        updateStep(key, result.status || 'complete', result.detail)
+      } catch (error) {
+        updateStep(
+          key,
+          'error',
+          error instanceof Error ? error.message : 'No usable response was returned.',
+        )
+      }
     }
 
     const runBoot = async () => {
-      updateStep('auth', 'running')
-      try {
-        const userPayload = (await readJson('/api/auth/me')) as Record<string, unknown>
-        const user = mapUser(userPayload)
-        setCurrentUser(user)
-        updateStep(
-          'auth',
-          'complete',
-          user?.display_name
-            ? `Signed in as ${user.display_name}.`
-            : 'Operator session resolved.',
-        )
-      } catch (error) {
-        setCurrentUser(null)
-        updateStep(
-          'auth',
-          'error',
-          error instanceof Error ? error.message : 'Operator session unavailable.',
-        )
-      }
-
       updateStep('capabilities', 'running')
       const nextDashboardMode = window.mutxDesktop?.isDesktop ? 'local' : 'gateway'
       setDashboardMode(nextDashboardMode)
@@ -348,153 +272,199 @@ export function DashboardSpaPanelHost() {
         'capabilities',
         'complete',
         nextDashboardMode === 'local'
-          ? 'Local desktop shell detected.'
-          : 'Gateway browser shell detected.',
+          ? 'Desktop runtime confirmed.'
+          : 'Secure browser gateway confirmed.',
       )
 
-      updateStep('config', 'running')
-      try {
-        const configPayload = (await readJson('/api/dashboard/settings')) as Record<string, unknown>
-        const configMode =
-          configPayload.interfaceMode === 'essential' ? 'essential' : 'full'
-        const configSubscription =
-          configPayload.subscription === 'enterprise' || configPayload.subscription === 'pro'
-            ? configPayload.subscription
-            : 'free'
-        setInterfaceMode(configMode)
-        setSubscription(configSubscription)
-        setOrgName(typeof configPayload.orgName === 'string' ? configPayload.orgName : 'MUTX')
-        updateStep(
-          'config',
-          'complete',
-          `${configMode} mode · ${configSubscription} subscription.`,
-        )
-      } catch (error) {
-        const fallbackSubscription = 'free'
-        const fallbackMode = 'essential'
-        setInterfaceMode(fallbackMode)
-        setSubscription(fallbackSubscription)
-        updateStep(
-          'config',
-          'error',
-          error instanceof Error ? error.message : 'Settings route unavailable.',
-        )
+      if (!currentUser) {
+        updateStep('auth', 'error', 'Operator session is not available.')
+        for (const key of ['config', 'connect', 'agents', 'sessions', 'projects', 'memory', 'skills'] as const) {
+          updateStep(key, 'warning', 'Skipped because operator access was not verified.')
+        }
+        setBootComplete(false)
+        return
       }
 
-      updateStep('connect', 'running')
-      setConnection({
-        isConnected: false,
-        reconnectAttempts: 0,
-        sseConnected: false,
-        url: window.location.origin,
-      })
-      updateStep('connect', 'complete', 'Realtime bridge stub initialized.')
+      updateStep('auth', 'complete', `Verified ${currentUser.display_name}.`)
 
-      const parallelLoaders: Array<[BootStepKey, () => Promise<unknown>, string]> = [
-        ['agents', async () => fetchAgents(), 'Agent registry warmed.'],
-        ['sessions', async () => fetchSessions(), 'Session list warmed.'],
-        [
-          'projects',
-          async () => readJson('/api/dashboard/templates'),
-          'Template catalog warmed as project inventory.',
-        ],
-        [
-          'memory',
-          async () => Promise.resolve({ status: 'reserved' }),
-          'Memory lane reserved until backend contracts ship.',
-        ],
-        [
-          'skills',
-          async () => readJson('/api/dashboard/clawhub/skills'),
-          'Skill catalog warmed.',
-        ],
-      ]
+      await Promise.all([
+        runStep('config', async () => {
+          try {
+            const payload = await readDashboardJson(
+              '/api/dashboard/settings',
+              'Workspace settings could not be loaded.',
+            )
+            if (!isRecord(payload)) throw new Error('Workspace settings returned an invalid response.')
 
-      parallelLoaders.forEach(([key]) => updateStep(key, 'running'))
-      const parallelResults = await Promise.allSettled(
-        parallelLoaders.map(async ([key, loader, successDetail]) => {
-          await loader()
-          return { key, successDetail }
+            const configMode = payload.interfaceMode
+            const configSubscription = payload.subscription
+            if (configMode !== 'essential' && configMode !== 'full') {
+              throw new Error('Workspace settings did not include a valid interface mode.')
+            }
+            if (
+              configSubscription !== null &&
+              configSubscription !== 'free' &&
+              configSubscription !== 'pro' &&
+              configSubscription !== 'enterprise'
+            ) {
+              throw new Error('Workspace settings did not include a valid subscription.')
+            }
+
+            setInterfaceMode(configMode)
+            setSubscription(configSubscription)
+            setOrgName(
+              typeof payload.orgName === 'string' && payload.orgName.trim()
+                ? payload.orgName.trim()
+                : 'MUTX',
+            )
+            return {
+              detail: configSubscription
+                ? `${configMode === 'essential' ? 'Essential' : 'Full'} access · ${configSubscription} plan.`
+                : 'Essential access · subscription could not be verified.',
+              status: configSubscription ? 'complete' : 'warning',
+            }
+          } catch (error) {
+            setInterfaceMode('essential')
+            setSubscription(null)
+            throw error
+          }
         }),
-      )
-
-      parallelResults.forEach((result, index) => {
-        const [key] = parallelLoaders[index]
-        if (result.status === 'fulfilled') {
-          updateStep(key, 'complete', result.value.successDetail)
-          return
-        }
-
-        updateStep(
-          key,
-          'error',
-          result.reason instanceof Error ? result.reason.message : 'Warmup failed.',
-        )
-      })
-
-      await Promise.allSettled([
-        fetchRuns(),
-        fetchOverview(),
-        fetchAnalyticsSummary(),
-        fetchMonitoringAlerts(),
-        fetchBudgets(),
-        fetchDeployments(),
+        runStep('connect', async () => {
+          try {
+            const evidence = await probeControlPlane()
+            setConnection({
+              isConnected: true,
+              lastConnected: new Date().toISOString(),
+              latency: evidence.latency,
+              reconnectAttempts: 0,
+              sseConnected: false,
+              url: window.location.origin,
+            })
+            return {
+              detail: `Healthy control plane · database ready · ${evidence.latency} ms.`,
+            }
+          } catch (error) {
+            setConnection({
+              isConnected: false,
+              lastConnected: undefined,
+              latency: undefined,
+              reconnectAttempts: 1,
+              sseConnected: false,
+              url: window.location.origin,
+            })
+            throw error
+          }
+        }),
       ])
 
-      setBootComplete(true)
-      window.setTimeout(() => {
-        setBootVisible(false)
-      }, 240)
+      await Promise.all([
+        runStep('agents', async () => {
+          const payload = await readDashboardJson(
+            '/api/dashboard/agents',
+            'Agent registry could not be read.',
+          )
+          const items = extractCollection(payload, ['agents', 'items', 'data']) as Agent[]
+          setAgents(items)
+          return { detail: `${items.length} agent${items.length === 1 ? '' : 's'} available.` }
+        }),
+        runStep('sessions', async () => {
+          const payload = await readDashboardJson(
+            '/api/dashboard/sessions',
+            'Session presence could not be read.',
+          )
+          const items = extractCollection(payload, ['sessions', 'items', 'data']) as Session[]
+          setSessions(items)
+          return { detail: `${items.length} session${items.length === 1 ? '' : 's'} present.` }
+        }),
+        runStep('projects', async () => {
+          const payload = await readDashboardJson(
+            '/api/dashboard/templates',
+            'Template inventory could not be read.',
+          )
+          const items = extractCollection(payload, ['templates', 'items', 'data'])
+          return { detail: `${items.length} template${items.length === 1 ? '' : 's'} available.` }
+        }),
+        runStep('memory', async () => {
+          const evidence = await loadMemoryWarmup()
+          return { detail: evidence.detail, status: evidence.status }
+        }),
+        runStep('skills', async () => {
+          const payload = await readDashboardJson(
+            '/api/dashboard/clawhub/skills',
+            'Skill catalog could not be read.',
+          )
+          const items = extractCollection(payload, ['skills', 'items', 'data'])
+          return { detail: `${items.length} skill${items.length === 1 ? '' : 's'} available.` }
+        }),
+      ])
+
+      if (!active) return
+
+      const outcome = summarizeBoot(nextSteps)
+      setBootComplete(outcome.fullyReady)
+      if (outcome.fullyReady) setBootVisible(false)
     }
 
     void runBoot()
+
+    return () => {
+      active = false
+    }
   }, [
-    bootComplete,
-    fetchAgents,
-    fetchAnalyticsSummary,
-    fetchBudgets,
-    fetchDeployments,
-    fetchMonitoringAlerts,
-    fetchOverview,
-    fetchRuns,
-    fetchSessions,
+    currentUser,
     isDesktop,
+    setAgents,
     setBootComplete,
     setCapabilitiesChecked,
     setConnection,
-    setCurrentUser,
     setDashboardMode,
     setInterfaceMode,
+    setSessions,
     setSubscription,
   ])
 
-  const completedSteps = bootSteps.filter((step) => step.status === 'complete').length
+  const bootOutcome = useMemo(() => summarizeBoot(bootSteps), [bootSteps])
+  const connectStep = bootSteps.find((step) => step.key === 'connect')
   const panelLabel = useMemo(
     () => panel.replace(/-/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
     [panel],
   )
+  const bootTitle =
+    bootOutcome.phase === 'ready'
+      ? 'Workspace verified'
+      : bootOutcome.phase === 'degraded'
+        ? 'Workspace opened with issues'
+        : 'Verifying your workspace'
+  const bootDescription =
+    bootOutcome.phase === 'ready'
+      ? 'Every startup check returned usable evidence.'
+      : bootOutcome.phase === 'degraded'
+        ? `${bootOutcome.errors + bootOutcome.warnings} startup ${bootOutcome.errors + bootOutcome.warnings === 1 ? 'check needs' : 'checks need'} attention. Available surfaces remain usable.`
+        : 'Checking your operator session, control plane, and live workspace inventory.'
 
-  if (isDesktop) {
-    return null
-  }
+  if (isDesktop) return null
 
   return (
     <div className='space-y-4'>
       {updateAvailable && !bannerDismissed ? (
-        <div className='rounded-[22px] border border-sky-400/24 bg-sky-400/10 px-4 py-3 text-sm text-sky-50'>
+        <div
+          role='status'
+          className='rounded-[6px] border border-sky-400/30 bg-sky-400/10 px-4 py-3 text-sm text-sky-50'
+        >
           <div className='flex flex-wrap items-center justify-between gap-3'>
             <div>
-              <p className='text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-100'>
-                Update available
+              <p className='font-[family:var(--font-mono)] text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-100'>
+                Update ready
               </p>
               <p className='mt-1 text-sm text-sky-50/85'>
-                MUTX {updateAvailable} is ready for this operator shell.
+                MUTX {updateAvailable} is available for this workspace.
               </p>
             </div>
             <button
               type='button'
               onClick={dismissBanner}
-              className='rounded-full border border-sky-200/20 bg-[#11110f] px-3 py-1.5 text-xs font-medium text-sky-100'
+              className='min-h-11 rounded-[4px] border border-sky-200/20 bg-[#11120f] px-3 text-xs font-medium text-sky-100 transition-colors hover:border-sky-200/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300 motion-reduce:transition-none'
+              aria-label={`Dismiss MUTX ${updateAvailable} update notice`}
             >
               Dismiss
             </button>
@@ -502,24 +472,44 @@ export function DashboardSpaPanelHost() {
         </div>
       ) : null}
 
-      <div className='rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,#101726_0%,#0b1119_100%)] px-4 py-4'>
-        <div className='flex flex-wrap items-start justify-between gap-4'>
-          <div className='space-y-3'>
-            <div className='flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#ffb199]'>
-              <span className='rounded-full border border-sky-400/20 bg-sky-400/10 px-2.5 py-1 text-sky-100'>
-                ContentRouter active
+      <section
+        aria-labelledby='operator-workspace-title'
+        className='rounded-[6px] border border-[#34342e] bg-[linear-gradient(180deg,#151612_0%,#0d0e0c_100%)] px-4 py-4 shadow-[0_1px_0_rgba(255,255,255,0.025)]'
+      >
+        <div className='flex flex-wrap items-start justify-between gap-5'>
+          <div className='max-w-3xl space-y-3'>
+            <div className='flex flex-wrap items-center gap-2 font-[family:var(--font-mono)] text-[10px] font-semibold uppercase tracking-[0.16em] text-[#aaa397]'>
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-[3px] border px-2.5 py-1',
+                  connectStep?.status === 'complete'
+                    ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200'
+                    : connectStep?.status === 'error'
+                      ? 'border-rose-400/30 bg-rose-400/10 text-rose-200'
+                      : 'border-sky-400/30 bg-sky-400/10 text-sky-200',
+                )}
+              >
+                <span className='h-1.5 w-1.5 rounded-full bg-current' aria-hidden='true' />
+                {connectStep?.status === 'complete'
+                  ? 'Control plane verified'
+                  : connectStep?.status === 'error'
+                    ? 'Control plane unavailable'
+                    : 'Control plane checking'}
               </span>
               <span>{orgName}</span>
-              <span>{interfaceMode} mode</span>
+              <span aria-hidden='true'>/</span>
+              <span>{interfaceMode} view</span>
             </div>
             <div>
-              <h2 className='font-[family:var(--font-site-display)] text-[1.7rem] leading-[0.98] tracking-[-0.06em] text-white'>
-                The dashboard shell is routing everything from one surface
+              <h2
+                id='operator-workspace-title'
+                className='font-[family:var(--font-site-display)] text-[1.7rem] leading-[1.02] tracking-[-0.055em] text-[#eee9dc]'
+              >
+                Operate the live system from one workspace
               </h2>
-              <p className='mt-2 max-w-4xl text-sm leading-6 text-slate-300'>
-                The panel switchboard now owns boot, routing, gating, and failure isolation. Legacy
-                page routes remain as compatibility entrypoints, but the active shell no longer depends on
-                each route rebuilding its own world.
+              <p className='mt-2 max-w-3xl text-sm leading-6 text-[#aaa397]'>
+                Move between fleet, session, memory, and governance views while startup evidence and
+                degraded dependencies remain visible.
               </p>
             </div>
           </div>
@@ -528,41 +518,53 @@ export function DashboardSpaPanelHost() {
             <button
               type='button'
               onClick={toggleLiveFeed}
-              className='inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#0b1210] px-3 py-2 text-xs font-medium text-slate-100'
+              className='inline-flex min-h-11 items-center gap-2 rounded-[4px] border border-[#3b3a33] bg-[#0c0d0b] px-3 text-xs font-medium text-[#d6d0c3] transition-colors hover:border-[#59564d] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847] motion-reduce:transition-none'
+              aria-expanded={liveFeedOpen}
+              aria-controls='dashboard-readiness-panel'
             >
-              <PanelRight className='h-4 w-4 text-sky-300' />
-              {liveFeedOpen ? 'Hide live feed' : 'Show live feed'}
+              <PanelRight className='h-4 w-4 text-[#58aaff]' aria-hidden='true' />
+              {liveFeedOpen ? 'Hide readiness' : 'Show readiness'}
             </button>
             <button
               type='button'
               onClick={() => setChatPanelOpen(!chatPanelOpen)}
-              className='inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#0b1210] px-3 py-2 text-xs font-medium text-slate-100'
+              className='inline-flex min-h-11 items-center gap-2 rounded-[4px] border border-[#3b3a33] bg-[#0c0d0b] px-3 text-xs font-medium text-[#d6d0c3] transition-colors hover:border-[#59564d] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847] motion-reduce:transition-none'
+              aria-expanded={chatPanelOpen}
+              aria-haspopup='dialog'
             >
-              <MessageSquare className='h-4 w-4 text-cyan-300' />
-              {chatPanelOpen ? 'Close chat' : 'Open chat'}
+              <MessageSquare className='h-4 w-4 text-[#58aaff]' aria-hidden='true' />
+              {chatPanelOpen ? 'Close session tools' : 'Open session tools'}
             </button>
-            <div className='inline-flex items-center gap-1 rounded-full border border-white/10 bg-[#0b1210] p-1 text-xs'>
+            <div
+              role='group'
+              aria-label='Workspace interface mode'
+              className='inline-flex items-center gap-1 rounded-[4px] border border-[#3b3a33] bg-[#0c0d0b] p-1 text-xs'
+            >
               <button
                 type='button'
                 onClick={() => setInterfaceMode('essential')}
+                aria-pressed={interfaceMode === 'essential'}
                 className={cn(
-                  'rounded-full px-3 py-1.5',
+                  'min-h-9 rounded-[3px] px-3 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847] motion-reduce:transition-none',
                   interfaceMode === 'essential'
-                    ? 'bg-white text-[#09111c]'
-                    : 'text-slate-300',
+                    ? 'bg-[#eee9dc] text-[#090a08]'
+                    : 'text-[#aaa397] hover:text-[#eee9dc]',
                 )}
               >
                 Essential
               </button>
               <button
                 type='button'
-                onClick={() => setInterfaceMode('full')}
-                disabled={subscription === 'free'}
+                onClick={() => {
+                  if (hasFullModeAccess(subscription)) setInterfaceMode('full')
+                }}
+                disabled={!hasFullModeAccess(subscription)}
+                aria-pressed={interfaceMode === 'full'}
                 className={cn(
-                  'rounded-full px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-40',
+                  'min-h-9 rounded-[3px] px-3 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847] disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none',
                   interfaceMode === 'full'
-                    ? 'bg-sky-400 text-[#09111c]'
-                    : 'text-slate-300',
+                    ? 'bg-[#ff571c] text-[#090a08]'
+                    : 'text-[#aaa397] hover:text-[#eee9dc]',
                 )}
               >
                 Full
@@ -571,18 +573,18 @@ export function DashboardSpaPanelHost() {
           </div>
         </div>
 
-        <div className='mt-4 flex flex-wrap items-center gap-2 text-[11px] text-slate-300'>
-          <span className='rounded-full border border-white/10 bg-[#11110f] px-2.5 py-1'>
-            {currentUser?.display_name || 'Sign-in pending'}
+        <div className='mt-4 flex flex-wrap items-center gap-2 font-[family:var(--font-mono)] text-[10px] uppercase tracking-[0.12em] text-[#918b80]'>
+          <span className='rounded-[3px] border border-[#34342e] bg-[#0c0d0b] px-2.5 py-1'>
+            {currentUser?.display_name || 'Operator unverified'}
           </span>
-          <span className='rounded-full border border-white/10 bg-[#11110f] px-2.5 py-1'>
-            {subscription || 'free'} subscription
+          <span className='rounded-[3px] border border-[#34342e] bg-[#0c0d0b] px-2.5 py-1'>
+            {subscription || 'Plan pending'}
           </span>
-          <span className='rounded-full border border-white/10 bg-[#11110f] px-2.5 py-1'>
-            {isEssentialPanel(panel) ? 'Essential panel' : 'Full panel'}
+          <span className='rounded-[3px] border border-[#34342e] bg-[#0c0d0b] px-2.5 py-1'>
+            {isEssentialPanel(panel) ? 'Essential surface' : 'Full surface'}
           </span>
         </div>
-      </div>
+      </section>
 
       <div className='grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]'>
         <div className='min-w-0 space-y-4'>
@@ -595,72 +597,85 @@ export function DashboardSpaPanelHost() {
           </ErrorBoundary>
         </div>
 
-        <aside className={cn('space-y-4', liveFeedOpen ? 'block' : 'hidden')}>
-          <section className='rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,#101726_0%,#0b1119_100%)] p-4'>
-            <div className='flex items-center justify-between gap-3'>
+        <aside
+          id='dashboard-readiness-panel'
+          hidden={!liveFeedOpen}
+          aria-label='Workspace readiness'
+          className='space-y-4'
+        >
+          <section className='rounded-[6px] border border-[#34342e] bg-[linear-gradient(180deg,#151612_0%,#0d0e0c_100%)] p-4'>
+            <div className='flex items-start justify-between gap-3'>
               <div>
-                <p className='text-[11px] font-semibold uppercase tracking-[0.18em] text-[#ffb199]'>
-                  Live feed
+                <p className='font-[family:var(--font-mono)] text-[10px] font-semibold uppercase tracking-[0.18em] text-[#ff8355]'>
+                  Readiness
                 </p>
-                <p className='mt-2 text-sm text-slate-300'>
-                  Shell posture, boot state, and interface mode in one side rail.
+                <p className='mt-2 text-sm leading-5 text-[#aaa397]'>
+                  Evidence collected during this browser startup.
                 </p>
               </div>
-              <span className='rounded-full border border-white/10 bg-[#11110f] px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-slate-200'>
+              <span className='rounded-[3px] border border-[#34342e] bg-[#0c0d0b] px-2.5 py-1 font-[family:var(--font-mono)] text-[10px] uppercase tracking-[0.12em] text-[#d6d0c3]'>
                 {panelLabel}
               </span>
             </div>
 
             <div className='mt-4 grid gap-3'>
-              <div className='rounded-[18px] border border-white/10 bg-[#11110f] p-3'>
-                <div className='flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400'>
-                  <Gauge className='h-3.5 w-3.5 text-sky-300' />
-                  Shell state
+              <div className='rounded-[5px] border border-[#34342e] bg-[#0c0d0b] p-3'>
+                <div className='flex items-center gap-2 font-[family:var(--font-mono)] text-[10px] font-semibold uppercase tracking-[0.14em] text-[#918b80]'>
+                  <Gauge className='h-3.5 w-3.5 text-[#58aaff]' aria-hidden='true' />
+                  Connection evidence
                 </div>
-                <div className='mt-3 space-y-2 text-sm text-slate-200'>
+                <dl className='mt-3 space-y-2 text-sm text-[#d6d0c3]'>
                   <div className='flex items-center justify-between gap-3'>
-                    <span>Mode</span>
-                    <span className='text-slate-400'>{interfaceMode}</span>
+                    <dt>Control plane</dt>
+                    <dd className={connection.isConnected ? 'text-emerald-300' : 'text-[#918b80]'}>
+                      {connection.isConnected ? 'Verified' : 'Unverified'}
+                    </dd>
                   </div>
                   <div className='flex items-center justify-between gap-3'>
-                    <span>Runtime</span>
-                    <span className='text-slate-400'>{desktopRuntimeActive ? 'local' : 'gateway'}</span>
+                    <dt>Latency</dt>
+                    <dd className='text-[#918b80]'>
+                      {connection.isConnected && connection.latency !== undefined
+                        ? `${connection.latency} ms`
+                        : '—'}
+                    </dd>
                   </div>
                   <div className='flex items-center justify-between gap-3'>
-                    <span>Account</span>
-                    <span className='truncate text-slate-400'>{currentUser?.display_name || 'pending'}</span>
+                    <dt>Runtime</dt>
+                    <dd className='text-[#918b80]'>
+                      {desktopRuntimeActive ? 'Desktop' : 'Browser gateway'}
+                    </dd>
                   </div>
-                </div>
+                </dl>
               </div>
 
-              <div className='rounded-[18px] border border-white/10 bg-[#11110f] p-3'>
-                <div className='flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400'>
-                  <Activity className='h-3.5 w-3.5 text-cyan-300' />
-                  Warm state
+              <div className='rounded-[5px] border border-[#34342e] bg-[#0c0d0b] p-3'>
+                <div className='flex items-center gap-2 font-[family:var(--font-mono)] text-[10px] font-semibold uppercase tracking-[0.14em] text-[#918b80]'>
+                  <Activity className='h-3.5 w-3.5 text-[#58aaff]' aria-hidden='true' />
+                  Current inventory
                 </div>
-                <div className='mt-3 space-y-2 text-sm text-slate-200'>
+                <dl className='mt-3 space-y-2 text-sm text-[#d6d0c3]'>
                   <div className='flex items-center justify-between gap-3'>
-                    <span>Agents</span>
-                    <span className='text-slate-400'>{agents.length}</span>
+                    <dt>Agents</dt>
+                    <dd className='text-[#918b80]'>{agents.length}</dd>
                   </div>
                   <div className='flex items-center justify-between gap-3'>
-                    <span>Sessions</span>
-                    <span className='text-slate-400'>{sessions.length}</span>
+                    <dt>Sessions</dt>
+                    <dd className='text-[#918b80]'>{sessions.length}</dd>
                   </div>
                   <div className='flex items-center justify-between gap-3'>
-                    <span>Alerts</span>
-                    <span className='text-slate-400'>{monitoringAlerts.length}</span>
+                    <dt>Open alerts</dt>
+                    <dd className='text-[#918b80]'>{monitoringAlerts.length}</dd>
                   </div>
-                </div>
+                </dl>
               </div>
 
-              <div className='rounded-[18px] border border-white/10 bg-[#11110f] p-3'>
-                <div className='flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400'>
-                  <ShieldCheck className='h-3.5 w-3.5 text-emerald-300' />
-                  Boot ledger
+              <div className='rounded-[5px] border border-[#34342e] bg-[#0c0d0b] p-3'>
+                <div className='flex items-center gap-2 font-[family:var(--font-mono)] text-[10px] font-semibold uppercase tracking-[0.14em] text-[#918b80]'>
+                  <ShieldCheck className='h-3.5 w-3.5 text-[#4bd69b]' aria-hidden='true' />
+                  Startup ledger
                 </div>
                 <div className='mt-3'>
-                  <BootLedger steps={bootSteps} compact />
+                  <BootLedger steps={bootSteps} compact announce={!bootVisible} />
                 </div>
               </div>
             </div>
@@ -668,127 +683,125 @@ export function DashboardSpaPanelHost() {
         </aside>
       </div>
 
-      {chatPanelOpen ? (
-        <div className='fixed inset-y-6 right-6 z-40 w-[min(28rem,calc(100vw-2rem))] overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,#101726_0%,#0b1119_100%)] shadow-[0_38px_120px_rgba(2,2,5,0.58)]'>
-          <div className='flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4'>
-            <div>
-              <p className='text-[11px] font-semibold uppercase tracking-[0.18em] text-[#ffb199]'>
-                Chat panel
+      <DashboardDialog
+        open={chatPanelOpen}
+        onOpenChange={setChatPanelOpen}
+        title='Session tools'
+        description='Review current session presence or move into the full session workspace.'
+        className='max-w-xl'
+        footer={
+          <button
+            data-autofocus
+            type='button'
+            onClick={() => {
+              setChatPanelOpen(false)
+              navigateToPanel('chat')
+            }}
+            className='inline-flex min-h-11 items-center gap-2 rounded-[4px] border border-[#ff6a32] bg-[#ff571c] px-4 text-sm font-semibold text-[#090a08] transition-colors hover:bg-[#ff7545] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff9a72] motion-reduce:transition-none'
+          >
+            Open sessions
+            <ArrowRight className='h-4 w-4' aria-hidden='true' />
+          </button>
+        }
+      >
+        <div className='space-y-4'>
+          <div className='grid gap-3 sm:grid-cols-2'>
+            <div className='rounded-[5px] border border-[#34342e] bg-[#0c0d0b] p-4'>
+              <p className='font-[family:var(--font-mono)] text-[10px] font-semibold uppercase tracking-[0.14em] text-[#918b80]'>
+                Sessions present
               </p>
-              <h3 className='mt-2 font-[family:var(--font-site-display)] text-[1.3rem] tracking-[-0.05em] text-white'>
-                Session relay
-              </h3>
+              <p className='mt-3 text-2xl font-semibold text-[#eee9dc]'>{sessions.length}</p>
             </div>
-            <button
-              type='button'
-              onClick={() => setChatPanelOpen(false)}
-              className='rounded-full border border-white/10 bg-[#11110f] p-2 text-slate-200'
-            >
-              <X className='h-4 w-4' />
-            </button>
-          </div>
-
-          <div className='space-y-4 px-5 py-5'>
-            <p className='text-sm leading-6 text-slate-300'>
-              The shell keeps chat as a first-class panel. Open the session surface to work the live
-              session list without leaving the dashboard.
-            </p>
-
-            <div className='grid gap-3 sm:grid-cols-2'>
-              <div className='rounded-[18px] border border-white/10 bg-[#11110f] p-4'>
-                <p className='text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400'>
-                  Sessions
-                </p>
-                <p className='mt-3 text-2xl font-semibold text-white'>{sessions.length}</p>
-              </div>
-              <div className='rounded-[18px] border border-white/10 bg-[#11110f] p-4'>
-                <p className='text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400'>
-                  Essential route
-                </p>
-                <p className='mt-3 text-sm leading-6 text-slate-200'>
-                  Chat stays available even when the interface is reduced to essential mode.
-                </p>
-              </div>
+            <div className='rounded-[5px] border border-[#34342e] bg-[#0c0d0b] p-4'>
+              <p className='font-[family:var(--font-mono)] text-[10px] font-semibold uppercase tracking-[0.14em] text-[#918b80]'>
+                Access
+              </p>
+              <p className='mt-3 text-sm leading-6 text-[#d6d0c3]'>
+                Session tools remain available in both Essential and Full views.
+              </p>
             </div>
-
-            <button
-              type='button'
-              onClick={() => {
-                setChatPanelOpen(false)
-                navigateToPanel('chat')
-              }}
-              className='inline-flex items-center gap-2 rounded-full border border-sky-400/28 bg-sky-400/10 px-4 py-2 text-sm font-medium text-sky-100'
-            >
-              Open sessions panel
-              <ArrowRight className='h-4 w-4' />
-            </button>
           </div>
+          <p className='text-sm leading-6 text-[#aaa397]'>
+            Open the session workspace to inspect activity, ownership, and execution context without
+            losing your current operator state.
+          </p>
         </div>
-      ) : null}
+      </DashboardDialog>
 
-      {bootVisible ? (
-        <div className='fixed inset-0 z-50 flex items-center justify-center bg-[#05080d]/82 px-4 backdrop-blur-md'>
-          <div className='w-full max-w-3xl rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,#101726_0%,#0b1119_100%)] p-6 shadow-[0_38px_120px_rgba(2,2,5,0.58)]'>
-            <div className='flex flex-wrap items-start justify-between gap-4'>
-              <div className='space-y-3'>
-                <div className='inline-flex items-center gap-2 rounded-full border border-sky-400/20 bg-sky-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-100'>
-                  <Bot className='h-3.5 w-3.5' />
-                  Boot sequence
-                </div>
-                <div>
-                  <h2 className='font-[family:var(--font-site-display)] text-[1.95rem] tracking-[-0.06em] text-white'>
-                    Bringing the dashboard online
-                  </h2>
-                  <p className='mt-2 max-w-2xl text-sm leading-6 text-slate-300'>
-                    The shell is walking auth, capabilities, config, and the initial data preload before
-                    releasing panel control.
-                  </p>
-                </div>
-              </div>
-
-              <div className='rounded-[22px] border border-white/10 bg-[#11110f] px-4 py-3 text-right'>
-                <p className='text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400'>
-                  Progress
-                </p>
-                <p className='mt-2 text-3xl font-semibold text-white'>
-                  {completedSteps}
-                  <span className='text-slate-500'>/{bootSteps.length}</span>
-                </p>
-              </div>
+      <DashboardDialog
+        open={bootVisible}
+        onOpenChange={setBootVisible}
+        title={bootTitle}
+        description={bootDescription}
+        className='max-w-3xl'
+        footer={
+          <button
+            data-autofocus
+            type='button'
+            onClick={() => setBootVisible(false)}
+            className='inline-flex min-h-11 items-center gap-2 rounded-[4px] border border-[#3b3a33] bg-[#0c0d0b] px-4 text-sm font-medium text-[#eee9dc] transition-colors hover:border-[#59564d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847] motion-reduce:transition-none'
+          >
+            {bootOutcome.phase === 'running'
+              ? 'Continue while checks run'
+              : bootOutcome.phase === 'degraded'
+                ? 'Continue with available data'
+                : 'Enter workspace'}
+            <ChevronRight className='h-4 w-4 text-[#58aaff]' aria-hidden='true' />
+          </button>
+        }
+      >
+        <div className='space-y-6'>
+          <div className='flex flex-wrap items-center justify-between gap-3'>
+            <div>
+              <p className='font-[family:var(--font-mono)] text-[10px] font-semibold uppercase tracking-[0.18em] text-[#ff8355]'>
+                Startup evidence
+              </p>
+              <p className='mt-2 text-sm text-[#aaa397]'>
+                {bootOutcome.settled} of {bootSteps.length} checks settled
+                {bootOutcome.errors ? ` · ${bootOutcome.errors} failed` : ''}
+                {bootOutcome.warnings ? ` · ${bootOutcome.warnings} partial` : ''}
+              </p>
             </div>
-
-            <div className='mt-6 rounded-full border border-white/10 bg-[#11110f] p-1'>
-              <div
-                className='h-2 rounded-full bg-[linear-gradient(90deg,#ff4d00_0%,#ffb199_100%)] transition-all'
-                style={{ width: `${(completedSteps / bootSteps.length) * 100}%` }}
-              />
-            </div>
-
-            <div className='mt-6'>
-              <BootLedger steps={bootSteps} />
-            </div>
-
-            <div className='mt-6 flex flex-wrap items-center gap-2 text-[11px] text-slate-400'>
-              <span className='rounded-full border border-white/10 bg-[#11110f] px-2.5 py-1'>
-                {orgName}
-              </span>
-              <span className='rounded-full border border-white/10 bg-[#11110f] px-2.5 py-1'>
-                {subscription || 'free'}
-              </span>
-              <span className='rounded-full border border-white/10 bg-[#11110f] px-2.5 py-1'>
-                {interfaceMode}
-              </span>
-              <span className='rounded-full border border-white/10 bg-[#11110f] px-2.5 py-1'>
-                {desktopRuntimeActive ? 'desktop' : 'browser'}
-              </span>
-              <span className='inline-flex items-center gap-1 rounded-full border border-white/10 bg-[#11110f] px-2.5 py-1'>
-                <ChevronRight className='h-3.5 w-3.5 text-sky-300' />
-                {panelLabel}
-              </span>
-            </div>
+            <span
+              className={cn(
+                'rounded-[3px] border px-2.5 py-1 font-[family:var(--font-mono)] text-[10px] uppercase tracking-[0.14em]',
+                bootOutcome.phase === 'ready'
+                  ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200'
+                  : bootOutcome.phase === 'degraded'
+                    ? 'border-amber-400/30 bg-amber-400/10 text-amber-200'
+                    : 'border-sky-400/30 bg-sky-400/10 text-sky-200',
+              )}
+            >
+              {bootOutcome.phase === 'ready'
+                ? 'Verified'
+                : bootOutcome.phase === 'degraded'
+                  ? 'Attention needed'
+                  : 'Checking'}
+            </span>
           </div>
+
+          <div
+            role='progressbar'
+            aria-label='Startup checks settled'
+            aria-valuemin={0}
+            aria-valuemax={bootSteps.length}
+            aria-valuenow={bootOutcome.settled}
+            className='rounded-full border border-[#34342e] bg-[#0c0d0b] p-1'
+          >
+            <div
+              className={cn(
+                'h-2 rounded-full transition-[width] duration-200 motion-reduce:transition-none',
+                bootOutcome.phase === 'degraded'
+                  ? 'bg-amber-400'
+                  : 'bg-[linear-gradient(90deg,#ff571c_0%,#58aaff_100%)]',
+              )}
+              style={{ width: `${(bootOutcome.settled / bootSteps.length) * 100}%` }}
+            />
+          </div>
+
+          <BootLedger steps={bootSteps} />
         </div>
-      ) : null}
+      </DashboardDialog>
     </div>
   )
 }

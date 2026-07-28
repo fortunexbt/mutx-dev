@@ -16,7 +16,7 @@ export function StatusBadge({ status, label, className, style, ...props }: Statu
   return (
     <span
       className={cn(
-        "inline-flex min-h-6 items-center gap-1.5 rounded-[4px] border px-2 py-1 font-[family:var(--font-mono)] text-[8px] font-semibold uppercase tracking-[0.14em] tabular-nums",
+        "inline-flex min-h-6 items-center gap-1.5 rounded-[4px] border px-2 py-1 font-[family:var(--font-mono)] text-[11px] font-semibold uppercase tracking-[0.1em] tabular-nums",
         className,
       )}
       data-status={status}

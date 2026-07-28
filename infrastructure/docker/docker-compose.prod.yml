@@ -1,27 +1,43 @@
 x-api-env: &api-env
   ENVIRONMENT: production
   LOG_LEVEL: ${LOG_LEVEL:-info}
-  DATABASE_URL: ${DATABASE_URL}
-  DATABASE_SSL_MODE: ${DATABASE_SSL_MODE:-require}
+  DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
+  DATABASE_SSL_MODE: ${DATABASE_SSL_MODE:-disable}
   DATABASE_REQUIRED_ON_STARTUP: "true"
-  JWT_SECRET: ${JWT_SECRET}
-  SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY}
+  JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+  SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?SECRET_ENCRYPTION_KEY must be set}
+  RECEIPT_SIGNING_KEY_ID: ${RECEIPT_SIGNING_KEY_ID:?RECEIPT_SIGNING_KEY_ID must be set}
+  RECEIPT_SIGNING_PRIVATE_KEY: ${RECEIPT_SIGNING_PRIVATE_KEY:?RECEIPT_SIGNING_PRIVATE_KEY must be set}
+  RECEIPT_TRUSTED_PUBLIC_KEYS: ${RECEIPT_TRUSTED_PUBLIC_KEYS:?RECEIPT_TRUSTED_PUBLIC_KEYS must be set}
   CORS_ORIGINS: ${CORS_ORIGINS:-https://mutx.dev,https://app.mutx.dev}
+  FRONTEND_URL: ${FRONTEND_URL:-https://app.mutx.dev}
+  PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.mutx.dev}
+  AUTH_REDIRECT_ORIGINS: ${AUTH_REDIRECT_ORIGINS:-https://mutx.dev,https://app.mutx.dev,https://pico.mutx.dev}
+  ALLOWED_HOSTS: ${ALLOWED_HOSTS:?ALLOWED_HOSTS must list exact API hostnames}
+  FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:?FORWARDED_ALLOW_IPS must list trusted proxy CIDRs}
+  REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-true}
+  RESEND_API_KEY: ${RESEND_API_KEY:-}
+  RESEND_FROM_EMAIL: "${RESEND_FROM_EMAIL:-MUTX <hello@mutx.dev>}"
+  SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@mutx.dev}
+  SMTP_FROM_NAME: ${SMTP_FROM_NAME:-MUTX}
   ENABLE_RAG_API: ${ENABLE_RAG_API:-false}
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: mutx-postgres-prod
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-mutx}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: ${POSTGRES_DB:-mutx}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mutx} -d ${POSTGRES_DB:-mutx} && PGPASSWORD=${POSTGRES_PASSWORD} psql -U ${POSTGRES_USER:-mutx} -d ${POSTGRES_DB:-mutx} -c 'SELECT 1'"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mutx} -d ${POSTGRES_DB:-mutx} && PGPASSWORD=\"$${POSTGRES_PASSWORD}\" psql -w -U ${POSTGRES_USER:-mutx} -d ${POSTGRES_DB:-mutx} -v ON_ERROR_STOP=1 -c 'SELECT 1'"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,7 +47,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: mutx-redis-prod
     restart: unless-stopped
     command: >
       redis-server
@@ -55,7 +70,6 @@ services:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.api.production
-    container_name: mutx-migrate-prod
     restart: "no"
     environment:
       <<: *api-env
@@ -71,7 +85,6 @@ services:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.api.production
-    container_name: mutx-api-prod
     restart: unless-stopped
     environment:
       <<: *api-env
@@ -84,8 +97,16 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    ports:
+      - "127.0.0.1:${MUTX_API_HOST_PORT:-8000}:8000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/ready"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import http.client, json; connection = http.client.HTTPConnection('localhost', 8000, timeout=4); connection.request('GET', '/ready'); response = connection.getresponse(); payload = json.load(response); assert response.status == 200 and payload.get('status') == 'ready' and payload.get('database') == 'ready'",
+        ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -97,11 +118,13 @@ services:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.api.production
-    container_name: mutx-monitor-prod
     restart: unless-stopped
     environment:
       <<: *api-env
       BACKGROUND_MONITOR_ENABLED: "true"
+      MONITOR_HEARTBEAT_FILE: /tmp/mutx-monitor-heartbeat
+      MONITOR_HEARTBEAT_MAX_AGE_SECONDS: ${MONITOR_HEARTBEAT_MAX_AGE_SECONDS:-30}
+      MONITOR_MAX_CONSECUTIVE_FAILURES: ${MONITOR_MAX_CONSECUTIVE_FAILURES:-3}
     command: ["python", "-m", "src.api.monitor_worker"]
     depends_on:
       migrate:
@@ -111,7 +134,11 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      disable: true
+      test: ["CMD", "python", "-m", "src.api.monitor_worker", "--healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
     networks:
       - mutx-network
 
@@ -123,7 +150,6 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.mutx.dev}
         NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://app.mutx.dev}
-    container_name: mutx-frontend-prod
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -132,17 +158,25 @@ services:
       INTERNAL_API_URL: http://api:8000
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.mutx.dev}
       NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://app.mutx.dev}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
+      DATABASE_SSL_MODE: ${DATABASE_SSL_MODE:-disable}
       NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: "${RESEND_FROM_EMAIL:-MUTX <hello@mutx.dev>}"
+      RESEND_AUDIENCE_ID: ${RESEND_AUDIENCE_ID:-}
+      RESEND_WAITLIST_TEMPLATE_ID: ${RESEND_WAITLIST_TEMPLATE_ID:-}
+      RESEND_CONTACT_TEMPLATE_ID: ${RESEND_CONTACT_TEMPLATE_ID:-}
+      CONTACT_NOTIFY_EMAIL: ${CONTACT_NOTIFY_EMAIL:-hello@mutx.dev}
+      LEAD_DISCORD_WEBHOOK_URL: ${LEAD_DISCORD_WEBHOOK_URL:-}
     depends_on:
       api:
         condition: service_healthy
     healthcheck:
       test:
         [
-          "CMD",
-          "node",
-          "-e",
-          "require('http').get('http://127.0.0.1:3000', (res) => process.exit(res.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))",
+          "CMD-SHELL",
+          "node scripts/verify-release-http.mjs frontend http://127.0.0.1:3000 && node scripts/verify-release-http.mjs health http://127.0.0.1:3000/api/dashboard/health",
         ]
       interval: 15s
       timeout: 5s
@@ -153,21 +187,27 @@ services:
 
   nginx:
     image: nginx:alpine
-    container_name: mutx-nginx-prod
     restart: unless-stopped
+    environment:
+      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
+      MUTX_API_HOST: ${MUTX_API_HOST:?MUTX_API_HOST must be the exact public API hostname}
     ports:
-      - "80:80"
-      - "443:443"
+      - "${MUTX_EDGE_BIND_ADDRESS:-0.0.0.0}:${MUTX_HTTP_HOST_PORT:-80}:80"
+      - "${MUTX_EDGE_BIND_ADDRESS:-0.0.0.0}:${MUTX_HTTPS_HOST_PORT:-443}:443"
     volumes:
-      - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro
+      - ./nginx.prod.conf:/etc/nginx/templates/nginx.conf.template:ro
+      - ${MUTX_SSL_DIR:-./ssl}:/etc/nginx/ssl:ro
     depends_on:
       api:
         condition: service_healthy
       frontend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/health"]
+      test:
+        [
+          "CMD-SHELL",
+          "body=$$(wget -q -O - http://127.0.0.1/ready) && printf '%s' \"$$body\" | grep -q '\"status\":\"ready\"' && printf '%s' \"$$body\" | grep -q '\"database\":\"ready\"'",
+        ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -177,9 +217,15 @@ services:
 
 volumes:
   postgres_data:
+    name: ${MUTX_POSTGRES_VOLUME_NAME:-docker_postgres_data}
+    external: true
   redis_data:
+    name: ${MUTX_REDIS_VOLUME_NAME:-docker_redis_data}
+    external: true
 
 networks:
   mutx-network:
     driver: bridge
-    name: mutx_prod_network
+    ipam:
+      config:
+        - subnet: ${MUTX_NETWORK_SUBNET:?MUTX_NETWORK_SUBNET must be set}

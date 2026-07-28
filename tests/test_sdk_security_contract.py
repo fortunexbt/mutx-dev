@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -29,6 +31,8 @@ def _action_evaluate_payload(**overrides: Any) -> dict[str, Any]:
         "rule_name": "allow-all",
         "reason": "Policy allows this action.",
         "would_modify": False,
+        "evaluation_id": str(uuid.uuid4()),
+        "receipt_id": str(uuid.uuid4()),
         "action_id": str(uuid.uuid4()),
         "action_hash": "abc123",
     }
@@ -40,7 +44,9 @@ def _approval_request_payload(**overrides: Any) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     payload = {
         "request_id": str(uuid.uuid4()),
-        "token": "tok_" + str(uuid.uuid4()).replace("-", ""),
+        "owner_id": str(uuid.uuid4()),
+        "reviewer_id": str(uuid.uuid4()),
+        "can_resolve": True,
         "status": "pending",
         "tool_name": "http_request",
         "reason": "Test approval",
@@ -75,7 +81,7 @@ def _governance_metrics_payload(**overrides: Any) -> dict[str, Any]:
 
 
 def _make_client(handler) -> httpx.Client:
-    return httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    return httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +98,8 @@ def test_action_evaluate_response_parsable() -> None:
     assert resp.rule_name == "allow-all"
     assert resp.reason == "Policy allows this action."
     assert resp.would_modify is False
+    assert resp.evaluation_id == payload["evaluation_id"]
+    assert resp.receipt_id == payload["receipt_id"]
     assert resp.action_id == payload["action_id"]
     assert resp.action_hash == "abc123"
     assert resp._data == payload
@@ -101,6 +109,8 @@ def test_action_evaluate_response_optional_fields_missing() -> None:
     payload = {
         "decision": "deny",
         "reason": "Blocked.",
+        "evaluation_id": str(uuid.uuid4()),
+        "receipt_id": str(uuid.uuid4()),
         "action_id": str(uuid.uuid4()),
         "action_hash": "xyz",
     }
@@ -117,7 +127,9 @@ def test_approval_request_parsable() -> None:
     req = ApprovalRequest(payload)
 
     assert req.request_id == payload["request_id"]
-    assert req.token == payload["token"]
+    assert req.owner_id == uuid.UUID(payload["owner_id"])
+    assert req.reviewer_id == uuid.UUID(payload["reviewer_id"])
+    assert req.can_resolve is True
     assert req.status == "pending"
     assert req.tool_name == "http_request"
     assert isinstance(req.created_at, datetime)
@@ -186,22 +198,22 @@ def test_evaluate_action_uses_correct_route() -> None:
         tool_args={"url": "https://example.com"},
         agent_id="agent-1",
         session_id="sess-1",
-        user_id="user-1",
         trigger="manual",
         runtime="mutx",
     )
 
-    assert captured["path"] == "/security/actions/evaluate"
+    assert captured["path"] == "/v1/security/actions/evaluate"
     assert captured["json"]["tool_name"] == "http_request"
     assert captured["json"]["agent_id"] == "agent-1"
     assert captured["json"]["session_id"] == "sess-1"
+    assert "user_id" not in captured["json"]
     assert isinstance(result, ActionEvaluateResponse)
 
 
 def test_evaluate_action_raises_on_async_client() -> None:
     import asyncio
 
-    async_client = httpx.AsyncClient(base_url="https://api.test")
+    async_client = httpx.AsyncClient(base_url="https://api.test/v1/")
     sec = Security(async_client)
 
     try:
@@ -219,6 +231,7 @@ def test_evaluate_action_raises_on_async_client() -> None:
 
 def test_request_approval_uses_correct_route() -> None:
     captured: dict[str, Any] = {}
+    reviewer_id = uuid.uuid4()
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["path"] = request.url.path
@@ -234,13 +247,15 @@ def test_request_approval_uses_correct_route() -> None:
         session_id="sess-1",
         reason="Need approval",
         timeout_minutes=10,
-        user_id="user-1",
+        reviewer_id=reviewer_id,
     )
 
-    assert captured["path"] == "/security/approvals/request"
+    assert captured["path"] == "/v1/security/approvals/request"
     assert captured["json"]["tool_name"] == "http_request"
     assert captured["json"]["reason"] == "Need approval"
     assert captured["json"]["timeout_minutes"] == 10
+    assert captured["json"]["reviewer_id"] == str(reviewer_id)
+    assert "user_id" not in captured["json"]
     assert isinstance(result, ApprovalRequest)
 
 
@@ -255,7 +270,7 @@ def test_get_approval_uses_correct_route() -> None:
     sec = Security(_make_client(handler))
     result = sec.get_approval(request_id=request_id)
 
-    assert captured["path"] == f"/security/approvals/{request_id}"
+    assert captured["path"] == f"/v1/security/approvals/{request_id}"
     assert isinstance(result, ApprovalRequest)
 
 
@@ -269,7 +284,7 @@ def test_list_pending_approvals_uses_correct_route() -> None:
     sec = Security(_make_client(handler))
     result = sec.list_pending_approvals()
 
-    assert captured["path"] == "/security/approvals"
+    assert captured["path"] == "/v1/security/approvals"
     assert isinstance(result, list)
     assert len(result) == 2
     assert all(isinstance(r, ApprovalRequest) for r in result)
@@ -277,7 +292,7 @@ def test_list_pending_approvals_uses_correct_route() -> None:
 
 def test_approve_uses_correct_route_and_body() -> None:
     captured: dict[str, Any] = {}
-    token = "tok_abc123"
+    request_id = str(uuid.uuid4())
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["path"] = request.url.path
@@ -285,17 +300,17 @@ def test_approve_uses_correct_route_and_body() -> None:
         return httpx.Response(200, json={"status": "approved"})
 
     sec = Security(_make_client(handler))
-    result = sec.approve(token=token, reviewer="alice", comment="Looks fine")
+    result = sec.approve(request_id=request_id, comment="Looks fine")
 
-    assert captured["path"] == f"/security/approvals/{token}/approve"
-    assert captured["json"]["reviewer"] == "alice"
+    assert captured["path"] == f"/v1/security/approvals/{request_id}/approve"
+    assert "reviewer" not in captured["json"]
     assert captured["json"]["comment"] == "Looks fine"
     assert isinstance(result, dict)
 
 
 def test_deny_uses_correct_route_and_body() -> None:
     captured: dict[str, Any] = {}
-    token = "tok_abc123"
+    request_id = str(uuid.uuid4())
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["path"] = request.url.path
@@ -303,9 +318,9 @@ def test_deny_uses_correct_route_and_body() -> None:
         return httpx.Response(200, json={"status": "denied"})
 
     sec = Security(_make_client(handler))
-    result = sec.deny(token=token, reviewer="alice", reason="Not safe")
+    result = sec.deny(request_id=request_id, reason="Not safe")
 
-    assert captured["path"] == f"/security/approvals/{token}/deny"
+    assert captured["path"] == f"/v1/security/approvals/{request_id}/deny"
     assert captured["json"]["comment"] == "Not safe"
     assert isinstance(result, dict)
 
@@ -321,7 +336,7 @@ def test_get_receipt_uses_correct_route() -> None:
     sec = Security(_make_client(handler))
     result = sec.get_receipt(receipt_id=receipt_id)
 
-    assert captured["path"] == f"/security/receipts/{receipt_id}"
+    assert captured["path"] == f"/v1/security/receipts/{receipt_id}"
     assert isinstance(result, dict)
 
 
@@ -335,10 +350,10 @@ def test_get_session_receipts_uses_correct_route_and_params() -> None:
         return httpx.Response(200, json={"receipts": []})
 
     sec = Security(_make_client(handler))
-    result = sec.get_session_receipts(session_id=session_id, limit=50)
+    result = sec.get_session_receipts(session_id=session_id, limit=50, offset=10)
 
-    assert captured["path"] == f"/security/receipts/session/{session_id}"
-    assert captured["params"] == {"limit": "50"}
+    assert captured["path"] == f"/v1/security/receipts/session/{session_id}"
+    assert captured["params"] == {"limit": "50", "offset": "10"}
     assert isinstance(result, dict)
 
 
@@ -352,7 +367,7 @@ def test_run_compliance_check_uses_correct_route() -> None:
     sec = Security(_make_client(handler))
     result = sec.run_compliance_check()
 
-    assert captured["path"] == "/security/compliance"
+    assert captured["path"] == "/v1/security/compliance"
     assert isinstance(result, dict)
 
 
@@ -366,7 +381,7 @@ def test_get_metrics_uses_correct_route_and_returns_governance_metrics() -> None
     sec = Security(_make_client(handler))
     result = sec.get_metrics()
 
-    assert captured["path"] == "/security/metrics"
+    assert captured["path"] == "/v1/security/metrics"
     assert isinstance(result, GovernanceMetrics)
 
 
@@ -380,7 +395,7 @@ def test_get_prometheus_metrics_uses_correct_route_and_returns_text() -> None:
     sec = Security(_make_client(handler))
     result = sec.get_prometheus_metrics()
 
-    assert captured["path"] == "/security/metrics/prometheus"
+    assert captured["path"] == "/v1/security/metrics/prometheus"
     assert isinstance(result, str)
     assert "metric_a" in result
 
@@ -401,13 +416,13 @@ def test_create_session_uses_correct_route_and_params() -> None:
         agent_id=agent_id,
         original_request="test request",
         stated_intent="test intent",
-        user_id="user-1",
     )
 
-    assert captured["path"] == "/security/sessions"
+    assert captured["path"] == "/v1/security/sessions"
     assert captured["params"]["session_id"] == session_id
     assert captured["params"]["agent_id"] == agent_id
     assert captured["params"]["original_request"] == "test request"
+    assert "user_id" not in captured["params"]
     assert isinstance(result, dict)
 
 
@@ -422,7 +437,7 @@ def test_get_session_uses_correct_route() -> None:
     sec = Security(_make_client(handler))
     result = sec.get_session(session_id=session_id)
 
-    assert captured["path"] == f"/security/sessions/{session_id}"
+    assert captured["path"] == f"/v1/security/sessions/{session_id}"
     assert isinstance(result, dict)
 
 
@@ -438,6 +453,52 @@ def test_close_session_uses_correct_route() -> None:
     sec = Security(_make_client(handler))
     result = sec.close_session(session_id=session_id)
 
-    assert captured["path"] == f"/security/sessions/{session_id}"
+    assert captured["path"] == f"/v1/security/sessions/{session_id}"
     assert captured["method"] == "DELETE"
     assert isinstance(result, dict)
+
+
+def test_identity_fields_absent_from_sync_and_async_sdk_contracts() -> None:
+    for method_name in (
+        "evaluate_action",
+        "aevaluate_action",
+        "request_approval",
+        "arequest_approval",
+        "create_session",
+        "acreate_session",
+    ):
+        assert "user_id" not in inspect.signature(getattr(Security, method_name)).parameters
+    for method_name in ("approve", "aapprove", "deny", "adeny"):
+        assert "reviewer" not in inspect.signature(getattr(Security, method_name)).parameters
+
+
+def test_async_security_writes_derive_identity_from_authentication() -> None:
+    captured: list[tuple[str, dict[str, Any]]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else {}
+        captured.append((request.url.path, body))
+        if request.url.path.endswith("/actions/evaluate"):
+            return httpx.Response(200, json=_action_evaluate_payload())
+        if request.url.path.endswith("/approvals/request"):
+            return httpx.Response(201, json=_approval_request_payload())
+        return httpx.Response(200, json={"status": "ok"})
+
+    async def exercise() -> None:
+        async with httpx.AsyncClient(
+            base_url="https://api.test/v1/",
+            transport=httpx.MockTransport(handler),
+        ) as http:
+            security = Security(http)
+            await security.aevaluate_action("tool", {}, "agent-id", "session-id")
+            await security.arequest_approval("tool", {}, "agent-id", "session-id")
+            request_id = str(uuid.uuid4())
+            await security.aapprove(request_id, comment="approved")
+            await security.adeny(request_id, reason="denied")
+            await security.acreate_session("session-id", "agent-id")
+
+    asyncio.run(exercise())
+
+    assert captured
+    assert all("user_id" not in body for _, body in captured)
+    assert all("reviewer" not in body for _, body in captured)

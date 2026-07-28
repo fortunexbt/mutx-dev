@@ -8,6 +8,7 @@ from passlib.hash import pbkdf2_sha256
 # Using bcrypt directly for password hashing
 
 MIN_PASSWORD_LENGTH = 8
+MAX_PASSWORD_BYTES = 72
 
 
 def hash_password(password: str) -> str:
@@ -30,6 +31,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def validate_password_strength(password: str) -> tuple[bool, Optional[str]]:
     if len(password) < MIN_PASSWORD_LENGTH:
         return False, f"Password must be at least {MIN_PASSWORD_LENGTH} characters long"
+
+    if len(password.encode("utf-8")) > MAX_PASSWORD_BYTES:
+        return False, f"Password must not exceed {MAX_PASSWORD_BYTES} bytes"
 
     if not re.search(r"[A-Z]", password):
         return False, "Password must contain at least one uppercase letter"

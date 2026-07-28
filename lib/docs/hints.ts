@@ -1,49 +1,147 @@
 /**
- * Preprocess GitBook-style hint blocks: {% hint style="info" %}...{% endhint %}
- * Converts to accessible HTML callout divs.
+ * Convert the small GitBook syntax subset used by published MUTX docs into
+ * Markdown before parsing. Arbitrary source HTML remains disabled downstream.
  */
 
-const HINT_STYLES: Record<string, { icon: string; label: string; cssClass: string }> = {
-  info: {
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
-    label: "Note",
-    cssClass: "docs-callout docs-callout-info",
-  },
-  warning: {
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
-    label: "Warning",
-    cssClass: "docs-callout docs-callout-warning",
-  },
-  danger: {
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
-    label: "Danger",
-    cssClass: "docs-callout docs-callout-danger",
-  },
-  tip: {
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>`,
-    label: "Tip",
-    cssClass: "docs-callout docs-callout-tip",
-  },
+const HINT_LABELS: Record<string, string> = {
+  info: "NOTE",
+  warning: "WARNING",
+  danger: "DANGER",
+  tip: "TIP",
 };
 
-/**
- * Convert GitBook liquid hint syntax to accessible HTML callout divs.
- * Handles: {% hint style="info" %}...{% endhint %}
- */
+function quoteMarkdown(content: string): string {
+  return content
+    .trim()
+    .split("\n")
+    .map((line) => `> ${line}`.trimEnd())
+    .join("\n");
+}
+
+/** Convert GitBook liquid hints to GitHub-alert-style Markdown blockquotes. */
 export function preprocessHints(source: string): string {
-  // Match {% hint style="TYPE" %}...{% endhint %}
   const hintRegex = /{%\s*hint\s+style=["']([^"']+)["']\s*%}([\s\S]*?){%\s*endhint\s*%}/g;
 
   return source.replace(hintRegex, (_match, style: string, content: string) => {
-    const styleKey = (style || "info").toLowerCase();
-    const config = HINT_STYLES[styleKey] ?? HINT_STYLES.info;
-
-    // Strip trailing whitespace from content but preserve paragraphs
-    const trimmedContent = content.trim();
-
-    return `<div class="${config.cssClass}" role="note" aria-label="${config.label}">
-<div class="docs-callout-icon">${config.icon}</div>
-<div class="docs-callout-body">${trimmedContent}</div>
-</div>`;
+    const label = HINT_LABELS[style.toLowerCase()] ?? HINT_LABELS.info;
+    const quotedContent = quoteMarkdown(content);
+    return `> [!${label}]${quotedContent ? `\n${quotedContent}` : ""}`;
   });
+}
+
+const HTML_ENTITIES: Record<string, string> = {
+  "&nbsp;": " ",
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&apos;": "'",
+};
+
+function decodeHtmlEntities(value: string): string {
+  return value.replace(/&(nbsp|amp|lt|gt|quot|#39|apos);/gi, (entity) => {
+    return HTML_ENTITIES[entity.toLowerCase()] ?? entity;
+  });
+}
+
+function htmlText(value: string): string {
+  return decodeHtmlEntities(
+    value
+      .replace(/<(script|style|iframe|object|embed)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+      .replace(/<[^>]*>/g, " "),
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function markdownCell(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
+}
+
+function attribute(tag: string, name: string): string | null {
+  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*["']([^"']*)["']`, "i"));
+  return match?.[1] ?? null;
+}
+
+interface HtmlCell {
+  tag: string;
+  content: string;
+  text: string;
+}
+
+function cellsFromRow(row: string, tagName: "th" | "td"): HtmlCell[] {
+  const cells: HtmlCell[] = [];
+  const regex = new RegExp(`<${tagName}\\b([^>]*)>([\\s\\S]*?)<\\/${tagName}>`, "gi");
+  for (const match of row.matchAll(regex)) {
+    cells.push({ tag: match[1], content: match[2], text: htmlText(match[2]) });
+  }
+  return cells;
+}
+
+function rowMatches(section: string): string[] {
+  return Array.from(section.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi), (match) => match[1]);
+}
+
+function linkFromCell(cell: HtmlCell | undefined): { href: string; label: string } | null {
+  if (!cell) return null;
+  const match = cell.content.match(/<a\b([^>]*)>([\s\S]*?)<\/a>/i);
+  if (!match) return null;
+  const href = attribute(match[1], "href");
+  if (!href) return null;
+  return { href, label: htmlText(match[2]) || href };
+}
+
+function imageFromCell(cell: HtmlCell | undefined): { src: string; alt: string } | null {
+  if (!cell) return null;
+  const match = cell.content.match(/<img\b([^>]*)\/?\s*>/i);
+  if (!match) return null;
+  const src = attribute(match[1], "src");
+  if (!src) return null;
+  return { src, alt: attribute(match[1], "alt") ?? "" };
+}
+
+/**
+ * Convert only `<table data-view="cards">` into a normalized GFM table. The
+ * allowlist extracts text, one target link, and one cover image; scripts,
+ * handlers, styles, and every other raw tag are discarded as data.
+ */
+export function preprocessGitBookCardTables(source: string): string {
+  const cardTableRegex = /<table\b(?=[^>]*\bdata-view\s*=\s*["']cards["'])[^>]*>([\s\S]*?)<\/table>/gi;
+
+  return source.replace(cardTableRegex, (_table, inner: string) => {
+    const head = inner.match(/<thead\b[^>]*>([\s\S]*?)<\/thead>/i)?.[1] ?? "";
+    const body = inner.match(/<tbody\b[^>]*>([\s\S]*?)<\/tbody>/i)?.[1] ?? inner;
+    const headerCells = cellsFromRow(rowMatches(head)[0] ?? "", "th");
+    const titleIndex = Math.max(0, headerCells.findIndex((cell) => /^title$/i.test(cell.text)));
+    const descriptionIndex = headerCells.findIndex((cell) => /^description$/i.test(cell.text));
+    const targetIndex = headerCells.findIndex((cell) => /\bdata-card-target\b/i.test(cell.tag));
+    const coverIndex = headerCells.findIndex((cell) => /\bdata-card-cover\b/i.test(cell.tag));
+
+    const rows = rowMatches(body).map((row) => {
+      const cells = cellsFromRow(row, "td");
+      const target = linkFromCell(cells[targetIndex >= 0 ? targetIndex : 1]);
+      const cover = imageFromCell(cells[coverIndex]);
+      const title = markdownCell(cells[titleIndex]?.text ?? "");
+      const description = markdownCell(descriptionIndex >= 0 ? cells[descriptionIndex]?.text ?? "" : "");
+      const targetMarkdown = target
+        ? `[${markdownCell(target.label)}](${target.href.replace(/\s/g, "%20")})`
+        : "";
+      const coverMarkdown = cover
+        ? `![${markdownCell(cover.alt || title)}](${cover.src.replace(/\s/g, "%20")})`
+        : "";
+      return `| ${title} | ${description} | ${targetMarkdown} | ${coverMarkdown} |`;
+    });
+
+    if (rows.length === 0) return "";
+    return [
+      "| __MUTX_DOCS_CARD_TABLE__ | Description | Target | Cover |",
+      "| --- | --- | --- | --- |",
+      ...rows,
+    ].join("\n");
+  });
+}
+
+export function preprocessGitBookMarkdown(source: string): string {
+  return preprocessGitBookCardTables(preprocessHints(source));
 }

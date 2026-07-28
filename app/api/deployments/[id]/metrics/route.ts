@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { getApiBaseUrl, getAuthToken } from '@/app/api/_lib/controlPlane'
-import { withErrorHandling, unauthorized } from '@/app/api/_lib/errors'
+import { getApiBaseUrl } from '@/app/api/_lib/controlPlane'
+import { withErrorHandling } from '@/app/api/_lib/errors'
 import { checkDeploymentOwnership } from '@/app/api/_lib/ownership'
+import { proxyJson } from '@/app/api/_lib/proxy'
 
 
 export const dynamic = 'force-dynamic'
@@ -11,12 +12,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  return withErrorHandling(async (_req: Request) => {
-    const token = await getAuthToken(request)
-    if (!token) {
-      return unauthorized()
-    }
-
+  return withErrorHandling(async () => {
     const { id } = await params
 
     // Check ownership before proceeding
@@ -25,17 +21,9 @@ export async function GET(
       return ownershipError
     }
 
-    const { searchParams } = new URL(request.url)
-    const paramsStr = searchParams.toString()
-
-    const response = await fetch(`${getApiBaseUrl()}/v1/deployments/${id}/metrics?${paramsStr}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      cache: 'no-store',
+    const query = new URL(request.url).search
+    return proxyJson(request, `${getApiBaseUrl()}/v1/deployments/${id}/metrics${query}`, {
+      fallbackMessage: 'Failed to fetch metrics',
     })
-
-    const payload = await response.json().catch(() => ({ detail: 'Failed to fetch metrics' }))
-    return NextResponse.json(payload, { status: response.status })
   })(request)
 }

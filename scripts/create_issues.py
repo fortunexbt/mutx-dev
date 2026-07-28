@@ -1285,7 +1285,7 @@ ISSUES: list[Issue] = [
             "## Problem\n"
             "There is no docker-compose configuration optimized for production.\n\n"
             "## Proposed change\n"
-            "Add `docker-compose.production.yml` with production-optimized settings.\n\n"
+            "Add `infrastructure/docker/docker-compose.prod.yml` with production-optimized settings.\n\n"
             "## Acceptance criteria\n"
             "- Resource limits defined\n"
             "- Restart policies configured\n"

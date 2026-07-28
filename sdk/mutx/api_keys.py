@@ -6,6 +6,9 @@ from uuid import UUID
 
 import httpx
 
+from mutx._http import api_path
+from mutx.pagination import Page, parse_page
+
 
 class APIKey:
     """Represents an API key (without the raw secret)."""
@@ -65,19 +68,31 @@ class APIKeys:
         if not isinstance(self._client, httpx.AsyncClient):
             self._required_async_client()
 
-    def list(self) -> list[APIKey]:
+    def list(self, skip: int = 0, limit: int = 50) -> Page[APIKey]:
         """List all API keys for the authenticated user."""
         self._require_sync_client()
-        response = self._client.get("/v1/api-keys")
+        response = self._client.get("api-keys", params={"skip": skip, "limit": limit})
         response.raise_for_status()
-        return [APIKey(data) for data in response.json()]
+        return parse_page(
+            response.json(),
+            APIKey,
+            requested_skip=skip,
+            requested_limit=limit,
+            require_has_more=True,
+        )
 
-    async def alist(self) -> list[APIKey]:
+    async def alist(self, skip: int = 0, limit: int = 50) -> Page[APIKey]:
         """List all API keys for the authenticated user (async)."""
         self._require_async_client()
-        response = await self._client.get("/v1/api-keys")
+        response = await self._client.get("api-keys", params={"skip": skip, "limit": limit})
         response.raise_for_status()
-        return [APIKey(data) for data in response.json()]
+        return parse_page(
+            response.json(),
+            APIKey,
+            requested_skip=skip,
+            requested_limit=limit,
+            require_has_more=True,
+        )
 
     def create(
         self,
@@ -90,7 +105,7 @@ class APIKeys:
             payload["expires_in_days"] = expires_in_days
 
         self._require_sync_client()
-        response = self._client.post("/v1/api-keys", json=payload)
+        response = self._client.post("api-keys", json=payload)
         response.raise_for_status()
         return APIKeyWithSecret(response.json())
 
@@ -105,32 +120,32 @@ class APIKeys:
             payload["expires_in_days"] = expires_in_days
 
         self._require_async_client()
-        response = await self._client.post("/v1/api-keys", json=payload)
+        response = await self._client.post("api-keys", json=payload)
         response.raise_for_status()
         return APIKeyWithSecret(response.json())
 
     def revoke(self, key_id: UUID | str) -> None:
         """Revoke (delete) an API key."""
         self._require_sync_client()
-        response = self._client.delete(f"/v1/api-keys/{key_id}")
+        response = self._client.delete(api_path("api-keys/{key_id}", key_id=key_id))
         response.raise_for_status()
 
     async def arevoke(self, key_id: UUID | str) -> None:
         """Revoke (delete) an API key (async)."""
         self._require_async_client()
-        response = await self._client.delete(f"/v1/api-keys/{key_id}")
+        response = await self._client.delete(api_path("api-keys/{key_id}", key_id=key_id))
         response.raise_for_status()
 
     def rotate(self, key_id: UUID | str) -> APIKeyWithSecret:
         """Rotate an API key — revokes the old one and returns a new one."""
         self._require_sync_client()
-        response = self._client.post(f"/v1/api-keys/{key_id}/rotate")
+        response = self._client.post(api_path("api-keys/{key_id}/rotate", key_id=key_id))
         response.raise_for_status()
         return APIKeyWithSecret(response.json())
 
     async def arotate(self, key_id: UUID | str) -> APIKeyWithSecret:
         """Rotate an API key (async)."""
         self._require_async_client()
-        response = await self._client.post(f"/v1/api-keys/{key_id}/rotate")
+        response = await self._client.post(api_path("api-keys/{key_id}/rotate", key_id=key_id))
         response.raise_for_status()
         return APIKeyWithSecret(response.json())

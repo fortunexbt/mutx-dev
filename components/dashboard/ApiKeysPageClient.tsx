@@ -3,7 +3,11 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Copy, KeyRound, RefreshCcw, Trash2 } from "lucide-react";
 
-import { ApiRequestError, normalizeCollection, readJson } from "@/components/app/http";
+import { normalizeCollection, readJson } from "@/components/app/http";
+import {
+  dashboardRequestErrorMessage,
+  getDashboardRequestAccessFailure,
+} from "@/components/dashboard/dashboardRequestAccess";
 import {
   getApiKeyLastUsed,
   getApiKeyLifecycleState,
@@ -14,6 +18,7 @@ import {
   LiveAuthRequired,
   LiveEmptyState,
   LiveErrorState,
+  LiveForbidden,
   LiveKpiGrid,
   LiveLoading,
   LivePanel,
@@ -22,6 +27,7 @@ import {
   formatDateTime,
   formatRelativeTime,
 } from "@/components/dashboard/livePrimitives";
+import { DashboardDialog } from "@/components/dashboard/DashboardDialog";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 
 import type { components } from "@/app/types/api";
@@ -35,13 +41,16 @@ type ApiKeyRecord = components["schemas"]["APIKeyResponse"] & {
   scopes?: string[];
   status?: string | null;
 };
+type ConfirmationAction = {
+  type: "rotate" | "revoke";
+  key: ApiKeyRecord;
+};
+
+const API_KEY_CREATE_ERROR_ID = "api-key-create-error";
+const API_KEY_NAME_HELP_ID = "api-key-name-help";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function isAuthError(error: unknown) {
-  return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
 }
 
 function isApiKeyCreateResponse(value: unknown): value is ApiKeyCreateResponse {
@@ -70,13 +79,17 @@ function sortKeys(keys: ApiKeyRecord[]) {
 export function ApiKeysPageClient() {
   const [loading, setLoading] = useState(true);
   const [authRequired, setAuthRequired] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [keys, setKeys] = useState<ApiKeyRecord[]>([]);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [newKeyName, setNewKeyName] = useState("Operator key");
   const [revealedKey, setRevealedKey] = useState<ApiKeyCreateResponse | null>(null);
   const [copied, setCopied] = useState(false);
+  const [confirmation, setConfirmation] = useState<ConfirmationAction | null>(null);
+  const [confirmationError, setConfirmationError] = useState<string | null>(null);
 
   async function fetchKeys() {
     const payload = await readJson<unknown>("/api/api-keys");
@@ -91,6 +104,7 @@ export function ApiKeysPageClient() {
     async function load() {
       setLoading(true);
       setAuthRequired(false);
+      setPermissionDenied(false);
       setLoadError(null);
 
       try {
@@ -102,10 +116,13 @@ export function ApiKeysPageClient() {
       } catch (loadError) {
         if (cancelled) return;
 
-        if (isAuthError(loadError)) {
+        const accessFailure = getDashboardRequestAccessFailure(loadError);
+        if (accessFailure === "authentication") {
           setAuthRequired(true);
+        } else if (accessFailure === "permission") {
+          setPermissionDenied(true);
         } else {
-          setLoadError(loadError instanceof Error ? loadError.message : "Failed to load API keys");
+          setLoadError(dashboardRequestErrorMessage(loadError, "Failed to load API keys"));
         }
         setLoading(false);
       }
@@ -152,6 +169,7 @@ export function ApiKeysPageClient() {
     if (!trimmedName) return;
 
     setPendingAction("create");
+    setCreateError(null);
     setActionError(null);
     setCopied(false);
 
@@ -170,19 +188,34 @@ export function ApiKeysPageClient() {
       setNewKeyName("Operator key");
       await refreshKeys();
     } catch (actionError) {
-      if (isAuthError(actionError)) {
+      const accessFailure = getDashboardRequestAccessFailure(actionError);
+      if (accessFailure === "authentication") {
         setAuthRequired(true);
+      } else if (accessFailure === "permission") {
+        setPermissionDenied(true);
       } else {
-        setActionError(actionError instanceof Error ? actionError.message : "Failed to create API key");
+        setCreateError(dashboardRequestErrorMessage(actionError, "Failed to create API key"));
       }
     } finally {
       setPendingAction(null);
     }
   }
 
+  function requestConfirmation(type: ConfirmationAction["type"], key: ApiKeyRecord) {
+    setConfirmation({ type, key });
+    setConfirmationError(null);
+    setActionError(null);
+  }
+
+  function closeConfirmation() {
+    if (pendingAction !== null) return;
+    setConfirmation(null);
+    setConfirmationError(null);
+  }
+
   async function handleRotateKey(keyId: string) {
     setPendingAction(`rotate:${keyId}`);
-    setActionError(null);
+    setConfirmationError(null);
     setCopied(false);
 
     try {
@@ -195,12 +228,34 @@ export function ApiKeysPageClient() {
       }
 
       setRevealedKey(payload);
-      await refreshKeys();
+      try {
+        await refreshKeys();
+      } catch (reloadError) {
+        setConfirmation(null);
+        const accessFailure = getDashboardRequestAccessFailure(reloadError);
+        if (accessFailure === "authentication") {
+          setAuthRequired(true);
+        } else if (accessFailure === "permission") {
+          setPermissionDenied(true);
+        } else {
+          const detail = reloadError instanceof Error ? ` ${reloadError.message}` : "";
+          setActionError(
+            `The key was rotated and the replacement secret is shown below, but the canonical registry could not be reloaded.${detail}`,
+          );
+        }
+        return;
+      }
+      setConfirmation(null);
     } catch (actionError) {
-      if (isAuthError(actionError)) {
+      const accessFailure = getDashboardRequestAccessFailure(actionError);
+      if (accessFailure === "authentication") {
+        setConfirmation(null);
         setAuthRequired(true);
+      } else if (accessFailure === "permission") {
+        setConfirmation(null);
+        setPermissionDenied(true);
       } else {
-        setActionError(actionError instanceof Error ? actionError.message : "Failed to rotate API key");
+        setConfirmationError(dashboardRequestErrorMessage(actionError, "Failed to rotate API key"));
       }
     } finally {
       setPendingAction(null);
@@ -209,18 +264,40 @@ export function ApiKeysPageClient() {
 
   async function handleRevokeKey(keyId: string) {
     setPendingAction(`revoke:${keyId}`);
-    setActionError(null);
+    setConfirmationError(null);
 
     try {
       await readJson<unknown>(`/api/api-keys/${keyId}`, {
         method: "DELETE",
       });
-      await refreshKeys();
+      try {
+        await refreshKeys();
+      } catch (reloadError) {
+        setConfirmation(null);
+        const accessFailure = getDashboardRequestAccessFailure(reloadError);
+        if (accessFailure === "authentication") {
+          setAuthRequired(true);
+        } else if (accessFailure === "permission") {
+          setPermissionDenied(true);
+        } else {
+          const detail = reloadError instanceof Error ? ` ${reloadError.message}` : "";
+          setActionError(
+            `The key was revoked, but the canonical registry could not be reloaded.${detail}`,
+          );
+        }
+        return;
+      }
+      setConfirmation(null);
     } catch (actionError) {
-      if (isAuthError(actionError)) {
+      const accessFailure = getDashboardRequestAccessFailure(actionError);
+      if (accessFailure === "authentication") {
+        setConfirmation(null);
         setAuthRequired(true);
+      } else if (accessFailure === "permission") {
+        setConfirmation(null);
+        setPermissionDenied(true);
       } else {
-        setActionError(actionError instanceof Error ? actionError.message : "Failed to revoke API key");
+        setConfirmationError(dashboardRequestErrorMessage(actionError, "Failed to revoke API key"));
       }
     } finally {
       setPendingAction(null);
@@ -247,6 +324,9 @@ export function ApiKeysPageClient() {
         message="Sign in to create, rotate, revoke, and inspect API keys."
       />
     );
+  }
+  if (permissionDenied) {
+    return <LiveForbidden title="API key permission required" message="Your account cannot inspect or mutate API keys. Create, rotate, revoke, and copy controls are unavailable." />;
   }
   if (loadError) return <LiveErrorState title="API key surface unavailable" message={loadError} />;
 
@@ -286,12 +366,16 @@ export function ApiKeysPageClient() {
         <div className="space-y-4">
           <LivePanel title="Key issuance" meta="create + reveal">
             {actionError ? (
-              <div className="mb-4 rounded-xl border border-rose-400/20 bg-rose-400/10 px-3 py-3 text-sm text-rose-100">
+              <div role="alert" className="mb-4 rounded-xl border border-rose-400/20 bg-rose-400/10 px-3 py-3 text-sm text-rose-100">
                 {actionError}
               </div>
             ) : null}
 
-            <form onSubmit={handleCreateKey} className="space-y-3">
+            <form
+              onSubmit={handleCreateKey}
+              aria-describedby={createError ? `${API_KEY_NAME_HELP_ID} ${API_KEY_CREATE_ERROR_ID}` : API_KEY_NAME_HELP_ID}
+              className="space-y-3"
+            >
               <div>
                 <label
                   htmlFor="new-api-key-name"
@@ -303,10 +387,21 @@ export function ApiKeysPageClient() {
                   id="new-api-key-name"
                   value={newKeyName}
                   onChange={(event) => setNewKeyName(event.target.value)}
+                  aria-describedby={API_KEY_NAME_HELP_ID}
                   className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-white outline-none transition focus:border-cyan-400/40"
                   placeholder="Operator key"
                 />
               </div>
+
+              {createError ? (
+                <p
+                  id={API_KEY_CREATE_ERROR_ID}
+                  role="alert"
+                  className="rounded-xl border border-rose-400/20 bg-rose-400/10 px-3 py-3 text-sm text-rose-100"
+                >
+                  {createError}
+                </p>
+              ) : null}
 
               <div className="flex flex-wrap items-center gap-3">
                 <button
@@ -317,7 +412,7 @@ export function ApiKeysPageClient() {
                   <KeyRound className="h-4 w-4" />
                   {pendingAction === "create" ? "Creating..." : "Create key"}
                 </button>
-                <p className="text-sm text-slate-400">
+                <p id={API_KEY_NAME_HELP_ID} className="text-sm text-slate-400">
                   New secrets are only revealed once, immediately after creation or rotation.
                 </p>
               </div>
@@ -386,21 +481,23 @@ export function ApiKeysPageClient() {
                           <div className="flex flex-wrap items-center gap-2">
                             <button
                               type="button"
-                              onClick={() => void handleRotateKey(key.id)}
+                              onClick={() => requestConfirmation("rotate", key)}
                               disabled={pendingAction !== null}
+                              aria-haspopup="dialog"
                               className="inline-flex items-center gap-2 rounded-lg border border-cyan-400/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-cyan-200 transition hover:bg-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               <RefreshCcw className="h-3.5 w-3.5" />
-                              {pendingAction === `rotate:${key.id}` ? "Rotating..." : "Rotate"}
+                              Rotate
                             </button>
                             <button
                               type="button"
-                              onClick={() => void handleRevokeKey(key.id)}
+                              onClick={() => requestConfirmation("revoke", key)}
                               disabled={pendingAction !== null}
+                              aria-haspopup="dialog"
                               className="inline-flex items-center gap-2 rounded-lg border border-rose-400/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-rose-200 transition hover:bg-rose-400/10 disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
-                              {pendingAction === `revoke:${key.id}` ? "Revoking..." : "Revoke"}
+                              Revoke
                             </button>
                           </div>
                         ) : null}
@@ -436,6 +533,86 @@ export function ApiKeysPageClient() {
           </div>
         </LivePanel>
       </div>
+
+      <DashboardDialog
+        open={confirmation !== null}
+        onOpenChange={(open) => {
+          if (!open) closeConfirmation();
+        }}
+        title={confirmation?.type === "rotate" ? "Rotate API key?" : "Revoke API key?"}
+        description={
+          confirmation?.type === "rotate"
+            ? `Rotating ${confirmation.key.name} invalidates its current secret immediately. The replacement secret is shown only once, so copy and store it before leaving this page.`
+            : confirmation
+              ? `Revoking ${confirmation.key.name} invalidates it immediately. Integrations using this key will stop authenticating, and no replacement secret will be created.`
+              : undefined
+        }
+        footer={
+          confirmation ? (
+            <>
+              <button
+                type="button"
+                data-autofocus
+                onClick={closeConfirmation}
+                disabled={pendingAction !== null}
+                className="rounded-lg border border-white/15 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirmation.type === "rotate") {
+                    void handleRotateKey(confirmation.key.id);
+                  } else {
+                    void handleRevokeKey(confirmation.key.id);
+                  }
+                }}
+                disabled={pendingAction !== null}
+                className={
+                  confirmation.type === "rotate"
+                    ? "rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                    : "rounded-lg border border-rose-400/30 bg-rose-400/10 px-4 py-2 text-sm font-medium text-rose-100 transition hover:bg-rose-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                }
+              >
+                {pendingAction === `${confirmation.type}:${confirmation.key.id}`
+                  ? confirmation.type === "rotate"
+                    ? "Rotating..."
+                    : "Revoking..."
+                  : confirmation.type === "rotate"
+                    ? "Rotate and invalidate"
+                    : "Revoke and invalidate"}
+              </button>
+            </>
+          ) : null
+        }
+      >
+        {confirmation ? (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300">
+              <span className="font-medium text-white">{confirmation.key.name}</span>
+              <span className="mt-1 block font-mono text-xs text-slate-500">
+                {maskKeyId(confirmation.key.id)}
+              </span>
+            </div>
+            {pendingAction === `${confirmation.type}:${confirmation.key.id}` ? (
+              <p role="status" aria-live="polite" className="text-sm text-slate-300">
+                {confirmation.type === "rotate"
+                  ? "Rotating the key and reloading the canonical key registry..."
+                  : "Revoking the key and reloading the canonical key registry..."}
+              </p>
+            ) : null}
+            {confirmationError ? (
+              <p
+                role="alert"
+                className="rounded-xl border border-rose-400/20 bg-rose-400/10 px-3 py-3 text-sm text-rose-100"
+              >
+                {confirmationError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </DashboardDialog>
     </div>
   );
 }

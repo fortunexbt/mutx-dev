@@ -160,7 +160,9 @@ agent payment-bot {
 
 ## Prometheus Metrics
 
-The `/v1/governance/metrics` endpoint exports Prometheus metrics:
+The `/v1/runtime/governance/metrics` endpoint returns the current governance
+metrics payload. Prometheus scraping remains available at the root `/metrics`
+probe when metrics are enabled:
 
 ```
 # HELP mutx_governance_decisions_total Total governance decisions by effect

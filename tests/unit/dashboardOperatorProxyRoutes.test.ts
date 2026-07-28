@@ -52,7 +52,6 @@ describe('dashboard operator panel routes', () => {
   it('aggregates notification signals without inventing a governance event feed', async () => {
     hasAuthSession.mockReturnValue(true)
     authenticatedFetch
-      .mockResolvedValueOnce(mockJsonResponse({ id: 'user_1', email: 'ops@mutx.dev' }))
       .mockResolvedValueOnce(
         mockJsonResponse({
           items: [
@@ -68,6 +67,7 @@ describe('dashboard operator panel routes', () => {
       )
       .mockResolvedValueOnce(
         mockJsonResponse({
+          total: 7,
           items: [
             {
               id: 'approval_1',
@@ -128,7 +128,7 @@ describe('dashboard operator panel routes', () => {
     expect(response.status).toBe(200)
     expect(payload.summary).toMatchObject({
       alerts: 1,
-      approvals: 1,
+      approvals: 7,
       webhookFailures: 1,
       runtimeIncidents: 1,
       governancePendingApprovals: 2,
@@ -204,6 +204,49 @@ describe('dashboard operator panel routes', () => {
       sessionCount: 1,
       activeSessions: 1,
     })
+    expect(payload.sourceStatus).toEqual({
+      overview: 'ok',
+      channels: 'ok',
+      sessions: 'ok',
+    })
+  })
+
+  it('keeps incomplete channel contracts partial instead of inventing bindings or zeroes', async () => {
+    hasAuthSession.mockReturnValue(true)
+    authenticatedFetch
+      .mockResolvedValueOnce(mockJsonResponse({ id: 'user_1', email: 'ops@mutx.dev' }))
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          has_assistant: true,
+          assistant: {
+            agent_id: 'agent-1',
+            name: 'Ops Assistant',
+            workspace: 'ops',
+            status: 'active',
+            channels: [],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(mockJsonResponse([{ label: 'Missing channel id', enabled: true }]))
+      .mockResolvedValueOnce(mockJsonResponse({ detail: 'unexpected session envelope' }))
+
+    const { GET } = await import('../../app/api/dashboard/channels/route')
+    const response = await GET(mockRequest('http://localhost:3000/api/dashboard/channels'))
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload.sourceStatus).toMatchObject({ channels: 'partial', sessions: 'partial' })
+    expect(payload.summary).toMatchObject({
+      configuredChannels: null,
+      enabledChannels: null,
+      liveChannels: null,
+      activeSessions: null,
+      sources: null,
+    })
+    expect(payload.channels).toEqual([])
+    expect(payload.partials.join(' ')).toMatch(/identifier was missing/i)
+    expect(payload.partials.join(' ')).toMatch(/invalid collection envelope/i)
+    expect(JSON.stringify(payload)).not.toContain('"id":"unknown"')
   })
 
   it('returns a read-only memory inventory from sessions and artifact jobs', async () => {
@@ -321,7 +364,53 @@ describe('dashboard operator panel routes', () => {
     ])
     expect(payload).not.toHaveProperty('documentJobs')
     expect(payload).not.toHaveProperty('reasoningJobs')
+    expect(payload.sourceStatus).toEqual({
+      assistant: 'ok',
+      sessions: 'ok',
+      documents: 'ok',
+      reasoning: 'ok',
+    })
     expect(payload.partials[0]).toMatch(/read-only/i)
+  })
+
+  it('keeps malformed memory records partial instead of manufacturing identifiers or zeroes', async () => {
+    hasAuthSession.mockReturnValue(true)
+    authenticatedFetch
+      .mockResolvedValueOnce(mockJsonResponse({ id: 'user_1', email: 'ops@mutx.dev' }))
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          has_assistant: true,
+          assistant: { name: 'Ops Assistant', workspace: 'ops', status: 'active' },
+        }),
+      )
+      .mockResolvedValueOnce(mockJsonResponse({ sessions: [{ active: true }] }))
+      .mockResolvedValueOnce(mockJsonResponse({ detail: 'unexpected envelope' }))
+      .mockResolvedValueOnce(mockJsonResponse({ detail: 'reasoning unavailable' }, 503))
+
+    const { GET } = await import('../../app/api/dashboard/memory/route')
+    const response = await GET(mockRequest('http://localhost:3000/api/dashboard/memory'))
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload.sourceStatus).toMatchObject({
+      sessions: 'partial',
+      documents: 'partial',
+      reasoning: 'error',
+    })
+    expect(payload.summary).toMatchObject({
+      sessions: null,
+      activeSessions: null,
+      documentJobs: null,
+      documentArtifacts: null,
+      reasoningJobs: null,
+      reasoningArtifacts: null,
+    })
+    expect(payload.sessions).toEqual([])
+    expect(payload.documents).toEqual([])
+    expect(payload.reasoning).toEqual([])
+    expect(payload.partials.join(' ')).toMatch(/identifier was missing/i)
+    expect(payload.partials.join(' ')).toMatch(/invalid collection envelope/i)
+    expect(JSON.stringify(payload)).not.toContain('session-1')
   })
 
   it('composes orchestration truth from approvals, recovery signals, and blueprint inventory', async () => {
@@ -330,6 +419,7 @@ describe('dashboard operator panel routes', () => {
       .mockResolvedValueOnce(mockJsonResponse({ id: 'user_1', email: 'ops@mutx.dev' }))
       .mockResolvedValueOnce(
         mockJsonResponse({
+          total: 5,
           items: [
             {
               id: 'approval_1',
@@ -388,7 +478,7 @@ describe('dashboard operator panel routes', () => {
 
     expect(response.status).toBe(200)
     expect(payload.summary).toMatchObject({
-      pendingApprovals: 1,
+      pendingApprovals: 5,
       recoveryWatch: 2,
       blueprints: 1,
       queuedAutonomy: null,
@@ -398,10 +488,48 @@ describe('dashboard operator panel routes', () => {
     )
   })
 
-  it('derives a standup brief from live blockers, watch items, and completions', async () => {
+  it('keeps malformed orchestration records partial instead of exposing actionable fake ids', async () => {
     hasAuthSession.mockReturnValue(true)
     authenticatedFetch
       .mockResolvedValueOnce(mockJsonResponse({ id: 'user_1', email: 'ops@mutx.dev' }))
+      .mockResolvedValueOnce(
+        mockJsonResponse({ items: [{ status: 'PENDING', action_type: 'deploy' }] }),
+      )
+      .mockResolvedValueOnce(
+        mockJsonResponse({ items: [{ status: 'failed', error_message: 'Tool timeout' }] }),
+      )
+      .mockResolvedValueOnce(mockJsonResponse({ sessions: [{ active: false }] }))
+      .mockResolvedValueOnce(mockJsonResponse([{ name: 'Unidentified blueprint' }]))
+
+    const { GET } = await import('../../app/api/dashboard/orchestration/route')
+    const response = await GET(mockRequest('http://localhost:3000/api/dashboard/orchestration'))
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload.sourceStatus).toMatchObject({
+      approvals: 'partial',
+      runs: 'partial',
+      sessions: 'partial',
+      blueprints: 'partial',
+      autonomy: 'partial',
+    })
+    expect(payload.summary).toMatchObject({
+      pendingApprovals: null,
+      recoveryWatch: null,
+      blueprints: null,
+      queuedAutonomy: null,
+      runningAutonomy: null,
+    })
+    expect(payload.approvals).toEqual([])
+    expect(payload.recoveries).toEqual([])
+    expect(payload.blueprints).toEqual([])
+    expect(payload.partials.join(' ')).toMatch(/identifier was missing/i)
+    expect(JSON.stringify(payload)).not.toMatch(/approval-1|session-1|blueprint-1/)
+  })
+
+  it('derives a standup brief from live blockers, watch items, and completions', async () => {
+    hasAuthSession.mockReturnValue(true)
+    authenticatedFetch
       .mockResolvedValueOnce(
         mockJsonResponse({
           items: [

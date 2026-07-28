@@ -87,13 +87,17 @@ distributed; the main-branch relicense does not retroactively change either tag.
 
 - **Repository:** https://github.com/builderz-labs/mission-control
 - **License:** MIT — Copyright (c) 2026 Builderz Labs
-- **Current upstream release:** `v2.1.0`
+- **Current upstream release:** `v2.2.0`
+  (`0552b00b3b743ed12949e6deb19597655b02bbcc`), verified 2026-07-22
+- **Comparison baseline:** `v2.1.0`
   (`b4ebc5418bea4fa9288a5c17fbddb9ba99740964`)
-- **MUTX use:** dashboard briefing and signal-display patterns.
+- **MUTX use:** dashboard briefing and signal-display patterns, plus an adapted
+  fail-closed autonomy-runner working-directory and change-scope contract.
 
 The direct adaptation is pinned to immutable upstream paths and the local port
-commit in the attribution ledger. The current upstream release is newer than
-that provenance pin; the two are intentionally reported separately.
+commit in the attribution ledger. The v2.2.0 dispatch contract is pinned to
+immutable source in the machine-readable evidence file; the historical UI
+provenance and current behavioral review are intentionally reported separately.
 
 ### Orchestra Research AI-Research-SKILLs
 
@@ -101,28 +105,29 @@ that provenance pin; the two are intentionally reported separately.
 - **License:** MIT — Copyright (c) 2025 Claude AI Research Skills Contributors
 - **Current upstream release:** `v1.7.2`
   (`773a52944ba4747a18bd4ae9ade53fff041adcbc`)
-- **MUTX integration pin:**
-  `05f1958727bfc2bc22240f41d060504473c4f236`
+- **MUTX integration pin:** `v1.7.2`
+  (`773a52944ba4747a18bd4ae9ade53fff041adcbc`)
 
 MUTX imports catalog metadata, curates install bundles and swarm blueprints, and
-provides `scripts/sync_orchestra_research_skills.py`. The upstream skill content
+provides deterministic catalog generation and runtime sync scripts. The v1.7.2
+catalog contains 98 upstream skills, including the three Agent-Native Research
+Artifact roles. The upstream skill content
 remains attributed to Orchestra Research and to the upstream authors documented
-in that repository. The difference between the current release and the MUTX pin
-is an explicit upgrade gap, not hidden drift.
+in that repository.
 
 ### predict-rlm
 
 - **Repository:** https://github.com/Trampoline-AI/predict-rlm
 - **License:** MIT — Copyright (c) 2026 Trampoline AI
-- **Current upstream release:** `v0.7.2`
-  (`4ff334dea79a2f27e96b7a50a358b0427050899e`)
+- **Current validated upstream release:** `v0.7.3`
+  (`e7f1e5df7d0188861b39142094b4b738f456972f`)
 - **MUTX provenance pin:**
   `5c7387afa1980b62b21a34ad0261256a95d8caa1`
 
 MUTX uses predict-rlm as the document workflow engine and adapts its workflow
 families into MUTX job, artifact, worker, CLI, dashboard, and observability
-surfaces. The current upstream release and the historical adaptation pin are
-reported separately until compatibility with `v0.7.2` is validated.
+surfaces. Compatibility with `v0.7.3` is validated while the historical
+adaptation pin remains recorded separately.
 
 ## Candidate projects with no direct reuse recorded
 

@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +23,7 @@ from src.api.models.schemas import (
     IngestEvent,
     MetricsReportRequest,
 )
+from src.api.services.auth import Role, check_role
 from src.api.services.event_ingestion import process_ingest_event
 from src.api.services.webhook_service import (
     trigger_agent_status_event,
@@ -59,20 +60,35 @@ async def get_ingest_auth(
     return user
 
 
+async def require_ingest_developer(
+    current_user: User = Depends(get_ingest_auth),
+) -> User:
+    """Enforce the persisted developer role for ingestion principals."""
+    if not check_role(current_user.roles or [], [Role.DEVELOPER]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions. Required roles: ['DEVELOPER']",
+        )
+    return current_user
+
+
 @router.post("/agent-status")
 async def agent_status_update(
     status_data: AgentStatusUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_ingest_auth),
+    current_user: User = Depends(require_ingest_developer),
 ):
     """Update an agent status and append logs (Ingestion)."""
-    # Verify the agent belongs to the authenticated user
-    result = await db.execute(select(Agent).where(Agent.id == status_data.agent_id))
+    # Resolve through the owner scope so missing and foreign agents are indistinguishable.
+    result = await db.execute(
+        select(Agent).where(
+            Agent.id == status_data.agent_id,
+            Agent.user_id == current_user.id,
+        )
+    )
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to update this agent")
 
     old_status = agent.status
 
@@ -118,20 +134,22 @@ async def agent_status_update(
 async def deployment_event(
     event_data: DeploymentEvent,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_ingest_auth),
+    current_user: User = Depends(require_ingest_developer),
 ):
     """Update deployment state and related agent state (Ingestion)."""
-    # Verify the deployment's agent belongs to the authenticated user
-    result = await db.execute(select(Deployment).where(Deployment.id == event_data.deployment_id))
-    deployment = result.scalar_one_or_none()
-    if not deployment:
+    # Resolve the deployment and its agent in one owner-scoped query before mutation.
+    result = await db.execute(
+        select(Deployment, Agent)
+        .join(Agent, Agent.id == Deployment.agent_id)
+        .where(
+            Deployment.id == event_data.deployment_id,
+            Agent.user_id == current_user.id,
+        )
+    )
+    deployment_row = result.one_or_none()
+    if deployment_row is None:
         raise HTTPException(status_code=404, detail="Deployment not found")
-
-    # Get the agent to verify ownership
-    agent_result = await db.execute(select(Agent).where(Agent.id == deployment.agent_id))
-    agent = agent_result.scalar_one_or_none()
-    if not agent or agent.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to update this deployment")
+    deployment, agent = deployment_row
 
     if event_data.status:
         deployment.status = event_data.status
@@ -162,8 +180,7 @@ async def deployment_event(
 
     if event_data.event == "stopped" or event_data.status == "stopped":
         deployment.ended_at = utc_now_naive()
-        if agent:
-            agent.status = AgentStatus.STOPPED.value
+        agent.status = AgentStatus.STOPPED.value
 
     if event_data.event == "healthy" or event_data.status == "running":
         deployment.status = "running"
@@ -185,18 +202,19 @@ async def deployment_event(
 async def receive_metrics(
     metrics_data: MetricsReportRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_ingest_auth),
+    current_user: User = Depends(require_ingest_developer),
 ):
     """Record agent metrics (Ingestion)."""
-    # Verify the agent belongs to the authenticated user
-    result = await db.execute(select(Agent).where(Agent.id == metrics_data.agent_id))
+    # Resolve through the owner scope so missing and foreign agents are indistinguishable.
+    result = await db.execute(
+        select(Agent).where(
+            Agent.id == metrics_data.agent_id,
+            Agent.user_id == current_user.id,
+        )
+    )
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.user_id != current_user.id:
-        raise HTTPException(
-            status_code=403, detail="Not authorized to submit metrics for this agent"
-        )
 
     agent.last_heartbeat = utc_now()
     metric = AgentMetric(
@@ -228,7 +246,7 @@ async def receive_metrics(
 async def ingest_event(
     event_data: IngestEvent,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_ingest_auth),
+    current_user: User = Depends(require_ingest_developer),
 ):
     """Accept structured events from SDK adapters through the legacy alias."""
     return await process_ingest_event(event_data, current_user, db)

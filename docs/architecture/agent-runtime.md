@@ -9,7 +9,7 @@ This document describes how agents run in mutx.dev, including their lifecycle, m
 
 ## What is active today
 
-* `POST /agents/heartbeat` is the live runtime path for connected agents. It updates `agents.status` and `last_heartbeat` in the control plane.
+* `POST /v1/agents/heartbeat` is the live runtime path for connected agents. It updates `agents.status` and `last_heartbeat` in the control plane.
 * Each runtime heartbeat now emits an `agent.heartbeat` outgoing webhook event for subscribers.
 * When a heartbeat changes the persisted agent status, MUTX also emits an `agent.status` outgoing webhook event.
 * The background monitor in `src/api/services/monitoring.py` owns stale-agent detection, failure marking, alert resolution, and the active recovery loop.
@@ -20,7 +20,7 @@ This document describes how agents run in mutx.dev, including their lifecycle, m
 
 ## Overview
 
-The Agent Runtime (`src/api/services/agent_runtime.py:98`) is the core execution engine that manages agent lifecycles, tool routing, and resource allocation.
+The Agent Runtime (`src/api/services/agent_runtime.py`) is the core execution engine that manages agent lifecycles, tool routing, and resource allocation.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -163,13 +163,15 @@ the active `PolicyEngine` policy, and then applies the decision:
 
 * `ALLOW` and `MODIFY` execute the original handler (with modified arguments when supplied).
 * `DENY` blocks the handler and emits an action receipt.
-* `DEFER` blocks the handler and opens an `ApprovalService` request.
+* `DEFER` blocks the handler. Because arbitrary handler continuations are not
+  durably serializable yet, the runtime returns `resumable: false` and does not
+  create a ghost approval.
 
 The default runtime policy allows the low-risk built-ins (`get_time`,
 `calculator`, and `search_documents`) and denies custom tools until a policy is
-configured. Security REST routes and agent execution share the same governance
-composition root, so receipts and approval requests remain visible through the
-existing `/v1/security/*` endpoints.
+configured. Security REST routes expose the separate canonical durable approval
+workflow. A caller that needs resumability must bind that workflow to its own
+durable, idempotent job continuation.
 
 Each decision also appends a RunEvent v1-compatible audit record with the run,
 actor, policy decision, approval, cost/redaction metadata, and a SHA-256 link to
@@ -228,7 +230,7 @@ runtime.tool_handler.register_handler(
 
 ## Monitoring
 
-From `src/api/services/monitoring.py:363`, the `MonitoringService` provides comprehensive observability.
+The `MonitoringService` in `src/api/services/monitoring.py` provides comprehensive observability.
 
 ### Metrics Collection
 
@@ -294,7 +296,7 @@ From `src/api/services/monitoring.py:363`, the `MonitoringService` provides comp
 
 ## Self-Healing
 
-From `src/api/services/self_healer.py:491`, the `SelfHealingService` provides automatic recovery.
+The `SelfHealingService` in `src/api/services/self_healer.py` provides automatic recovery.
 
 ### Self-Healing Architecture
 

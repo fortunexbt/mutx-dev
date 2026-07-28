@@ -41,12 +41,12 @@ def test_list_trust_hits_contract_route() -> None:
         captured["path"] = request.url.path
         return httpx.Response(200, json={"items": [_identity_payload()]})
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     governance = Governance(client)
 
     result = governance.list_trust()
 
-    assert captured["path"] == "/governance/trust"
+    assert captured["path"] == "/v1/governance/trust"
     assert isinstance(result[0], GovernedIdentity)
     assert result[0].trust_tier == "elevated"
 
@@ -60,12 +60,12 @@ def test_update_lifecycle_hits_contract_route() -> None:
         captured["body"] = request.read().decode()
         return httpx.Response(200, json=_identity_payload(lifecycle_status="suspended"))
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     governance = Governance(client)
 
     result = governance.update_lifecycle("agent-1", state="suspended", reason="operator pause")
 
-    assert captured["path"] == "/governance/lifecycle/agent-1"
+    assert captured["path"] == "/v1/governance/lifecycle/agent-1"
     assert captured["method"] == "POST"
     assert '"state":"suspended"' in captured["body"]
     assert result.lifecycle_status == "suspended"
@@ -95,12 +95,12 @@ def test_scan_discovery_hits_contract_route() -> None:
             },
         )
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     governance = Governance(client)
 
     result = governance.scan_discovery()
 
-    assert captured["path"] == "/governance/discovery/scan"
+    assert captured["path"] == "/v1/governance/discovery/scan"
     assert result["count"] == 1
 
 
@@ -127,12 +127,12 @@ def test_list_discovery_hits_contract_route() -> None:
             },
         )
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     governance = Governance(client)
 
     result = governance.list_discovery()
 
-    assert captured["path"] == "/governance/discovery"
+    assert captured["path"] == "/v1/governance/discovery"
     assert isinstance(result[0], DiscoveryFinding)
     assert result[0].registration_status == "unregistered"
 
@@ -144,12 +144,12 @@ def test_verify_hits_contract_route() -> None:
         captured["path"] = request.url.path
         return httpx.Response(200, json=_attestation_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     governance = Governance(client)
 
     result = governance.verify()
 
-    assert captured["path"] == "/governance/attestations/verify"
+    assert captured["path"] == "/v1/governance/attestations/verify"
     assert isinstance(result, AttestationBundle)
     assert result.coverage["policy_coverage"] is True
 
@@ -161,12 +161,12 @@ def test_get_attestations_hits_contract_route() -> None:
         captured["path"] = request.url.path
         return httpx.Response(200, json=_attestation_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     governance = Governance(client)
 
     result = governance.get_attestations()
 
-    assert captured["path"] == "/governance/attestations"
+    assert captured["path"] == "/v1/governance/attestations"
     assert result.compliance["overall_satisfied"] is True
 
 
@@ -180,7 +180,9 @@ async def test_async_routes_hit_contract_routes() -> None:
             return httpx.Response(200, json=_attestation_payload())
         return httpx.Response(200, json={"items": [_identity_payload()]})
 
-    client = httpx.AsyncClient(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.AsyncClient(
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
+    )
     governance = Governance(client)
 
     trust = await governance.alist_trust()
@@ -190,6 +192,6 @@ async def test_async_routes_hit_contract_routes() -> None:
     assert trust[0].agent_id == "agent-1"
     assert lifecycle[0].lifecycle_status == "active"
     assert attestation.coverage["receipt_integrity"] is True
-    assert "/governance/trust" in captured
-    assert "/governance/lifecycle" in captured
-    assert "/governance/attestations/verify" in captured
+    assert "/v1/governance/trust" in captured
+    assert "/v1/governance/lifecycle" in captured
+    assert "/v1/governance/attestations/verify" in captured

@@ -68,6 +68,7 @@ async def _resolve_state_user(request: Request, session: AsyncSession) -> Option
     user_service = UserService(session)
     user = await user_service.get_user_by_id(user_id)
     if user and user.is_active:
+        _enforce_email_verification_if_required(user)
         return user
 
     return None
@@ -79,10 +80,11 @@ async def _populate_api_key_context(request: Request, token: str) -> None:
             user_service = UserService(session)
             auth_context = await user_service.authenticate_api_key(token)
     except Exception:
-        # Leave request unauthenticated on lookup failures; route deps enforce auth.
+        request.state.auth_credential_error = "lookup_failed"
         return
 
     if not auth_context:
+        request.state.auth_credential_error = "invalid"
         return
 
     user, managed_api_key_id = auth_context
@@ -90,6 +92,7 @@ async def _populate_api_key_context(request: Request, token: str) -> None:
     request.state.auth_method = "api_key"
     request.state.auth_api_key_id = managed_api_key_id
     request.state.auth_api_key_identifier = f"managed:{managed_api_key_id}"
+    request.state.auth_credential_error = None
 
 
 class AuthenticationMiddleware(BaseHTTPMiddleware):
@@ -100,6 +103,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         request.state.auth_method = None
         request.state.auth_api_key_id = None
         request.state.auth_api_key_identifier = None
+        request.state.auth_credential_error = None
 
         bearer_token = _extract_bearer_token(request.headers.get("Authorization"))
         x_api_key = request.headers.get("X-API-Key")
@@ -109,8 +113,13 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             if user_id:
                 request.state.auth_user_id = user_id
                 request.state.auth_method = "jwt"
-            else:
+            elif bearer_token.startswith("mutx_live_"):
                 await _populate_api_key_context(request, bearer_token)
+            else:
+                # Arbitrary legacy bearer keys are still resolved by the request-scoped
+                # dependency. Avoid turning a malformed or expired JWT into a global
+                # database lookup whose outage can mask the correct 401 response.
+                request.state.auth_credential_error = "invalid"
         elif x_api_key:
             await _populate_api_key_context(request, x_api_key)
 
@@ -186,23 +195,65 @@ async def get_current_internal_user(
 async def get_current_user_optional(
     request: Request,
     authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
     session: AsyncSession = Depends(get_db),
 ) -> Optional[User]:
     state_user = await _resolve_state_user(request, session)
     if state_user:
         return state_user
 
+    credential_error = getattr(request.state, "auth_credential_error", None)
+    if credential_error == "lookup_failed":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service is temporarily unavailable",
+            headers={"Retry-After": "1"},
+        )
+
+    if not authorization and x_api_key:
+        if credential_error == "invalid":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired API key",
+                headers={"WWW-Authenticate": "API-Key"},
+            )
+        try:
+            user = await UserService(session).get_user_for_api_key(x_api_key)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication service is temporarily unavailable",
+                headers={"Retry-After": "1"},
+            ) from exc
+        if not user or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired API key",
+                headers={"WWW-Authenticate": "API-Key"},
+            )
+        _enforce_email_verification_if_required(user)
+        return user
+
     if not authorization:
         return None
 
     token = _extract_bearer_token(authorization)
     if not token:
-        return None
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header format",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     user_service = UserService(session)
     user = await _resolve_user_from_bearer_token(token, session, user_service=user_service)
-    if user:
-        _enforce_email_verification_if_required(user)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    _enforce_email_verification_if_required(user)
     return user
 
 
@@ -221,7 +272,10 @@ async def get_api_key_user(
         return None
 
     user_service = UserService(session)
-    return await user_service.get_user_for_api_key(x_api_key)
+    user = await user_service.get_user_for_api_key(x_api_key)
+    if user:
+        _enforce_email_verification_if_required(user)
+    return user
 
 
 async def get_user_from_api_key(
@@ -239,7 +293,10 @@ async def get_user_from_api_key(
         return None
 
     user_service = UserService(session)
-    return await user_service.get_user_for_api_key(x_api_key)
+    user = await user_service.get_user_for_api_key(x_api_key)
+    if user:
+        _enforce_email_verification_if_required(user)
+    return user
 
 
 async def get_current_user_or_api_key(
@@ -260,12 +317,14 @@ async def get_current_user_or_api_key(
     if token:
         user = await _resolve_user_from_bearer_token(token, session, user_service=user_service)
         if user:
+            _enforce_email_verification_if_required(user)
             return user
 
     # Try explicit API key header
     if x_api_key:
         user = await user_service.get_user_for_api_key(x_api_key)
         if user:
+            _enforce_email_verification_if_required(user)
             return user
 
     raise HTTPException(

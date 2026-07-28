@@ -249,18 +249,18 @@ export function TaskBoard({ className, initialTasks = [] }: TaskBoardProps) {
     return (
       <div className={cn('flex flex-col h-full', className)}>
         <div className="p-4 border-b border-white/10">
-          <div className="h-7 w-32 bg-white/5 rounded animate-pulse" />
+          <div className="h-7 w-32 rounded bg-white/5 motion-safe:animate-pulse motion-reduce:animate-none" />
         </div>
         <div className="flex-1 flex gap-4 p-4 overflow-x-auto">
           {COLUMNS.map(col => (
             <div key={col.key} className="flex-1 min-w-72">
               <div className="rounded-lg border border-white/5 bg-white/[0.02] flex flex-col min-h-64">
                 <div className={cn('px-4 py-3 rounded-t-lg border-b border-white/5', col.color)}>
-                  <div className="h-4 w-20 bg-white/10 rounded animate-pulse" />
+                  <div className="h-4 w-20 rounded bg-white/10 motion-safe:animate-pulse motion-reduce:animate-none" />
                 </div>
                 <div className="flex-1 p-3 space-y-3">
                   {[1, 2].map(i => (
-                    <div key={i} className="h-20 bg-white/[0.03] rounded border border-white/5 border-l-2 border-l-slate-600 animate-pulse" />
+                    <div key={i} className="h-20 rounded border border-l-2 border-white/5 border-l-slate-600 bg-white/[0.03] motion-safe:animate-pulse motion-reduce:animate-none" />
                   ))}
                 </div>
               </div>

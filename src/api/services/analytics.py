@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.models import AnalyticsEvent
+from src.api.models.numeric import reject_non_finite_floats
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +51,14 @@ async def log_analytics_event(
     Returns:
         The created AnalyticsEvent
     """
+    if properties:
+        reject_non_finite_floats(properties, path="$.properties")
+
     event = AnalyticsEvent(
         event_name=event_name,
         event_type=event_type,
         user_id=user_id,
-        properties=json.dumps(properties) if properties else None,
+        properties=json.dumps(properties, allow_nan=False) if properties else None,
         created_at=datetime.now(timezone.utc),
     )
     db.add(event)

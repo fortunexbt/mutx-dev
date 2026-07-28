@@ -11,6 +11,7 @@ describe('pico approvals validation', () => {
         agent_id: 'agent_123',
         session_id: 'session_456',
         action_type: 'approve_command',
+        reviewer_id: '00000000-0000-4000-8000-000000000002',
       })
 
       expect(result.success).toBe(true)
@@ -24,6 +25,7 @@ describe('pico approvals validation', () => {
         agent_id: '   ',
         session_id: 'session_456',
         action_type: 'approve_command',
+        reviewer_id: '00000000-0000-4000-8000-000000000002',
       })
 
       expect(result.success).toBe(false)
@@ -37,8 +39,19 @@ describe('pico approvals validation', () => {
         agent_id: 'agent_123',
         session_id: 'session_456',
         action_type: 'approve_command',
+        reviewer_id: '00000000-0000-4000-8000-000000000002',
         payload: {},
         extra: true,
+      })
+
+      expect(result.success).toBe(false)
+    })
+
+    it('requires an explicit eligible reviewer assignment', () => {
+      const result = approvalCreateSchema.safeParse({
+        agent_id: 'agent_123',
+        session_id: 'session_456',
+        action_type: 'approve_command',
       })
 
       expect(result.success).toBe(false)

@@ -12,14 +12,14 @@ class AgentsService(APIService):
     def list_agents(self, *, limit: int = 50, skip: int = 0) -> list[AgentRecord]:
         response = self._request("get", "/v1/agents", params={"limit": limit, "skip": skip})
         self._expect_status(response, {200})
-        payload = response.json()
+        payload = self._decode_json(response, expected_type=(dict, list))
         items = payload.get("items", payload) if isinstance(payload, dict) else payload
         return [AgentRecord.from_payload(item) for item in items]
 
     def get_agent(self, agent_id: str) -> AgentRecord:
         response = self._request("get", f"/v1/agents/{agent_id}")
         self._expect_status(response, {200}, not_found_message="Agent not found")
-        return AgentRecord.from_payload(response.json())
+        return AgentRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def create_agent(
         self,
@@ -50,7 +50,7 @@ class AgentsService(APIService):
             },
         )
         self._expect_status(response, {201}, invalid_message="Invalid agent configuration")
-        return AgentRecord.from_payload(response.json())
+        return AgentRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def update_config(self, agent_id: str, config: dict[str, Any]) -> AgentRecord:
         response = self._request(
@@ -93,7 +93,7 @@ class AgentsService(APIService):
     def deploy_agent(self, agent_id: str) -> AgentDeploymentResult:
         response = self._request("post", f"/v1/agents/{agent_id}/deploy")
         self._expect_status(response, {200}, not_found_message="Agent not found")
-        return AgentDeploymentResult.from_payload(response.json())
+        return AgentDeploymentResult.from_payload(self._decode_json(response, expected_type=dict))
 
     def get_logs(
         self,
@@ -108,12 +108,17 @@ class AgentsService(APIService):
 
         response = self._request("get", f"/v1/agents/{agent_id}/logs", params=params)
         self._expect_status(response, {200}, not_found_message="Agent not found")
-        return [LogEntry.from_payload(item) for item in response.json()["items"]]
+        payload = self._decode_json(response, expected_type=dict)
+        return [
+            LogEntry.from_payload(item)
+            for item in payload.get("items", [])
+            if isinstance(item, dict)
+        ]
 
     def stop_agent(self, agent_id: str) -> str | None:
         response = self._request("post", f"/v1/agents/{agent_id}/stop")
         self._expect_status(response, {200}, not_found_message="Agent not found")
-        payload = response.json()
+        payload = self._decode_json(response, expected_type=dict)
         return payload.get("status")
 
     def delete_agent(self, agent_id: str) -> None:

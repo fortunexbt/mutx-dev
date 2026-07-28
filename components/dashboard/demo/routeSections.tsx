@@ -1,5 +1,4 @@
 import {
-  Plus,
   Server,
   Wallet,
 } from "lucide-react";
@@ -168,42 +167,42 @@ function OverviewSection({
 
   return (
     <div className="flex min-h-0 flex-col gap-2.5 overflow-visible lg:h-full lg:overflow-hidden">
-      <div className="shrink-0 overflow-hidden rounded-[10px] border border-white/[0.04] bg-[#0b1117]">
-        <div className="grid grid-cols-2 gap-px bg-white/[0.05] sm:grid-cols-3 lg:grid-cols-6">
+      <div className="shrink-0 overflow-hidden rounded-[4px] border border-[#2b2b26] bg-[#0c0d0b]">
+        <div className="grid grid-cols-2 gap-px bg-[#2b2b26] sm:grid-cols-3 lg:grid-cols-6">
           {metrics.map((metric) => (
-            <div key={metric.label} className="bg-[#0b1117]">
+            <div key={metric.label} className="bg-[#0c0d0b]">
               <MetricCard metric={metric} />
             </div>
           ))}
         </div>
       </div>
 
-      <section className="flex shrink-0 flex-col overflow-hidden rounded-[14px] border border-white/[0.06] bg-[#0a1016] p-3 lg:h-[min(328px,34dvh)] xl:h-[min(336px,35dvh)]">
+      <section className="flex shrink-0 flex-col overflow-hidden rounded-[6px] border border-[#34342e] bg-[#11120f] p-3 lg:h-[min(328px,34dvh)] xl:h-[min(336px,35dvh)]">
         <div className="grid shrink-0 gap-3 lg:grid-cols-[minmax(0,1fr)_164px] lg:items-start">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-semibold tracking-[0.14em] text-cyan-200">Overview</span>
-              <span className="hidden h-4 w-px bg-white/[0.08] lg:block" />
+              <span className="text-[11px] font-semibold tracking-[0.14em] text-[#ff8355]">Overview</span>
+              <span className="hidden h-4 w-px bg-[#34342e] lg:block" />
               <SectionPill label="Production lane" />
               <SectionPill label="Governed rollout" tone="healthy" />
               <SectionPill label="BYOK aware" />
             </div>
-            <h2 className="mt-2 text-[30px] font-semibold leading-none tracking-[-0.06em] text-white sm:text-[34px] lg:text-[38px]">
+            <h2 className="mt-2 text-[30px] font-semibold leading-none tracking-[-0.06em] text-[#eee9dc] sm:text-[34px] lg:text-[38px]">
               Environment Matrix
             </h2>
-            <p className="mt-1.5 max-w-3xl text-[12px] leading-5 text-white/58 sm:text-[13px] sm:leading-5">
+            <p className="mt-1.5 max-w-3xl text-[12px] leading-5 text-[#aaa397] sm:text-[13px] sm:leading-5">
               Deployments, runs, policy, secrets, network posture, and readiness across production, staging, and development.
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
-            <div className="rounded-[12px] border border-white/[0.04] bg-[#0c1218] px-2.5 py-1.5">
-              <div className="text-[10px] font-medium tracking-[0.12em] text-white/30">Change window</div>
-              <div className="mt-1 text-[12px] font-medium leading-5 text-white">Governed rollout lane active</div>
+            <div className="rounded-[4px] border border-[#2b2b26] bg-[#151612] px-2.5 py-1.5">
+              <div className="text-[11px] font-medium tracking-[0.12em] text-[#8d867a]">Change window</div>
+              <div className="mt-1 text-[12px] font-medium leading-5 text-[#eee9dc]">Governed rollout lane active</div>
             </div>
-            <div className="rounded-[12px] border border-white/[0.04] bg-[#0c1218] px-2.5 py-1.5">
-              <div className="text-[10px] font-medium tracking-[0.12em] text-white/30">Ownership</div>
-              <div className="mt-1 text-[12px] font-medium leading-5 text-white">Acme Corp / Revenue Infra</div>
+            <div className="rounded-[4px] border border-[#2b2b26] bg-[#151612] px-2.5 py-1.5">
+              <div className="text-[11px] font-medium tracking-[0.12em] text-[#8d867a]">Ownership</div>
+              <div className="mt-1 text-[12px] font-medium leading-5 text-[#eee9dc]">Acme Corp / Revenue Infra</div>
             </div>
           </div>
         </div>
@@ -231,32 +230,32 @@ function OverviewSection({
           <SurfacePanel title="Cost & Capacity" meta="infra vs model">
             <div className="flex h-full min-h-0 flex-col gap-3">
               <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-[12px] border border-white/[0.055] bg-[#0d131a] p-2.5">
-                  <div className="flex items-center gap-2 text-white/46">
-                    <Server className="h-4 w-4 text-cyan-300" />
-                    <span className="text-[10px] font-medium uppercase tracking-[0.18em]">Infra spend</span>
+                <div className="rounded-[4px] border border-[#34342e] bg-[#11120f] p-2.5">
+                  <div className="flex items-center gap-2 text-[#999284]">
+                    <Server className="h-4 w-4 text-[#58aaff]" />
+                    <span className="text-[11px] font-medium uppercase tracking-[0.18em]">Infra spend</span>
                   </div>
-                  <div className="mt-1.5 text-[21px] font-semibold tracking-[-0.04em] text-white">{formatCurrency(1730 + tick * 26)}</div>
-                  <div className="mt-1 text-[11px] text-white/42">control plane / queues / env overhead</div>
+                  <div className="mt-1.5 text-[21px] font-semibold tracking-[-0.04em] text-[#eee9dc]">{formatCurrency(1730 + tick * 26)}</div>
+                  <div className="mt-1 text-[11px] text-[#999284]">control plane / queues / env overhead</div>
                 </div>
-                <div className="rounded-[12px] border border-white/[0.055] bg-[#0d131a] p-2.5">
-                  <div className="flex items-center gap-2 text-white/46">
-                    <Wallet className="h-4 w-4 text-cyan-300" />
-                    <span className="text-[10px] font-medium uppercase tracking-[0.18em]">Model spend</span>
+                <div className="rounded-[4px] border border-[#34342e] bg-[#11120f] p-2.5">
+                  <div className="flex items-center gap-2 text-[#999284]">
+                    <Wallet className="h-4 w-4 text-[#58aaff]" />
+                    <span className="text-[11px] font-medium uppercase tracking-[0.18em]">Model spend</span>
                   </div>
-                  <div className="mt-1.5 text-[21px] font-semibold tracking-[-0.04em] text-white">{formatCurrency(970 + tick * 18)}</div>
-                  <div className="mt-1 text-[11px] text-white/42">separate BYOK consumption envelope</div>
+                  <div className="mt-1.5 text-[21px] font-semibold tracking-[-0.04em] text-[#eee9dc]">{formatCurrency(970 + tick * 18)}</div>
+                  <div className="mt-1 text-[11px] text-[#999284]">separate BYOK consumption envelope</div>
                 </div>
               </div>
-              <div className="min-h-0 flex-1 rounded-[12px] border border-white/[0.055] bg-[#0d131a] p-2.5">
+              <div className="min-h-0 flex-1 rounded-[4px] border border-[#34342e] bg-[#11120f] p-2.5">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-white/30">Load ridge</div>
-                    <div className="mt-1 text-[13px] text-white/62">Queue pressure {queuePressure}%</div>
+                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#8d867a]">Load ridge</div>
+                    <div className="mt-1 text-[13px] text-[#aaa397]">Queue pressure {queuePressure}%</div>
                   </div>
                   <div className="flex items-center gap-2 sm:block sm:text-right">
-                    <div className="text-[11px] text-cyan-300">57% headroom</div>
-                    <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-white/28">63 req/s</div>
+                    <div className="text-[11px] text-[#58aaff]">57% headroom</div>
+                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#8d867a]">63 req/s</div>
                   </div>
                 </div>
                 <div className="mt-3 grid gap-3">
@@ -280,21 +279,21 @@ function OverviewSection({
         </div>
       </div>
 
-      <div className="grid gap-3 xl:hidden">
+      <div className="grid gap-3 2xl:hidden">
         <RailSection title="Live Signals" meta={`${signals.length} items`}>
           <div className="flex h-full min-h-0 flex-col gap-2">
             {signals.slice(0, 4).map((signal) => (
-              <div key={`${signal.title}-${signal.stamp}`} className="rounded-[12px] border border-white/[0.04] bg-[#0d131a] p-2.5">
+              <div key={`${signal.title}-${signal.stamp}`} className="rounded-[4px] border border-[#2b2b26] bg-[#11120f] p-2.5">
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5">
                     <SignalToneIcon tone={signal.tone} />
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="truncate text-[13px] font-semibold text-white">{signal.title}</div>
-                      <div className="text-[10px] font-medium tracking-[0.12em] text-white/30">{signal.stamp}</div>
+                      <div className="truncate text-[13px] font-semibold text-[#eee9dc]">{signal.title}</div>
+                      <div className="text-[11px] font-medium tracking-[0.12em] text-[#8d867a]">{signal.stamp}</div>
                     </div>
-                    <div className="mt-1 overflow-hidden text-[12px] leading-5 text-white/56 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">
+                    <div className="mt-1 overflow-hidden text-[12px] leading-5 text-[#aaa397] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">
                       {signal.detail}
                     </div>
                   </div>
@@ -308,16 +307,16 @@ function OverviewSection({
           <RailSection title="Audit Trail" meta="operator actions">
             <div className="flex h-full min-h-0 flex-col gap-2">
               {auditItems.map((item) => (
-                <div key={`${item.title}-${item.stamp}`} className="rounded-[12px] border border-white/[0.04] bg-[#0d131a] p-2.5">
+                <div key={`${item.title}-${item.stamp}`} className="rounded-[4px] border border-[#2b2b26] bg-[#11120f] p-2.5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-[13px] font-semibold text-white">{item.title}</div>
-                      <div className="mt-1 text-[12px] text-white/56">{item.resource}</div>
-                      <div className="mt-2 text-[10px] font-medium tracking-[0.12em] text-white/30">
+                      <div className="text-[13px] font-semibold text-[#eee9dc]">{item.title}</div>
+                      <div className="mt-1 text-[12px] text-[#aaa397]">{item.resource}</div>
+                      <div className="mt-2 text-[11px] font-medium tracking-[0.12em] text-[#8d867a]">
                         {item.role} · {item.actor}
                       </div>
                     </div>
-                    <div className="text-[10px] font-medium tracking-[0.12em] text-white/30">{item.stamp}</div>
+                    <div className="text-[11px] font-medium tracking-[0.12em] text-[#8d867a]">{item.stamp}</div>
                   </div>
                 </div>
               ))}
@@ -381,15 +380,14 @@ function AgentsSection({ tick }: { tick: number }) {
                 <SectionPill label="Sync config" tone="focus" />
                 <SectionPill label="Needs review" tone="warning" />
               </div>
-              <button
-                type="button"
-                className="inline-flex h-10 items-center gap-2 rounded-[12px] border border-cyan-400/20 bg-cyan-400/10 px-3.5 text-sm font-medium text-cyan-100"
-              >
-                <Plus className="h-4 w-4" />
-                Add agent
-              </button>
+              <div className="rounded-[4px] border border-[#3b3a33] bg-[#151612] px-3 py-2 text-right">
+                <div className="font-[family:var(--font-mono)] text-[11px] font-semibold uppercase tracking-[0.1em] text-[#ff8355]">
+                  Write controls unavailable
+                </div>
+                <div className="mt-1 text-[11px] text-[#8d867a]">Sample registry only</div>
+              </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-visible pr-0 lg:overflow-auto lg:overscroll-contain lg:pr-1">
+            <div className="min-h-0 flex-1 overflow-visible pe-0 lg:overflow-auto lg:overscroll-contain lg:pe-1">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {agents.map((agent) => (
                   <AgentRegistryCard key={agent.name} card={agent} />
@@ -402,25 +400,25 @@ function AgentsSection({ tick }: { tick: number }) {
         <div className="grid min-h-0 grid-cols-1 gap-3 overflow-visible lg:grid-rows-[minmax(0,0.72fr)_minmax(0,1fr)] lg:overflow-hidden">
           <SurfacePanel title="Fleet posture" meta="signal summary">
             <div className="grid h-full min-h-0 grid-rows-[repeat(4,minmax(0,1fr))] gap-3">
-              <div className="rounded-[14px] border border-white/[0.06] bg-[#0e141c] p-3">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/34">Agent capacity</div>
-                <div className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white">56</div>
-                <div className="mt-1 text-[12px] text-white/44">production + staging + development</div>
+              <div className="rounded-[6px] border border-[#34342e] bg-[#11120f] p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">Agent capacity</div>
+                <div className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-[#eee9dc]">56</div>
+                <div className="mt-1 text-[12px] text-[#999284]">production + staging + development</div>
               </div>
-              <div className="rounded-[14px] border border-white/[0.06] bg-[#0e141c] p-3">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/34">Live heartbeats</div>
-                <div className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white">{12 + (tick % 4)}</div>
-                <div className="mt-1 text-[12px] text-white/44">agents reporting inside the watch window</div>
+              <div className="rounded-[6px] border border-[#34342e] bg-[#11120f] p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">Live heartbeats</div>
+                <div className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-[#eee9dc]">{12 + (tick % 4)}</div>
+                <div className="mt-1 text-[12px] text-[#999284]">agents reporting inside the watch window</div>
               </div>
-              <div className="rounded-[14px] border border-white/[0.06] bg-[#0e141c] p-3">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/34">Wake queue</div>
-                <div className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white">{1 + (tick % 3)}</div>
-                <div className="mt-1 text-[12px] text-white/44">pending spawn or sync actions</div>
+              <div className="rounded-[6px] border border-[#34342e] bg-[#11120f] p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">Wake queue</div>
+                <div className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-[#eee9dc]">{1 + (tick % 3)}</div>
+                <div className="mt-1 text-[12px] text-[#999284]">pending spawn or sync actions</div>
               </div>
-              <div className="rounded-[14px] border border-white/[0.06] bg-[#0e141c] p-3">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/34">Assignment pressure</div>
-                <div className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white">{38 + ((tick * 2) % 18)}%</div>
-                <div className="mt-1 text-[12px] text-white/44">review lanes + orchestration backlog</div>
+              <div className="rounded-[6px] border border-[#34342e] bg-[#11120f] p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">Assignment pressure</div>
+                <div className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-[#eee9dc]">{38 + ((tick * 2) % 18)}%</div>
+                <div className="mt-1 text-[12px] text-[#999284]">review lanes + orchestration backlog</div>
               </div>
             </div>
           </SurfacePanel>
@@ -483,9 +481,9 @@ function DeploymentsSection({ tick }: { tick: number }) {
               <ProgressRow label="US-East" value={66 + ((tick * 3) % 10)} tone="focus" />
               <ProgressRow label="US-West" value={58 + ((tick * 2) % 12)} tone="focus" />
               <ProgressRow label="AP-South" value={81 + (tick % 7)} tone="warning" />
-              <div className="rounded-[14px] border border-white/[0.06] bg-[#0e141c] p-3">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/34">Version pressure</div>
-                <div className="mt-2 text-sm leading-6 text-white/58">
+              <div className="rounded-[6px] border border-[#34342e] bg-[#11120f] p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">Version pressure</div>
+                <div className="mt-2 text-sm leading-6 text-[#aaa397]">
                   Three rollout candidates are waiting on policy seal before promotion into the production lane.
                 </div>
               </div>
@@ -551,13 +549,13 @@ function RunsSection({ tick }: { tick: number }) {
                 <MetricCard metric={{ label: "Live", value: `${86 + (tick % 9)}`, meta: "active runs", tone: "healthy" }} />
                 <MetricCard metric={{ label: "Pressure", value: `${38 + ((tick * 2) % 18)}%`, meta: "queue", tone: "warning" }} />
               </div>
-              <div className="min-h-0 flex-1 rounded-[14px] border border-white/[0.06] bg-[#0e141c] p-3">
+              <div className="min-h-0 flex-1 rounded-[6px] border border-[#34342e] bg-[#11120f] p-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/34">Run load</div>
-                    <div className="mt-1 text-sm text-white/58">steady with one recovery spike</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">Run load</div>
+                    <div className="mt-1 text-sm text-[#aaa397]">steady with one recovery spike</div>
                   </div>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/30">last 6h</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">last 6h</div>
                 </div>
                 <div className="mt-3 h-[132px]">
                   <Sparkline points={queuePoints} strokeClassName="stroke-amber-300" fillClassName="fill-amber-400/10" />
@@ -627,17 +625,17 @@ function EnvironmentsSection({ tick }: { tick: number }) {
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-visible lg:grid-rows-[168px_minmax(0,1fr)] lg:overflow-hidden">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {cards.map((card) => (
-            <div key={card.name} className="flex flex-col justify-between rounded-[16px] border border-white/[0.06] bg-[#0b1118] p-4">
+            <div key={card.name} className="flex flex-col justify-between rounded-[6px] border border-[#34342e] bg-[#0c0d0b] p-4">
               <div>
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-[22px] font-semibold tracking-[-0.04em] text-white">{card.name}</div>
+                  <div className="text-[22px] font-semibold tracking-[-0.04em] text-[#eee9dc]">{card.name}</div>
                   <StatusBadge label={card.tone === "warning" ? "Watch" : card.tone === "focus" ? "Active" : "OK"} tone={card.tone} />
                 </div>
-                <div className="mt-2 text-sm leading-6 text-white/58">{card.detail}</div>
+                <div className="mt-2 text-sm leading-6 text-[#aaa397]">{card.detail}</div>
               </div>
-              <div className="mt-4 grid grid-cols-1 gap-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/30 sm:grid-cols-3">
+              <div className="mt-4 grid grid-cols-1 gap-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8d867a] sm:grid-cols-3">
                 {card.stats.map((stat) => (
-                  <div key={stat} className="rounded-[12px] border border-white/[0.06] bg-[#0e141c] px-3 py-2 text-center">
+                  <div key={stat} className="rounded-[4px] border border-[#34342e] bg-[#11120f] px-3 py-2 text-center">
                     {stat}
                   </div>
                 ))}
@@ -713,9 +711,9 @@ function EnvironmentsSection({ tick }: { tick: number }) {
               <ProgressRow label="Production readiness" value={96 + (tick % 3)} tone="healthy" />
               <ProgressRow label="Staging readiness" value={88 + (tick % 7)} tone="focus" />
               <ProgressRow label="Development readiness" value={74 + ((tick * 2) % 11)} tone="warning" />
-              <div className="rounded-[14px] border border-white/[0.06] bg-[#0e141c] p-3">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/34">Dedicated environments</div>
-                <div className="mt-2 text-sm leading-6 text-white/58">
+              <div className="rounded-[6px] border border-[#34342e] bg-[#11120f] p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">Dedicated environments</div>
+                <div className="mt-2 text-sm leading-6 text-[#aaa397]">
                   Production runs on its own isolated boundary. Staging stays warm for promotion, while development keeps sandboxed tool access and shared gateway defaults.
                 </div>
               </div>
@@ -774,9 +772,9 @@ function AccessSection({ tick }: { tick: number }) {
               <ProgressRow label="Rotation compliance" value={91} tone="healthy" />
               <ProgressRow label="Least-privilege coverage" value={84} tone="focus" />
               <ProgressRow label="Approval debt" value={29} tone="warning" />
-              <div className="rounded-[14px] border border-white/[0.06] bg-[#0e141c] p-3">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/34">Role note</div>
-                <div className="mt-2 text-sm leading-6 text-white/58">
+              <div className="rounded-[6px] border border-[#34342e] bg-[#11120f] p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">Role note</div>
+                <div className="mt-2 text-sm leading-6 text-[#aaa397]">
                   Production export remains human-gated even when the caller owns the agent. That rule is deliberate.
                 </div>
               </div>
@@ -834,8 +832,8 @@ function ConnectorsSection({ tick }: { tick: number }) {
           </SurfacePanel>
           <SurfacePanel title="Contracts" meta="shape of integration">
             <div className="flex h-full min-h-0 flex-col gap-3 overflow-auto overscroll-contain">
-              <div className="rounded-[14px] border border-white/[0.06] bg-[#0e141c] p-3 text-sm text-white/58">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/34">Webhook namespaces</div>
+              <div className="rounded-[6px] border border-[#34342e] bg-[#11120f] p-3 text-sm text-[#aaa397]">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">Webhook namespaces</div>
                 <div className="mt-2">production / staging / development each maintain isolated delivery credentials and retry counters.</div>
               </div>
               <ProgressRow label="Signed deliveries" value={97} tone="healthy" />
@@ -867,20 +865,20 @@ function AuditSection({ tick }: { tick: number }) {
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-visible lg:grid-cols-[minmax(0,1.08fr)_minmax(320px,0.92fr)] lg:overflow-hidden">
         <SurfacePanel title="Audit Timeline" meta="governed record">
-          <div className="flex h-full min-h-0 flex-col overflow-auto overscroll-contain pr-1">
+          <div className="flex h-full min-h-0 flex-col overflow-auto overscroll-contain pe-1">
             {audit.map((item) => (
               <div
                 key={`${item.title}-${item.stamp}`}
-                className="grid min-h-[78px] grid-cols-1 gap-2 border-b border-white/[0.05] py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_72px] sm:gap-3"
+                className="grid min-h-[78px] grid-cols-1 gap-2 border-b border-[#2b2b26] py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_72px] sm:gap-3"
               >
                 <div className="min-w-0">
-                  <div className="text-[14px] font-semibold text-white">{item.title}</div>
-                  <div className="mt-1 text-[13px] text-white/56">{item.resource}</div>
-                  <div className="mt-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/30">
+                  <div className="text-[14px] font-semibold text-[#eee9dc]">{item.title}</div>
+                  <div className="mt-1 text-[13px] text-[#aaa397]">{item.resource}</div>
+                  <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">
                     {item.role} · {item.actor}
                   </div>
                 </div>
-                <div className="text-right text-[10px] font-semibold uppercase tracking-[0.16em] text-white/28">
+                <div className="text-right text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">
                   {item.stamp}
                 </div>
               </div>
@@ -950,13 +948,13 @@ function UsageSection({ tick }: { tick: number }) {
               <MetricCard metric={{ label: "Model", value: formatCurrency(970 + tick * 18), meta: "BYOK + shared", tone: "warning" }} />
               <MetricCard metric={{ label: "Headroom", value: "57%", meta: "daily budget", tone: "healthy" }} />
             </div>
-            <div className="min-h-0 flex-1 rounded-[14px] border border-white/[0.06] bg-[#0e141c] p-3">
+            <div className="min-h-0 flex-1 rounded-[6px] border border-[#34342e] bg-[#11120f] p-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/34">Usage trend</div>
-                  <div className="mt-1 text-sm text-white/58">infra spend rising slower than model spend</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">Usage trend</div>
+                  <div className="mt-1 text-sm text-[#aaa397]">infra spend rising slower than model spend</div>
                 </div>
-                <div className="text-right text-[10px] font-semibold uppercase tracking-[0.16em] text-white/30">last 12h</div>
+                <div className="text-right text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">last 12h</div>
               </div>
               <div className="mt-4 h-[184px]">
                 <Sparkline points={points} />
@@ -1029,9 +1027,9 @@ function SettingsSection({ tick }: { tick: number }) {
             <ProgressRow label="Dedicated environment coverage" value={41} tone="focus" />
             <ProgressRow label="Webhook isolation" value={92} tone="healthy" />
             <ProgressRow label="Manual approval fallback" value={100} tone="healthy" />
-            <div className="rounded-[14px] border border-white/[0.06] bg-[#0e141c] p-3">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/34">Operator note</div>
-              <div className="mt-2 text-sm leading-6 text-white/58">
+            <div className="rounded-[6px] border border-[#34342e] bg-[#11120f] p-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">Operator note</div>
+              <div className="mt-2 text-sm leading-6 text-[#aaa397]">
                 Production promotion requires scoped credentials, readiness probes, and an open rollback window before traffic can shift.
               </div>
             </div>
@@ -1057,15 +1055,15 @@ function SettingsSection({ tick }: { tick: number }) {
         </SurfacePanel>
         <SurfacePanel title="Runtime Contracts" meta="operator defaults">
           <div className="flex h-full min-h-0 flex-col gap-4 overflow-auto overscroll-contain">
-            <div className="rounded-[14px] border border-white/[0.06] bg-[#0e141c] p-4">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/34">Deployment boundary</div>
-              <div className="mt-2 text-sm leading-6 text-white/58">
+            <div className="rounded-[6px] border border-[#34342e] bg-[#11120f] p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">Deployment boundary</div>
+              <div className="mt-2 text-sm leading-6 text-[#aaa397]">
                 Production requires signed releases, bounded egress, and healthy probes before promotion.
               </div>
             </div>
-            <div className="rounded-[14px] border border-white/[0.06] bg-[#0e141c] p-4">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/34">Connector posture</div>
-              <div className="mt-2 text-sm leading-6 text-white/58">
+            <div className="rounded-[6px] border border-[#34342e] bg-[#11120f] p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">Connector posture</div>
+              <div className="mt-2 text-sm leading-6 text-[#aaa397]">
                 Signed webhook delivery, retry isolation, and audit retention stay enabled across every environment.
               </div>
             </div>

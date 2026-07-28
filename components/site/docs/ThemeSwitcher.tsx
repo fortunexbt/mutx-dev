@@ -46,28 +46,34 @@ export function ThemeSwitcher() {
   return (
     <div className="docs-theme-switcher" role="group" aria-label="Select theme">
       <button
+        type="button"
         className={`docs-theme-btn${theme === "light" ? " active" : ""}`}
         onClick={() => select("light")}
         title="Light theme"
+        aria-label="Use light theme"
         aria-pressed={theme === "light"}
       >
-        <Sun size={13} strokeWidth={2} />
+        <Sun size={13} strokeWidth={2} aria-hidden="true" />
       </button>
       <button
+        type="button"
         className={`docs-theme-btn${theme === "system" ? " active" : ""}`}
         onClick={() => select("system")}
         title="System theme"
+        aria-label="Use system theme"
         aria-pressed={theme === "system"}
       >
-        <Monitor size={13} strokeWidth={2} />
+        <Monitor size={13} strokeWidth={2} aria-hidden="true" />
       </button>
       <button
+        type="button"
         className={`docs-theme-btn${theme === "dark" ? " active" : ""}`}
         onClick={() => select("dark")}
         title="Dark theme"
+        aria-label="Use dark theme"
         aria-pressed={theme === "dark"}
       >
-        <Moon size={13} strokeWidth={2} />
+        <Moon size={13} strokeWidth={2} aria-hidden="true" />
       </button>
     </div>
   );

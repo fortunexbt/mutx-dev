@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -27,6 +27,7 @@ export function DashboardCommandPalette({
 }: DashboardCommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   const matches = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -35,6 +36,14 @@ export function DashboardCommandPalette({
       `${item.title} ${item.description} ${item.group}`.toLowerCase().includes(normalized),
     );
   }, [query]);
+
+  useEffect(() => {
+    if (!open || !matches[activeIndex]) return;
+
+    resultsRef.current
+      ?.querySelector<HTMLElement>(`#dashboard-command-${matches[activeIndex].key}`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, matches, open]);
 
   const selectItem = (item: DashboardNavItem) => {
     const panel = getDashboardNavPanel(item.key);
@@ -76,6 +85,12 @@ export function DashboardCommandPalette({
             } else if (event.key === "ArrowUp") {
               event.preventDefault();
               setActiveIndex((index) => Math.max(index - 1, 0));
+            } else if (event.key === "Home") {
+              event.preventDefault();
+              setActiveIndex(0);
+            } else if (event.key === "End") {
+              event.preventDefault();
+              setActiveIndex(Math.max(matches.length - 1, 0));
             } else if (event.key === "Enter" && matches[activeIndex]) {
               event.preventDefault();
               selectItem(matches[activeIndex]);
@@ -98,10 +113,11 @@ export function DashboardCommandPalette({
       </div>
 
       <div
+        ref={resultsRef}
         id="dashboard-command-results"
         role="listbox"
         aria-label="Dashboard surfaces"
-        className="mt-3 max-h-[min(48vh,28rem)] space-y-1 overflow-y-auto pr-1"
+        className="mt-3 max-h-[min(48vh,28rem)] space-y-1 overflow-y-auto pe-1"
       >
         {matches.length ? (
           matches.map((item, index) => {
@@ -122,9 +138,9 @@ export function DashboardCommandPalette({
                 onFocus={() => setActiveIndex(index)}
                 onClick={() => selectItem(item)}
                 className={cn(
-                  "group flex min-h-14 w-full items-center gap-3 rounded-[4px] border px-3 text-left transition-colors",
+                  "group flex min-h-14 w-full items-center gap-3 rounded-[4px] border px-3 text-start transition-colors",
                   active
-                    ? "border-[#3b3a33] bg-[#171813] text-[#eee9dc] shadow-[inset_3px_0_0_#ff571c]"
+                    ? "dashboard-active-rail border-[#3b3a33] bg-[#171813] text-[#eee9dc]"
                     : "border-transparent text-[#b8b1a4] hover:border-[#2b2b26] hover:bg-[#11120f]",
                 )}
               >
@@ -156,7 +172,7 @@ export function DashboardCommandPalette({
                 </span>
                 <ArrowRight
                   className={cn(
-                    "h-4 w-4 shrink-0",
+                    "rtl-directional-icon h-4 w-4 shrink-0",
                     active ? "text-[#58aaff]" : "text-[#5f5d55]",
                   )}
                   aria-hidden="true"

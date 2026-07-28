@@ -13,16 +13,17 @@ export async function GET(
 ) {
   return withErrorHandling(async () => {
     const { id } = await params;
+    const encodedId = encodeURIComponent(id);
     const { searchParams } = new URL(request.url);
     const path = searchParams.get("path") || "";
     const targetUrl =
       path === "versions"
-        ? `${getApiBaseUrl()}/v1/deployments/${id}/versions`
+        ? `${getApiBaseUrl()}/v1/deployments/${encodedId}/versions`
         : path === "logs"
-          ? `${getApiBaseUrl()}/v1/deployments/${id}/logs`
+          ? `${getApiBaseUrl()}/v1/deployments/${encodedId}/logs`
           : path === "metrics"
-            ? `${getApiBaseUrl()}/v1/deployments/${id}/metrics`
-            : `${getApiBaseUrl()}/v1/deployments/${id}`;
+            ? `${getApiBaseUrl()}/v1/deployments/${encodedId}/metrics`
+            : `${getApiBaseUrl()}/v1/deployments/${encodedId}`;
 
     return proxyJson(request, targetUrl, {
       fallbackMessage:
@@ -43,6 +44,7 @@ export async function POST(
 ) {
   return withErrorHandling(async () => {
     const { id } = await params;
+    const encodedId = encodeURIComponent(id);
     const { searchParams } = new URL(request.url);
     const action = searchParams.get("action");
 
@@ -51,7 +53,7 @@ export async function POST(
     }
 
     if (action === "restart") {
-      return proxyJson(request, `${getApiBaseUrl()}/v1/deployments/${id}/restart`, {
+      return proxyJson(request, `${getApiBaseUrl()}/v1/deployments/${encodedId}/restart`, {
         method: "POST",
         fallbackMessage: "Failed to restart deployment",
       });
@@ -61,7 +63,7 @@ export async function POST(
       const body = await request.json();
       const actionPath = action === "rollback" ? "rollback" : "scale";
 
-      return proxyJson(request, `${getApiBaseUrl()}/v1/deployments/${id}/${actionPath}`, {
+      return proxyJson(request, `${getApiBaseUrl()}/v1/deployments/${encodedId}/${actionPath}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -82,7 +84,7 @@ export async function DELETE(
 ) {
   return withErrorHandling(async () => {
     const { id } = await params;
-    return proxyJson(request, `${getApiBaseUrl()}/v1/deployments/${id}`, {
+    return proxyJson(request, `${getApiBaseUrl()}/v1/deployments/${encodeURIComponent(id)}`, {
       method: "DELETE",
       fallbackMessage: "Failed to delete deployment",
     });

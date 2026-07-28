@@ -11,7 +11,7 @@ This guide covers deploying MUTX to Kubernetes using Helm charts or raw YAML man
 
 ## Helm Chart
 
-The canonical Helm chart lives at `infrastructure/helm/mutx/`. See the [Helm chart README](../../infrastructure/helm/mutx/README.md) for the full configuration reference.
+The canonical Helm chart lives at `infrastructure/helm/mutx/`. See the [Helm chart README](https://github.com/mutx-dev/mutx-dev/blob/main/infrastructure/helm/mutx/README.md) for the full configuration reference.
 
 ## Helm Deployment
 
@@ -59,53 +59,81 @@ kubectl apply -f infrastructure/kubernetes/hpa.yaml
 
 ### Environment Variables
 
-Configure environment variables via the `env` dict in values.yaml:
+Configure non-secrets through `api.env` and `frontend.env`. Put credentials in
+an existing Secret referenced by `api.existingSecret` (recommended for
+production) or in `api.secretEnv` for non-production use:
 
 ```yaml
-env:
-  DATABASE_URL: "postgresql://user:***@postgres:5432/mutx"
-  REDIS_URL: "redis://redis:6379/0"
-  JWT_SECRET: "<your-jwt-secret>"
-  LOG_LEVEL: "INFO"
+api:
+  existingSecret: mutx-api-env
+  env:
+    ENVIRONMENT: production
+    LOG_LEVEL: INFO
+    ALLOWED_HOSTS: mutx.example.com,localhost,127.0.0.1
+    FORWARDED_ALLOW_IPS: 10.244.0.0/16 # exact ingress source/pod CIDR
+frontend:
+  env:
+    NODE_ENV: production
 ```
+
+The `mutx-api-env` Secret must contain `DATABASE_URL`, `JWT_SECRET`, and a
+distinct `SECRET_ENCRYPTION_KEY`. The chart does not install PostgreSQL. Its
+Alembic hook and API use the same Secret and database role, so that role must
+currently have both migration DDL and runtime DML privileges.
 
 ### RBAC Setup
 
-MUTX v1.4.0 enforces role-based access control (RBAC) with four roles: `ADMIN`, `AUDIT_ADMIN`, `DEVELOPER`, and `VIEWER`. Roles are sourced from OIDC token claims.
+MUTX uses four persisted roles: `ADMIN`, `AUDIT_ADMIN`, `DEVELOPER`, and
+`VIEWER`. RBAC is always enforced by protected route dependencies and does not
+need OIDC to be enabled. Password, social OAuth, and SSO identities all resolve
+to a local database user whose `users.roles` value is authoritative.
 
-To enable RBAC via OIDC, set the following environment variables in your Helm values:
+To enable the mounted Okta SSO flow, for example, set provider-specific
+credentials and the public API origin in your Helm values:
 
 ```yaml
 # values.yaml or -f override
-env:
-  OIDC_ISSUER: "https://your-idp.example.com"
-  OIDC_CLIENT_ID: "mutx-production"
-  OIDC_JWKS_URI: "https://your-idp.example.com/.well-known/jwks.json"
+api:
+  existingSecret: mutx-api-env
+  env:
+    PUBLIC_API_URL: "https://api.example.com"
+    OKTA_DOMAIN: "https://your-org.okta.com"
+    OKTA_CLIENT_ID: "0oa1abc2def3ghi4jkl5"
 ```
 
-Configure your IdP (Okta, Auth0, Keycloak, or Google) to include role claims in the tokens. MUTX extracts roles from `roles`, `groups`, `custom:roles`, `realm_access.roles`, or `resource_access.roles` claims.
+Add `OKTA_CLIENT_SECRET` to `mutx-api-env`; do not place it under `api.env`.
+
+Provider role claims from `roles`, `groups`, `custom:roles`,
+`realm_access.roles`, or `resource_access.roles` may be normalized for legacy
+compatibility, but they do not grant MUTX privileges. Assign elevated roles through
+a controlled database administration process after the external identity is linked.
 
 See [Security Architecture](../architecture/security.md#rbac-enforcement) for the full role reference.
 
-### OIDC Configuration
+### Generic OIDC Validator Configuration
 
-Set OIDC environment variables to validate tokens from your SSO provider:
+The library-level `validate_oidc_token(...)` utility uses the following values:
 
 ```yaml
-env:
-  OIDC_ISSUER: "https://your-org.okta.com"
-  OIDC_CLIENT_ID: "0oa1abc2def3ghi4jkl5"
-  OIDC_JWKS_URI: "https://your-org.okta.com/oauth2/v1/keys"
+api:
+  existingSecret: mutx-api-env
+  env:
+    OIDC_ISSUER: "https://your-org.okta.com"
+    OIDC_CLIENT_ID: "0oa1abc2def3ghi4jkl5"
+    OIDC_JWKS_URI: "https://your-org.okta.com/oauth2/v1/keys"
 ```
 
-Supported providers:
+These values do not make protected routes accept provider bearer tokens and are
+not a replacement for the provider-specific SSO credentials above. The generic
+validator can be pointed at any compatible issuer/JWKS pair; the mounted SSO
+routes have built-in support for:
 
-| Provider | `OIDC_ISSUER` Example | `OIDC_JWKS_URI` Pattern |
-| --- | --- | --- |
-| Okta | `https://org.okta.com` | `{issuer}/oauth2/v1/keys` |
-| Auth0 | `https://org.us.auth0.com` | `{issuer}/.well-known/jwks.json` |
-| Keycloak | `https://kc.example.com/realms/myrealm` | `{issuer}/protocol/openid-connect/certs` |
-| Google | `https://accounts.google.com` | `https://www.googleapis.com/oauth2/v3/certs` |
+| Provider | Mounted SSO settings |
+| --- | --- |
+| Okta | `OKTA_DOMAIN`, `OKTA_CLIENT_ID`, `OKTA_CLIENT_SECRET` |
+| Auth0 | `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET` |
+| Keycloak | `KEYCLOAK_DOMAIN`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET` |
+| Google | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
 
 See [Authentication](../api/authentication.md#oidc-token-validation) for the validation flow.
 
@@ -130,20 +158,23 @@ Ensure your ingress controller is installed and the TLS secret exists.
 The Horizontal Pod Autoscaler (HPA) is disabled by default. Enable it:
 
 ```yaml
-autoscaling:
-  enabled: true
-  minReplicas: 2
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 75
+frontend:
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 75
 ```
 
 ## Resource Defaults
 
-| Environment | CPU Request | Memory Request | CPU Limit | Memory Limit | Replicas |
-|------------|-------------|----------------|-----------|--------------|----------|
-| Default    | 100m        | 256Mi          | 1000m     | 1Gi          | 2        |
-| Staging    | 50m         | 128Mi          | 500m      | 512Mi        | 2        |
-| Production | 500m        | 1Gi            | 2000m     | 2Gi          | 3        |
+| Overlay / component | CPU request | Memory request | CPU limit | Memory limit | Replicas |
+| --- | --- | --- | --- | --- | --- |
+| Default API | 100m | 256Mi | 1000m | 1Gi | 1 |
+| Default frontend | 100m | 256Mi | 500m | 512Mi | 1 |
+| Staging API | 100m | 256Mi | 1000m | 1Gi | 1 |
+| Production API | 500m | 1Gi | 2000m | 2Gi | 1 |
+| Production frontend | 250m | 512Mi | 1000m | 1Gi | 2 |
 
 ## Verify Deployment
 
@@ -154,8 +185,8 @@ kubectl get pods -n staging  # or production
 # View logs
 kubectl logs -n staging -l app.kubernetes.io/name=mutx
 
-# Run test connection job
-kubectl apply -f infrastructure/helm/mutx/templates/tests/test-connection.yaml
+# Run the rendered Helm test hook for an installed release
+helm test mutx-prod --namespace production --logs
 ```
 
 ## Helm Lint

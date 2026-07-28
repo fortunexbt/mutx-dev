@@ -1,6 +1,8 @@
 # Autonomy Legacy Quarantine
 
-These older autonomy scripts should be treated as legacy until explicitly migrated:
+These older autonomy scripts were retired from the working tree after their
+replacement contracts became canonical. Their source remains available in Git
+history for archaeology, but they are not executable product surface:
 
 - `scripts/autonomy/autonomous-loop.py`
 - `scripts/autonomy/autonomous-coder.py`
@@ -32,5 +34,6 @@ Prefer the new substrate:
 
 ## Rule
 
-Do not enable the legacy scripts for 24/7 operation while the replacement substrate is being built.
-They are reference material now, not production truth.
+Do not restore or enable these legacy scripts for 24/7 operation. Migrate any
+still-useful behavior into the bounded replacement substrate with tests and an
+explicit review.

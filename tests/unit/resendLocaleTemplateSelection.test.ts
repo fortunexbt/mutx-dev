@@ -1,3 +1,5 @@
+export {}
+
 const sendMock = jest.fn()
 
 const envKeys = [
@@ -10,6 +12,8 @@ const envKeys = [
   'RESEND_CONTACT_TEMPLATE_ID_ES',
   'RESEND_CONTACT_TEMPLATE_ID_JA',
   'RESEND_CONTACT_TEMPLATE_ID',
+  'LEAD_DISCORD_WEBHOOK_URL',
+  'DISCORD_LEAD_WEBHOOK_URL',
   'TURNSTILE_SECRET_KEY',
 ] as const
 
@@ -55,6 +59,10 @@ async function loadNewsletterRoute() {
 }
 
 async function loadContactRoute() {
+  jest.doMock('../../app/api/_lib/controlPlane', () => ({
+    getApiBaseUrl: () => 'http://localhost:8000',
+  }))
+  jest.doMock('../../lib/db', () => ({ __esModule: true, default: null }))
   return import('../../app/api/contact/route')
 }
 
@@ -64,7 +72,11 @@ describe('locale-aware Resend template selection', () => {
 
   beforeEach(() => {
     jest.resetModules()
-    sendMock.mockReset().mockResolvedValue({ id: 'email_123', error: null })
+    sendMock.mockReset().mockResolvedValue({
+      data: { id: 'email_123' },
+      error: null,
+      headers: null,
+    })
     process.env = { ...originalEnv }
     for (const key of envKeys) {
       delete process.env[key]
@@ -120,19 +132,22 @@ describe('locale-aware Resend template selection', () => {
   })
 
   it.each([
-    ['contact route uses Spanish template for regional locale variants', 'es-mx', 'contact-es'],
-    ['contact route falls back to English template for unsupported locales', 'nl-be', 'contact-en'],
-    ['contact route normalizes mixed-case locales', 'ES', 'contact-es'],
-  ])('%s', async (_caseName, locale, expectedTemplateId) => {
+    ['contact route preserves a Spanish regional locale', 'es-mx', 'es-mx'],
+    ['contact route preserves another valid regional locale', 'nl-be', 'nl-be'],
+    ['contact route normalizes mixed-case locales', 'ES', 'es'],
+  ])('%s', async (_caseName, locale, expectedLocale) => {
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: true, status: 'accepted', persisted: true }), {
+        status: 201,
+      }),
+    )
     const { POST } = await loadContactRoute()
 
     const response = await POST(makeContactRequest(locale))
 
-    expect(response.status).toBe(200)
-    expect(sendMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        template: expect.objectContaining({ id: expectedTemplateId }),
-      }),
-    )
+    expect(response.status).toBe(201)
+    const forwarded = JSON.parse((fetchSpy.mock.calls.at(-1)?.[1] as RequestInit).body as string)
+    expect(forwarded.locale).toBe(expectedLocale)
+    expect(sendMock).not.toHaveBeenCalled()
   })
 })

@@ -69,37 +69,6 @@ def sanitize_branch_name(value: str) -> str:
     return branch[:120] or "task"
 
 
-def prepare_task_branch(path: str | Path, branch: str, *, base_branch: str = "main") -> dict[str, Any]:
-    target = sanitize_branch_name(branch)
-    remote = default_remote(path)
-    if remote:
-        fetch = run_git(["fetch", remote, base_branch], path)
-        if fetch.returncode != 0:
-            return {"status": "failed", "reason": "fetch_failed", "stderr": fetch.stderr[-4000:], "stdout": fetch.stdout[-4000:]}
-    base_ref = base_branch
-    reset = run_git(["checkout", base_branch], path)
-    if reset.returncode != 0:
-        fallback = current_branch(path)
-        if not fallback:
-            fallback_probe = run_git(["rev-parse", "--abbrev-ref", "HEAD"], path)
-            fallback = fallback_probe.stdout.strip() if fallback_probe.returncode == 0 else None
-        if not fallback or fallback == "HEAD":
-            return {"status": "failed", "reason": "checkout_base_failed", "stderr": reset.stderr[-4000:], "stdout": reset.stdout[-4000:]}
-        base_ref = fallback
-        reset = run_git(["checkout", base_ref], path)
-        if reset.returncode != 0:
-            return {"status": "failed", "reason": "checkout_base_failed", "stderr": reset.stderr[-4000:], "stdout": reset.stdout[-4000:]}
-    if remote:
-        run_git(["reset", "--hard", f"{remote}/{base_ref}"], path)
-    run_git(["clean", "-fd"], path)
-    create = run_git(["checkout", "-B", target, f"{remote}/{base_ref}"], path) if remote else run_git(["checkout", "-B", target, base_ref], path)
-    if create.returncode != 0 and remote:
-        create = run_git(["checkout", "-B", target, base_ref], path)
-    if create.returncode != 0:
-        return {"status": "failed", "reason": "checkout_task_branch_failed", "stderr": create.stderr[-4000:], "stdout": create.stdout[-4000:]}
-    return {"status": "ready", "branch": target, "base_branch": base_branch}
-
-
 def default_remote(path: str | Path) -> str | None:
     result = run_git(["remote"], path)
     if result.returncode != 0:

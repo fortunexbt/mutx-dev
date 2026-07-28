@@ -589,6 +589,66 @@ const dashboardRoutes: RouteSpec[] = [
     heading: /setup/i,
     primaryText: /provider wizard/i,
   },
+  {
+    path: '/dashboard/documents',
+    heading: /documents/i,
+    primaryText: /document workflows/i,
+  },
+  {
+    path: '/dashboard/reasoning',
+    heading: /reasoning/i,
+    primaryText: /blind judging/i,
+  },
+  {
+    path: '/dashboard/approvals',
+    heading: /approval queue/i,
+    primaryText: /requester intent/i,
+  },
+  {
+    path: '/dashboard/audit',
+    heading: /audit evidence/i,
+    primaryText: /attributable control-plane events/i,
+  },
+  {
+    path: '/dashboard/autonomy',
+    heading: /autonomy/i,
+    primaryText: /live autonomy daemon/i,
+  },
+  {
+    path: '/dashboard/channels',
+    heading: /channels/i,
+    primaryText: /channel bindings/i,
+  },
+  {
+    path: '/dashboard/templates',
+    heading: /templates/i,
+    primaryText: /browse, clone, and deploy/i,
+  },
+  {
+    path: '/dashboard/notifications',
+    heading: /notifications/i,
+    primaryText: /focused inbox/i,
+  },
+  {
+    path: '/dashboard/standup',
+    heading: /standup/i,
+    primaryText: /read-only brief/i,
+  },
+  {
+    path: '/dashboard/skills',
+    heading: /skills/i,
+    primaryText: /runtime-ready skill inventory/i,
+  },
+  {
+    path: '/dashboard/history',
+    heading: /history/i,
+    primaryText: /recent control-plane runs/i,
+  },
+  {
+    path: '/dashboard/logs',
+    heading: /logs/i,
+    primaryText: /trace events/i,
+  },
 ];
 
 async function mockMatrixTraffic(page: Page) {
@@ -1000,6 +1060,266 @@ async function mockMatrixTraffic(page: Page) {
       return;
     }
 
+    if (
+      (pathname === '/api/dashboard/documents/templates' ||
+        pathname === '/api/dashboard/reasoning/templates' ||
+        pathname === '/api/dashboard/clawhub/skills' ||
+        pathname === '/api/dashboard/clawhub/bundles' ||
+        (pathname.startsWith('/api/dashboard/assistant/') && pathname.endsWith('/skills'))) &&
+      method === 'GET'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+
+    if (
+      (pathname === '/api/dashboard/documents/jobs' ||
+        pathname === '/api/dashboard/reasoning/jobs') &&
+      method === 'GET'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ items: [], total: 0 }),
+      });
+      return;
+    }
+
+    if (pathname === '/api/dashboard/approvals' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: [],
+          total: 0,
+          skip: Number(searchParams.get('skip') || 0),
+          limit: Number(searchParams.get('limit') || 20),
+        }),
+      });
+      return;
+    }
+
+    if (pathname === '/api/dashboard/audit/events' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ events: [], total: 0 }),
+      });
+      return;
+    }
+
+    if (pathname === '/api/dashboard/autonomy' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          status: 'ok',
+          scope: 'local-only',
+          availability: 'complete',
+          generatedAt: '2025-03-21T08:15:00Z',
+          freshness: {
+            state: 'fresh',
+            heartbeatAt: '2025-03-21T08:15:00Z',
+            ageSeconds: 0,
+            staleAfterSeconds: 1200,
+          },
+          sources: { available: 4, missing: 0 },
+          daemon: {
+            reportedStatus: 'idle',
+            live: false,
+            cycleCount: 0,
+            lastCycleCompletedAt: null,
+            lastResultStatus: null,
+          },
+          lanes: [],
+          fleet: { roles: [] },
+          generatedTasks: [],
+          queue: {
+            counts: { queued: 0, running: 0, parked: 0, completed: 0, other: 0 },
+            queued: [],
+            running: [],
+            parked: [],
+            completed: [],
+          },
+          activeRunners: [],
+          reports: [],
+        }),
+      });
+      return;
+    }
+
+    if (pathname === '/api/dashboard/channels' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          generatedAt: '2025-03-21T08:15:00Z',
+          hasAssistant: false,
+          assistant: null,
+          sourceStatus: {
+            overview: 'ok',
+            channels: 'ok',
+            sessions: 'ok',
+          },
+          summary: {
+            configuredChannels: 0,
+            enabledChannels: 0,
+            liveChannels: 0,
+            activeSessions: 0,
+            sources: 0,
+          },
+          channels: [],
+          sessionSources: [],
+          partials: [],
+        }),
+      });
+      return;
+    }
+
+    if (pathname === '/api/dashboard/templates' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+
+    if (pathname === '/api/dashboard/templates/state' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          pinned_template_ids: [],
+          recent_template_ids: [],
+          deployment_count_by_template: {},
+        }),
+      });
+      return;
+    }
+
+    if (pathname === '/api/dashboard/notifications' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          generatedAt: '2025-03-21T08:15:00Z',
+          summary: {
+            alerts: 0,
+            approvals: 0,
+            webhookFailures: 0,
+            runtimeIncidents: 0,
+            governancePendingApprovals: null,
+          },
+          sources: {
+            alerts: 'ok',
+            approvals: 'ok',
+            webhooks: 'ok',
+            runtime: 'ok',
+            governance: 'partial',
+          },
+          items: [],
+          partials: ['Governance event totals are not exposed by the current contract.'],
+        }),
+      });
+      return;
+    }
+
+    if (pathname === '/api/dashboard/standup' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          generatedAt: '2025-03-21T08:15:00Z',
+          focus: 'No verified blockers in the mocked source feeds.',
+          metrics: {
+            openAlerts: 0,
+            pendingApprovals: 0,
+            failedRuns: 0,
+            queuedAutonomy: null,
+          },
+          sources: {
+            alerts: 'ok',
+            approvals: 'ok',
+            runs: 'ok',
+            webhooks: 'ok',
+            autonomy: 'partial',
+          },
+          blockers: [],
+          watchlist: [],
+          completions: [],
+          partials: ['Local autonomy is unavailable in the browser test environment.'],
+        }),
+      });
+      return;
+    }
+
+    if (pathname === '/api/dashboard/memory' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          generatedAt: '2025-03-21T08:15:00Z',
+          assistant: null,
+          sourceStatus: {
+            assistant: 'ok',
+            sessions: 'ok',
+            documents: 'ok',
+            reasoning: 'ok',
+          },
+          summary: {
+            sessions: 0,
+            activeSessions: 0,
+            sources: 0,
+            documentJobs: 0,
+            documentArtifacts: 0,
+            reasoningJobs: 0,
+            reasoningArtifacts: 0,
+          },
+          sessions: [],
+          sources: [],
+          documents: [],
+          reasoning: [],
+          partials: ['Memory inventory is read-only.'],
+        }),
+      });
+      return;
+    }
+
+    if (pathname === '/api/dashboard/orchestration' && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          generatedAt: '2025-03-21T08:15:00Z',
+          sourceStatus: {
+            approvals: 'ok',
+            runs: 'ok',
+            sessions: 'ok',
+            blueprints: 'ok',
+            autonomy: 'partial',
+          },
+          summary: {
+            pendingApprovals: 0,
+            recoveryWatch: 0,
+            blueprints: 0,
+            queuedAutonomy: null,
+            runningAutonomy: null,
+          },
+          approvals: [],
+          recoveries: [],
+          blueprints: [],
+          autonomy: null,
+          partials: ['Local autonomy is unavailable in the browser test environment.'],
+        }),
+      });
+      return;
+    }
+
     if (method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -1101,15 +1421,24 @@ test.describe('Dashboard route matrix', () => {
       });
     }
 
-    test('primary navigation hides preview-backed workspace routes', async ({ page }) => {
+    test('primary navigation exposes stable routes and hides redirect-only aliases', async ({ page }) => {
       await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
 
-      await expect(page.getByRole('link', { name: /^memory$/i })).toHaveCount(0);
-      await expect(page.getByRole('link', { name: /^orchestration$/i })).toHaveCount(0);
-      await expect(page.getByRole('link', { name: /^channels$/i })).toHaveCount(0);
-      await expect(page.getByRole('link', { name: /^skills$/i })).toHaveCount(0);
-      await expect(page.getByRole('link', { name: /^logs$/i })).toHaveCount(0);
+      await expect(page.getByRole('link', { name: /^memory$/i })).toBeVisible();
+      await expect(page.getByRole('link', { name: /^orchestration$/i })).toBeVisible();
+      await expect(page.getByRole('link', { name: /^channels$/i })).toBeVisible();
+      await expect(page.getByRole('link', { name: /^skills$/i })).toBeVisible();
+      await expect(page.getByRole('link', { name: /^logs$/i })).toBeVisible();
+      await expect(page.getByRole('link', { name: /^history$/i })).toHaveCount(0);
       await expect(page.getByRole('link', { name: /^spawn$/i })).toHaveCount(0);
+    });
+
+    test('spawn alias opens the canonical create-agent workflow', async ({ page }) => {
+      await page.goto('/dashboard/spawn', { waitUntil: 'domcontentloaded' });
+
+      await expect(page).toHaveURL(/\/dashboard\/agents\?create=1$/);
+      await expectVisibleRouteTitle(page, /agents/i);
+      await expect(page.getByRole('dialog', { name: /create agent/i })).toBeVisible();
     });
 
     test('command palette is keyboard accessible', async ({ page }) => {
@@ -1119,7 +1448,14 @@ test.describe('Dashboard route matrix', () => {
       await page.keyboard.press('Control+K');
       const palette = page.getByRole('dialog', { name: /go anywhere/i });
       await expect(palette).toBeVisible();
-      await expect(page.getByRole('combobox', { name: /search dashboard surfaces/i })).toBeFocused();
+      const search = page.getByRole('combobox', { name: /search dashboard surfaces/i });
+      const options = palette.getByRole('option');
+      await expect(search).toBeFocused();
+
+      await page.keyboard.press('End');
+      await expect(options.last()).toHaveAttribute('aria-selected', 'true');
+      await page.keyboard.press('Home');
+      await expect(options.first()).toHaveAttribute('aria-selected', 'true');
 
       await page.keyboard.press('Escape');
       await expect(palette).toHaveCount(0);

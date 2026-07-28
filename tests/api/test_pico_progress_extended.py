@@ -173,8 +173,7 @@ async def test_pico_progress_partial_updates_preserve_existing_nested_fields(cli
     assert get_response.status_code == 200
     assert get_response.json()["autopilot"]["approvalRequestIds"] == ["apr_1"]
     assert (
-        get_response.json()["lessonWorkspaces"]["install-hermes-locally"]["notes"]
-        == "final notes"
+        get_response.json()["lessonWorkspaces"]["install-hermes-locally"]["notes"] == "final notes"
     )
 
 

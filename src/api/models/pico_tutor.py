@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 PicoTutorConfidence = Literal["high", "medium", "low"]
 PicoTutorIntent = Literal[
@@ -19,6 +19,8 @@ PicoTutorSkillLevel = Literal["beginner", "intermediate", "advanced"]
 PicoTutorSourceKind = Literal["lesson", "knowledge_pack", "official"]
 PicoTutorOpenAIConnectionStatusValue = Literal["connected", "platform", "disconnected", "error"]
 PicoTutorOpenAIConnectionSource = Literal["user", "platform", "none"]
+PicoTutorPlan = Literal["free", "starter", "pro", "enterprise"]
+PicoTutorProviderProofKind = Literal["validated_user_key", "configured_platform_key"]
 
 
 class PicoTutorSetupContext(BaseModel):
@@ -53,6 +55,18 @@ class PicoTutorRequest(BaseModel):
 
 class PicoTutorOpenAIConnectionRequest(BaseModel):
     apiKey: str = Field(..., min_length=10, max_length=512)
+
+    @field_validator("apiKey", mode="before")
+    @classmethod
+    def normalize_api_key(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("apiKey", mode="after")
+    @classmethod
+    def reject_api_key_whitespace(cls, value: str) -> str:
+        if any(character.isspace() for character in value):
+            raise ValueError("OpenAI key must not contain whitespace")
+        return value
 
 
 class PicoTutorLessonLink(BaseModel):
@@ -94,7 +108,7 @@ class PicoTutorStructuredReply(BaseModel):
     nextQuestion: str | None = None
 
 
-class PicoTutorResponse(BaseModel):
+class PicoTutorGuidance(BaseModel):
     title: str
     summary: str
     answer: str
@@ -113,12 +127,40 @@ class PicoTutorResponse(BaseModel):
     nextLesson: str | None = None
 
     @model_validator(mode="after")
-    def _sync_legacy_response_fields(self) -> "PicoTutorResponse":
+    def _sync_legacy_response_fields(self) -> "PicoTutorGuidance":
         if self.reply is None:
             self.reply = self.answer
         if self.nextLesson is None and self.recommendedLessonIds:
             self.nextLesson = self.recommendedLessonIds[0]
         return self
+
+
+class PicoTutorEntitlement(BaseModel):
+    authenticated: bool = True
+    plan: PicoTutorPlan
+    tutorAccess: bool
+    minimumPlan: PicoTutorPlan = "starter"
+    byokAccess: bool
+    byokMinimumPlan: PicoTutorPlan = "pro"
+
+
+class PicoTutorGenerationProof(BaseModel):
+    provider: Literal["openai"] = "openai"
+    source: Literal["user", "platform"]
+    model: str
+    responseId: str
+    completedAt: str
+
+
+class PicoTutorResponse(PicoTutorGuidance):
+    entitlement: PicoTutorEntitlement
+    generation: PicoTutorGenerationProof
+
+
+class PicoTutorProviderProof(BaseModel):
+    kind: PicoTutorProviderProofKind
+    checkedAt: str
+    validatedAt: str | None = None
 
 
 class PicoTutorOpenAIConnectionStatus(BaseModel):
@@ -131,10 +173,42 @@ class PicoTutorOpenAIConnectionStatus(BaseModel):
     connectedAt: str | None = None
     validatedAt: str | None = None
     message: str
+    providerAvailable: bool
+    canConnect: bool
+    entitlement: PicoTutorEntitlement
+    proof: PicoTutorProviderProof | None = None
     apiKeySet: bool | None = None
 
     @model_validator(mode="after")
     def _sync_legacy_status_fields(self) -> "PicoTutorOpenAIConnectionStatus":
         if self.apiKeySet is None:
             self.apiKeySet = self.source == "user" and self.connected
+
+        if self.status == "connected":
+            if not (
+                self.connected
+                and self.source == "user"
+                and self.providerAvailable
+                and self.validatedAt
+                and self.proof
+                and self.proof.kind == "validated_user_key"
+                and self.proof.validatedAt == self.validatedAt
+            ):
+                raise ValueError("Connected Tutor status requires validated user-key proof")
+        elif self.connected:
+            raise ValueError("Only validated user-key status may be connected")
+
+        if self.status == "platform" and not (
+            self.source == "platform"
+            and not self.providerAvailable
+            and self.proof
+            and self.proof.kind == "configured_platform_key"
+        ):
+            raise ValueError("Platform Tutor status must distinguish configured credentials")
+
+        if self.status in {"disconnected", "error"} and self.providerAvailable:
+            raise ValueError("Unavailable Tutor status cannot claim provider availability")
+
+        if self.canConnect != self.entitlement.byokAccess:
+            raise ValueError("Tutor BYOK capability must match the authoritative entitlement")
         return self

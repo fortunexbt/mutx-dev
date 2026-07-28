@@ -1,8 +1,10 @@
-"""OIDC token validation and provider compatibility helpers.
+"""OIDC token validation and provider-specific SSO helpers.
 
 The generic validator is configured through ``OIDC_ISSUER``,
 ``OIDC_CLIENT_ID``, and ``OIDC_JWKS_URI`` on :class:`src.api.config.Settings`.
-Provider-specific helpers remain available for the legacy SSO callback flow.
+Provider SSO callbacks use only their provider-specific issuer, client ID, and
+JWKS endpoint so an unrelated generic resource-server configuration cannot
+change their trust boundary.
 """
 
 from __future__ import annotations
@@ -35,6 +37,7 @@ class TokenPayload(BaseModel):
 
     sub: str
     email: str
+    email_verified: bool = False
     roles: list[str]
     exp: datetime
 
@@ -80,10 +83,11 @@ _JWKS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 def get_oidc_settings(source: Settings | None = None) -> OIDCSettings | None:
     """Return configured OIDC settings, or ``None`` when OIDC is disabled."""
     source = source or get_settings()
-    if not source.oidc_issuer:
+    values = (source.oidc_issuer, source.oidc_client_id, source.oidc_jwks_uri)
+    if not any(values):
         return None
 
-    if not source.oidc_client_id or not source.oidc_jwks_uri:
+    if not all(values):
         raise RuntimeError("OIDC configuration is incomplete")
 
     return OIDCSettings(
@@ -180,12 +184,22 @@ async def validate_oidc_token(
 
 
 def _get_provider_config(provider: SSOProvider, domain: str, realm: str | None = None) -> dict:
+    base_domain = domain.rstrip("/")
+    if provider == SSOProvider.KEYCLOAK and realm:
+        issuer = f"{base_domain}/realms/{realm}"
+    elif provider == SSOProvider.AUTH0:
+        issuer = f"{base_domain}/"
+    else:
+        issuer = base_domain
     return {
-        "issuer": domain,
+        "issuer": issuer,
         "userinfo_endpoint": PROVIDER_USERINFO_URLS[provider].format(
-            domain=domain, realm=realm or ""
+            domain=base_domain, realm=realm or ""
         ),
-        "jwks_uri": PROVIDER_JWKS_URLS[provider].format(domain=domain, realm=realm or ""),
+        "jwks_uri": PROVIDER_JWKS_URLS[provider].format(
+            domain=base_domain,
+            realm=realm or "",
+        ),
     }
 
 
@@ -223,9 +237,16 @@ def _normalize_payload(
     *,
     client_id: str | None = None,
 ) -> TokenPayload:
+    subject = str(payload.get("sub", "")).strip()
+    email = str(payload.get("email", payload.get("preferred_username", ""))).strip().casefold()
+    if not subject or not email:
+        raise OIDCTokenValidationError("OIDC identity is missing a subject or email")
+    if payload.get("email_verified") is not True:
+        raise OIDCTokenValidationError("OIDC identity must affirm that the email is verified")
     return TokenPayload(
-        sub=str(payload.get("sub", "")),
-        email=str(payload.get("email", payload.get("preferred_username", ""))),
+        sub=subject,
+        email=email,
+        email_verified=True,
         roles=_extract_roles_from_payload(payload, provider, client_id=client_id),
         exp=datetime.fromtimestamp(payload.get("exp", 0), tz=timezone.utc),
     )
@@ -240,31 +261,21 @@ async def verify_oauth_token(
     client_id: str | None = None,
     allow_userinfo_fallback: bool = True,
 ) -> TokenPayload:
-    """Verify a provider token, preferring the canonical configured OIDC contract."""
+    """Verify a provider token against that provider's issuer and audience."""
     source = get_settings()
     domain = domain or getattr(source, f"{provider.value}_domain", None)
     realm = realm or getattr(source, f"{provider.value}_realm", None)
-    oidc_settings = get_oidc_settings()
-    if oidc_settings is not None:
-        try:
-            return _normalize_payload(
-                await validate_oidc_token(token, settings=oidc_settings),
-                provider,
-                client_id=oidc_settings.client_id,
-            )
-        except OIDCTokenValidationError as exc:
-            if allow_userinfo_fallback and domain is not None:
-                config = _get_provider_config(provider, domain, realm)
-                return await _verify_via_userinfo(token, config["userinfo_endpoint"])
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=str(exc),
-            ) from exc
+    client_id = client_id or getattr(source, f"{provider.value}_client_id", None)
 
     if domain is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"No domain configured for SSO provider: {provider.value}",
+        )
+    if not client_id:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"No client ID configured for SSO provider: {provider.value}",
         )
 
     config = _get_provider_config(provider, domain, realm)
@@ -283,7 +294,7 @@ async def verify_oauth_token(
             signing_key,
             algorithms=["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
             audience=client_id,
-            issuer=domain,
+            issuer=config["issuer"],
             options={"require_exp": True},
         )
         return _normalize_payload(payload, provider, client_id=client_id)
@@ -304,19 +315,33 @@ async def _verify_via_userinfo(token: str, userinfo_uri: str) -> TokenPayload:
                 headers={"Authorization": f"Bearer {token}"},
             )
             response.raise_for_status()
-            userinfo = response.json()
-    except httpx.HTTPError as exc:
+        userinfo = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token verification failed",
         ) from exc
 
+    if not isinstance(userinfo, dict):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token verification failed",
+        )
+    subject = str(userinfo.get("sub", userinfo.get("user_id", ""))).strip()
+    email = str(userinfo.get("email", userinfo.get("preferred_username", ""))).strip().casefold()
+    if not subject or not email or userinfo.get("email_verified") is not True:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="OIDC identity is incomplete or unverified",
+        )
+
     roles = userinfo.get("roles", userinfo.get("groups", userinfo.get("custom:roles", [])))
     if isinstance(roles, str):
         roles = [roles]
     return TokenPayload(
-        sub=str(userinfo.get("sub", userinfo.get("user_id", ""))),
-        email=str(userinfo.get("email", userinfo.get("preferred_username", ""))),
+        sub=subject,
+        email=email,
+        email_verified=True,
         roles=roles if isinstance(roles, list) else [],
         exp=datetime.now(timezone.utc) + timedelta(hours=1),
     )

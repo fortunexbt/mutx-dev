@@ -38,7 +38,9 @@ def inspect_lane_resume(
     paused_epoch = _parse_epoch(str(paused_at)) if paused_at else None
     effective_pause_seconds = int(lane_state.get("auto_resume_after_seconds") or min_pause_seconds)
     resume_count = int(lane_state.get("auto_resume_count") or 0)
-    age_seconds = None if paused_epoch is None else max(int((now_epoch or time.time()) - paused_epoch), 0)
+    age_seconds = (
+        None if paused_epoch is None else max(int((now_epoch or time.time()) - paused_epoch), 0)
+    )
     eligible = bool(
         paused
         and reason in AUTO_RESUME_REASONS
@@ -57,7 +59,9 @@ def inspect_lane_resume(
         blocked_by = "backoff_not_elapsed"
     elif resume_count >= max_auto_resumes:
         blocked_by = "max_auto_resumes_reached"
-    remaining_seconds = None if age_seconds is None else max(effective_pause_seconds - age_seconds, 0)
+    remaining_seconds = (
+        None if age_seconds is None else max(effective_pause_seconds - age_seconds, 0)
+    )
     return {
         "lane": lane,
         "paused": paused,
@@ -81,7 +85,11 @@ def requeue_parked_items(queue: dict[str, Any], lane: str) -> int:
         if item.get("status") != "parked" or item_lane != lane:
             continue
         notes = item.get("notes") if isinstance(item.get("notes"), list) else []
-        if notes and not any("lane paused" in str(note.get("message") or "") for note in notes if isinstance(note, dict)):
+        if notes and not any(
+            "lane paused" in str(note.get("message") or "")
+            for note in notes
+            if isinstance(note, dict)
+        ):
             continue
         item["status"] = "queued"
         item["updated_at"] = utc_now_iso()

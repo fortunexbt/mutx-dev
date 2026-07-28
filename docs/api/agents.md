@@ -30,7 +30,12 @@ The `/v1/agents*` surface covers control-plane CRUD for user-owned agents and ru
 
 ## Create An Agent
 
-Ownership comes from the bearer token. Do not send `user_id` in the request body.
+Ownership comes from the authenticated user principal. Do not send `user_id` in
+the request body. User JWTs and managed API keys are accepted through Bearer
+authentication; managed keys may also use `X-API-Key`.
+Creation, config changes, deployment shortcuts, stop, resource writes, rollback,
+and deletion require `DEVELOPER` (or `ADMIN`). Owned reads accept `VIEWER` or
+`DEVELOPER` (and `ADMIN`).
 
 `config` can be a JSON object or a JSON string. The backend validates it against the selected `type`.
 
@@ -216,3 +221,8 @@ It returns a runtime payload containing:
 - `message`
 
 Use the OpenAPI snapshot for the exact runtime request and response shapes if you are integrating at that layer.
+
+The returned `mutx_agent_...` key is a Bearer credential for heartbeat, metrics,
+logs, command polling/acknowledgement, and runtime status. Those six
+agent-authenticated operations do not accept the managed-user `X-API-Key`
+header.

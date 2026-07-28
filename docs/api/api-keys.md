@@ -17,6 +17,8 @@ New keys are issued with the `mutx_live_` prefix.
 ## Authentication
 
 Management calls use user auth.
+Listing and detail reads accept `VIEWER` or `DEVELOPER`; create, rotate, and revoke
+require `DEVELOPER`. `ADMIN` implicitly satisfies either role check.
 
 For interactive docs examples, use a bearer access token:
 
@@ -24,7 +26,8 @@ For interactive docs examples, use a bearer access token:
 -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
-Issued API keys can then be used against protected routes in either of these forms:
+Issued managed keys can then be used against protected user-principal routes in
+either of these forms:
 
 ```bash
 curl -H "Authorization: Bearer mutx_live_your_key_here" \
@@ -33,6 +36,9 @@ curl -H "Authorization: Bearer mutx_live_your_key_here" \
 curl -H "X-API-Key: mutx_live_your_key_here" \
   https://api.mutx.dev/v1/webhooks/
 ```
+
+Agent-runtime endpoints such as heartbeat and command polling use separately
+issued `mutx_agent_...` credentials through the Bearer header.
 
 ## List API Keys
 

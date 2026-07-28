@@ -16,7 +16,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.database import get_db
-from src.api.auth.dependencies import get_current_user
+from src.api.auth.dependencies import require_roles
 from src.api.models import Agent, Deployment, Swarm, User
 from src.api.models.schemas import SwarmBlueprintResponse
 from src.api.services.assistant_control_plane import list_swarm_blueprints
@@ -80,7 +80,7 @@ class SwarmListResponse(BaseModel):
 
 @router.get("/blueprints", response_model=list[SwarmBlueprintResponse])
 async def list_swarm_blueprint_catalog(
-    _current_user: User = Depends(get_current_user),
+    _current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     """List curated multi-agent orchestration blueprints sourced from Orchestra Research."""
     return list_swarm_blueprints()
@@ -143,7 +143,7 @@ async def list_swarms(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     """List all swarms for the current user."""
     # Count total
@@ -175,7 +175,7 @@ async def list_swarms(
 async def create_swarm(
     swarm_data: SwarmCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     """Create a new swarm."""
     # Validate all agents exist and are owned by the user
@@ -208,7 +208,7 @@ async def create_swarm(
 async def get_swarm(
     swarm_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     """Get swarm details."""
     result = await db.execute(
@@ -225,7 +225,7 @@ async def update_swarm(
     swarm_id: uuid.UUID,
     update_data: SwarmUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     """Update swarm metadata."""
     result = await db.execute(
@@ -255,7 +255,7 @@ async def update_swarm(
 async def delete_swarm(
     swarm_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     """Delete a swarm."""
     result = await db.execute(
@@ -275,7 +275,7 @@ async def scale_swarm(
     swarm_id: uuid.UUID,
     scale_data: SwarmScale,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     """Scale all agents in a swarm to the specified replicas."""
     result = await db.execute(

@@ -22,7 +22,7 @@ export async function GET(
     const { jobId, artifactId } = await params
     const { response, tokenRefreshed, refreshedTokens } = await authenticatedFetch(
       request,
-      `${getApiBaseUrl()}/v1/reasoning/jobs/${jobId}/artifacts/${artifactId}`,
+      `${getApiBaseUrl()}/v1/reasoning/jobs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(artifactId)}`,
       {
         method: 'GET',
       },

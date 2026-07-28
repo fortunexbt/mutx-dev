@@ -13,7 +13,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from run_artifacts import (
+from run_artifacts import (  # noqa: E402 - direct script execution needs the sibling path.
     copy_artifact_to_run,
     finalize_run,
     initialize_run_artifact,

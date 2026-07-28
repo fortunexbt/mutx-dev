@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from cli.personal_assistant import DEFAULT_TEMPLATE_ID, build_personal_assistant_config
 from cli.openclaw_runtime import get_gateway_health, list_local_sessions
 from cli.services.base import APIService
 from cli.services.models import (
@@ -17,64 +16,11 @@ from cli.setup_wizard import prepare_runtime_state_sync
 
 
 class TemplatesService(APIService):
-    def _fallback_personal_assistant_deploy(
-        self,
-        *,
-        template_id: str,
-        name: str,
-        description: str | None,
-        replicas: int,
-        model: str | None,
-        assistant_id: str | None,
-        workspace: str | None,
-        skills: list[str] | None,
-        runtime_metadata: dict[str, Any] | None,
-    ) -> dict[str, Any]:
-        config = build_personal_assistant_config(
-            name=name,
-            description=description,
-            model=model,
-            workspace=workspace,
-            assistant_id=assistant_id,
-            skills=skills,
-            runtime_metadata=runtime_metadata,
-        )
-        agent_response = self._request(
-            "post",
-            "/v1/agents",
-            json={
-                "name": name,
-                "description": description or "",
-                "type": "openclaw",
-                "config": config,
-            },
-        )
-        self._expect_status(agent_response, {201}, invalid_message="Unable to create starter agent")
-        agent_payload = agent_response.json()
-        deployment_response = self._request(
-            "post",
-            "/v1/deployments",
-            json={
-                "agent_id": agent_payload["id"],
-                "replicas": replicas,
-            },
-        )
-        self._expect_status(
-            deployment_response,
-            {200, 201},
-            invalid_message="Unable to deploy starter template",
-        )
-        return {
-            "template_id": template_id,
-            "agent": agent_payload,
-            "deployment": deployment_response.json(),
-            "delivery": "client_fallback",
-        }
-
     def list_templates(self) -> list[TemplateRecord]:
         response = self._request("get", "/v1/templates")
         self._expect_status(response, {200})
-        return [TemplateRecord.from_payload(item) for item in response.json()]
+        payload = self._decode_json(response, expected_type=list)
+        return [TemplateRecord.from_payload(item) for item in payload]
 
     def deploy_template(
         self,
@@ -106,20 +52,8 @@ class TemplatesService(APIService):
             payload["runtime_metadata"] = runtime_metadata
 
         response = self._request("post", f"/v1/templates/{template_id}/deploy", json=payload)
-        if response.status_code in {404, 500, 502, 503, 504} and template_id == DEFAULT_TEMPLATE_ID:
-            return self._fallback_personal_assistant_deploy(
-                template_id=template_id,
-                name=name,
-                description=description,
-                replicas=replicas,
-                model=model,
-                assistant_id=assistant_id,
-                workspace=workspace,
-                skills=skills,
-                runtime_metadata=runtime_metadata,
-            )
         self._expect_status(response, {201}, invalid_message="Unable to deploy starter template")
-        return response.json()
+        return self._decode_json(response, expected_type=dict)
 
 
 class AssistantService(APIService):
@@ -164,7 +98,7 @@ class AssistantService(APIService):
         params = {"agent_id": agent_id} if agent_id else None
         response = self._request("get", "/v1/assistant/overview", params=params)
         self._expect_status(response, {200})
-        payload = self._overlay_local_runtime(response.json())
+        payload = self._overlay_local_runtime(self._decode_json(response, expected_type=dict))
         assistant = payload.get("assistant")
         if not assistant:
             self._sync_local_runtime_snapshot()
@@ -175,43 +109,42 @@ class AssistantService(APIService):
     def list_skills(self, agent_id: str) -> list[AssistantSkillRecord]:
         response = self._request("get", f"/v1/assistant/{agent_id}/skills")
         self._expect_status(response, {200}, not_found_message="Assistant not found")
-        return [AssistantSkillRecord.from_payload(item) for item in response.json()]
+        payload = self._decode_json(response, expected_type=list)
+        return [AssistantSkillRecord.from_payload(item) for item in payload]
 
     def install_skill(self, agent_id: str, skill_id: str) -> list[AssistantSkillRecord]:
         response = self._request("post", f"/v1/assistant/{agent_id}/skills/{skill_id}")
         self._expect_status(response, {200}, not_found_message="Assistant not found")
-        return [AssistantSkillRecord.from_payload(item) for item in response.json()]
+        payload = self._decode_json(response, expected_type=list)
+        return [AssistantSkillRecord.from_payload(item) for item in payload]
 
     def uninstall_skill(self, agent_id: str, skill_id: str) -> list[AssistantSkillRecord]:
         response = self._request("delete", f"/v1/assistant/{agent_id}/skills/{skill_id}")
         self._expect_status(response, {200}, not_found_message="Assistant not found")
-        return [AssistantSkillRecord.from_payload(item) for item in response.json()]
+        payload = self._decode_json(response, expected_type=list)
+        return [AssistantSkillRecord.from_payload(item) for item in payload]
 
     def list_channels(self, agent_id: str) -> list[AssistantChannelRecord]:
         response = self._request("get", f"/v1/assistant/{agent_id}/channels")
         self._expect_status(response, {200}, not_found_message="Assistant not found")
-        return [AssistantChannelRecord.from_payload(item) for item in response.json()]
+        payload = self._decode_json(response, expected_type=list)
+        return [AssistantChannelRecord.from_payload(item) for item in payload]
 
     def health(self, agent_id: str) -> AssistantHealthRecord:
-        overview = self.overview(agent_id=agent_id)
-        if overview is None:
-            response = self._request("get", f"/v1/assistant/{agent_id}/health")
-            self._expect_status(response, {200}, not_found_message="Assistant not found")
-            return AssistantHealthRecord.from_payload(response.json())
-        return overview.gateway
+        response = self._request("get", f"/v1/assistant/{agent_id}/health")
+        self._expect_status(response, {200}, not_found_message="Assistant not found")
+        return AssistantHealthRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def list_sessions(self, *, agent_id: str | None = None) -> list[dict[str, Any]]:
         if agent_id:
-            overview = self.overview(agent_id=agent_id)
-            if overview is not None:
-                return list_local_sessions(assistant_id=overview.assistant_id)
+            response = self._request("get", f"/v1/assistant/{agent_id}/sessions")
         else:
             local_sessions = list_local_sessions()
             if local_sessions:
                 return local_sessions
-
-        params = {"agent_id": agent_id} if agent_id else None
-        response = self._request("get", "/v1/sessions", params=params)
+            response = self._request("get", "/v1/sessions")
         self._expect_status(response, {200})
-        payload = response.json()
-        return payload.get("sessions", [])
+        payload = self._decode_json(response, expected_type=(dict, list))
+        if isinstance(payload, dict):
+            return payload.get("sessions", [])
+        return payload if isinstance(payload, list) else []

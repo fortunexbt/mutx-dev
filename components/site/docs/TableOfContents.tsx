@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 interface Heading {
   id: string;
@@ -13,15 +13,6 @@ interface TableOfContentsProps {
   sourceHeadings: Heading[];
 }
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .trim();
-}
-
 export function TableOfContents({ sourceHeadings }: TableOfContentsProps) {
   const [activeId, setActiveId] = useState<string>('');
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -29,14 +20,15 @@ export function TableOfContents({ sourceHeadings }: TableOfContentsProps) {
   // Map raw markdown headings to the IDs used in the rendered HTML.
   // remark strips emphasis from heading text and adds anchor links.
   // We derive the DOM IDs by slugifying the stripped text.
-  const mappedHeadings = sourceHeadings
-    .filter((h) => h.level >= 2 && h.level <= 3)
-    .map((h) => ({
-      ...h,
-      domId: slugify(h.text),
-    }));
-
-  if (mappedHeadings.length < 3) return null;
+  const mappedHeadings = useMemo(
+    () => sourceHeadings
+      .filter((h) => h.level >= 2 && h.level <= 3)
+      .map((h) => ({
+        ...h,
+        domId: h.id,
+      })),
+    [sourceHeadings],
+  );
 
   useEffect(() => {
     const elements = mappedHeadings
@@ -61,10 +53,12 @@ export function TableOfContents({ sourceHeadings }: TableOfContentsProps) {
     return () => observerRef.current?.disconnect();
   }, [mappedHeadings]);
 
+  if (mappedHeadings.length < 3) return null;
+
   return (
-    <aside className="docs-toc" aria-label="On this page">
-      <p className="docs-toc-title">On this page</p>
-      <nav>
+    <aside className="docs-toc">
+      <p id="docs-toc-title" className="docs-toc-title">On this page</p>
+      <nav aria-labelledby="docs-toc-title">
         {mappedHeadings.map((heading) => (
           <a
             key={heading.domId}
@@ -72,6 +66,7 @@ export function TableOfContents({ sourceHeadings }: TableOfContentsProps) {
             className={`docs-toc-link${heading.level === 3 ? ' docs-toc-link-nested' : ''}${
               activeId === heading.domId ? ' active' : ''
             }`}
+            aria-current={activeId === heading.domId ? 'location' : undefined}
           >
             {heading.text}
           </a>

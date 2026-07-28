@@ -7,6 +7,8 @@ import {
   hasAuthSession,
 } from '@/app/api/_lib/controlPlane'
 import { badRequest, unauthorized, withErrorHandling } from '@/app/api/_lib/errors'
+import { malformedTutorUpstream, tutorProxyError } from '@/app/api/pico/tutor/contract'
+import { normalizeTutorReplyPayload } from '@/lib/pico/tutor'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,10 +51,16 @@ export async function POST(request: NextRequest) {
       },
     )
 
-    const payload = await response.json().catch(() => ({
-      detail: 'Tutor request failed',
-    }))
-    const nextResponse = NextResponse.json(payload, { status: response.status })
+    const payload = await response.json().catch(() => null)
+    let nextResponse: NextResponse
+    if (!response.ok) {
+      nextResponse = tutorProxyError(response.status, payload, 'Tutor request failed')
+    } else {
+      const normalizedReply = normalizeTutorReplyPayload(payload)
+      nextResponse = normalizedReply
+        ? NextResponse.json(normalizedReply, { status: response.status })
+        : malformedTutorUpstream('Tutor returned an unverified or malformed response.')
+    }
 
     if (tokenRefreshed && refreshedTokens) {
       applyAuthCookies(nextResponse, request, refreshedTokens)

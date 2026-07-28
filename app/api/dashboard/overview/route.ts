@@ -10,7 +10,9 @@ import { unauthorized, withErrorHandling } from "@/app/api/_lib/errors";
 
 export const dynamic = "force-dynamic";
 
-type OverviewResourceStatus = "ok" | "auth_error" | "error";
+const UPSTREAM_TIMEOUT_MS = 5_000;
+
+type OverviewResourceStatus = "ok" | "unauthenticated" | "forbidden" | "error";
 
 type OverviewResourceResult = {
   status: OverviewResourceStatus;
@@ -66,25 +68,59 @@ async function fetchOverviewResource(
   tokenRefreshed: boolean;
   refreshedTokens?: { access_token: string; refresh_token?: string; expires_in: number };
 }> {
-  const { response, tokenRefreshed, refreshedTokens } = await authenticatedFetch(request, url, {
-    cache: "no-store",
-  });
-  const payload = response.status === 204 ? null : await response.json().catch(() => null);
+  try {
+    const { response, tokenRefreshed, refreshedTokens } = await authenticatedFetch(request, url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    const payload = response.status === 204 ? null : await response.json().catch(() => null);
 
-  return {
-    result: {
-      status: response.ok
-        ? "ok"
-        : response.status === 401 || response.status === 403
-          ? "auth_error"
-          : "error",
-      statusCode: response.status,
-      data: response.ok ? payload : null,
-      error: response.ok ? null : extractErrorMessage(payload, fallbackMessage),
-    },
-    tokenRefreshed,
-    refreshedTokens,
-  };
+    if (response.ok && payload === null) {
+      return {
+        result: {
+          status: "error",
+          statusCode: 502,
+          data: null,
+          error: `${fallbackMessage}: upstream returned no data.`,
+        },
+        tokenRefreshed,
+        refreshedTokens,
+      };
+    }
+
+    return {
+      result: {
+        status: response.ok
+          ? "ok"
+          : response.status === 401
+            ? "unauthenticated"
+            : response.status === 403
+              ? "forbidden"
+              : "error",
+        statusCode: response.status,
+        data: response.ok ? payload : null,
+        error: response.ok ? null : extractErrorMessage(payload, fallbackMessage),
+      },
+      tokenRefreshed,
+      refreshedTokens,
+    };
+  } catch (error) {
+    const errorName =
+      error && typeof error === "object" && "name" in error ? String(error.name) : "";
+    const timedOut = errorName === "AbortError" || errorName === "TimeoutError";
+
+    return {
+      result: {
+        status: "error",
+        statusCode: timedOut ? 504 : 502,
+        data: null,
+        error: timedOut
+          ? `${fallbackMessage}: upstream request timed out.`
+          : `${fallbackMessage}: upstream request failed.`,
+      },
+      tokenRefreshed: false,
+    };
+  }
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -96,6 +132,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const apiBaseUrl = getApiBaseUrl();
     const authResponse = await authenticatedFetch(request, `${apiBaseUrl}/v1/auth/me`, {
       cache: "no-store",
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     const authPayload = await authResponse.response
       .json()
@@ -188,6 +225,38 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         return { key, resource };
       }),
     );
+
+    const unauthenticatedResource = resourceEntries.find(
+      ({ resource }) => resource.result.status === "unauthenticated",
+    );
+    const forbiddenResource = resourceEntries.every(
+      ({ resource }) => resource.result.status === "forbidden",
+    )
+      ? resourceEntries[0]
+      : undefined;
+    const accessFailure = unauthenticatedResource ?? forbiddenResource;
+
+    if (accessFailure) {
+      const nextResponse = NextResponse.json(
+        {
+          detail:
+            accessFailure.resource.result.error ??
+            (accessFailure.resource.result.status === "unauthenticated"
+              ? "Dashboard overview authentication expired."
+              : "Dashboard overview access was denied."),
+        },
+        { status: accessFailure.resource.result.statusCode },
+      );
+      const refreshedTokens =
+        resourceEntries.find(({ resource }) => resource.tokenRefreshed)?.resource.refreshedTokens ||
+        authResponse.refreshedTokens;
+
+      if (refreshedTokens) {
+        applyAuthCookies(nextResponse, request, refreshedTokens);
+      }
+
+      return nextResponse;
+    }
 
     const resources = Object.fromEntries(
       resourceEntries.map(({ key, resource }) => [key, resource.result]),

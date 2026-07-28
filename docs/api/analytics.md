@@ -2,7 +2,13 @@
 
 The `/v1/analytics/*` surface provides usage summaries, cost tracking, timeseries data, and per-agent metrics.
 
-All endpoints require `Authorization: Bearer <token>` and scope results to the authenticated user's owned resources.
+All endpoints require a persisted user role. Summary, per-agent, timeseries,
+cost, and budget reads allow `VIEWER` or `DEVELOPER`; revenue, subscription, and
+payment-administration routes require `ADMIN`, a verified email, and an allowed
+internal email domain. A user access token or managed API key may authenticate
+the request through `Authorization: Bearer ...`; managed API keys also work
+through `X-API-Key`. User-facing results are scoped to the authenticated user's
+owned resources.
 
 ## Routes
 
@@ -13,6 +19,9 @@ All endpoints require `Authorization: Bearer <token>` and scope results to the a
 | `GET /v1/analytics/timeseries` | Bucketed timeseries for runs, API calls, or latency |
 | `GET /v1/analytics/costs` | Credit usage breakdown by event type and agent |
 | `GET /v1/analytics/budget` | Current billing period budget and remaining credits |
+| `GET /v1/analytics/revenue` | Internal revenue overview (`ADMIN` plus internal-user check) |
+| `GET /v1/analytics/subscriptions` | Internal subscription list (`ADMIN` plus internal-user check) |
+| `GET /v1/analytics/payments` | Internal payment list (`ADMIN` plus internal-user check) |
 
 ## Period Parameters
 

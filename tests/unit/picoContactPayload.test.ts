@@ -11,6 +11,7 @@ describe('pico contact payload', () => {
       locale: 'en',
       source: 'pico-landing',
       honeypot: '',
+      productUpdatesConsent: false,
     })
 
     expect(payload).toEqual({
@@ -19,9 +20,28 @@ describe('pico contact payload', () => {
       company: 'MUTX',
       message: 'Need the build lane.',
       tier: 'build',
+      interest: 'build',
       locale: 'en',
       source: 'pico-landing',
       honeypot: '',
+      productUpdatesConsent: false,
     })
+  })
+
+  it('carries explicit product-update consent without inferring it from the request', () => {
+    const payload = buildPicoContactPayload({
+      email: 'operator@mutx.dev',
+      name: '',
+      company: '',
+      message: 'Please help with setup.',
+      interest: 'fix',
+      locale: 'en',
+      source: 'pico-support',
+      honeypot: '',
+      productUpdatesConsent: true,
+    })
+
+    expect(payload.productUpdatesConsent).toBe(true)
+    expect(payload.source).toBe('pico-support')
   })
 })

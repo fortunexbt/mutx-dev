@@ -122,3 +122,41 @@ class TestGetUsageBreakdown:
         assert usage_by_agent[0]["agent_id"] == str(test_agent.id)
         assert usage_by_agent[0]["agent_name"] == test_agent.name
         assert usage_by_agent[0]["credits_used"] == 12.5
+
+    @pytest.mark.asyncio
+    async def test_usage_breakdown_never_resolves_a_foreign_agent_name(
+        self,
+        client: AsyncClient,
+        db_session,
+        test_user,
+        other_user,
+    ):
+        from src.api.models.models import Agent, AgentStatus, UsageEvent
+
+        foreign_agent = Agent(
+            name="confidential-foreign-agent",
+            description="Another tenant's agent",
+            config='{"model": "gpt-4"}',
+            user_id=other_user.id,
+            status=AgentStatus.CREATING,
+        )
+        db_session.add(foreign_agent)
+        await db_session.flush()
+        db_session.add(
+            UsageEvent(
+                user_id=test_user.id,
+                event_type="agent_run_created",
+                resource_id=str(foreign_agent.id),
+                event_metadata=json.dumps({"agent_id": str(foreign_agent.id)}),
+                credits_used=3.0,
+            )
+        )
+        await db_session.commit()
+
+        response = await client.get("/v1/budgets/usage?period_start=30d")
+
+        assert response.status_code == 200
+        entry = response.json()["usage_by_agent"][0]
+        assert entry["agent_id"] == str(foreign_agent.id)
+        assert entry["agent_name"].startswith("Unknown agent")
+        assert "confidential" not in entry["agent_name"]

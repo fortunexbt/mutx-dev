@@ -1,12 +1,12 @@
 ---
-description: Supported vs preview surface matrix for MUTX platforms — canonical reference.
+description: Compatibility entry for the canonical MUTX surface matrix.
 icon: layered-shapes
 ---
 
 # Surface Matrix
 
-> **Note:** This page is served at `/surface-matrix` for GitBook navigation compatibility. The canonical source content lives in [`surfaces.md`](surfaces.md).
+> **Note:** This compatibility source is not a separate published page. Read the canonical [Surface Matrix](/docs/surfaces).
 
-This document maps MUTX's public surfaces and their maturity level so users can see what is supported, what remains preview, and where the browser demo still diverges from the stable operator path.
+The canonical matrix distinguishes source-backed support, conditional external availability, and deliberate simulation without treating a repository check as deployment proof.
 
-For the full content, see [`surfaces.md`](surfaces.md).
+For the full content, see the [Surface Matrix](/docs/surfaces).

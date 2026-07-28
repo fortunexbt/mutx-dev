@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.database import get_db
-from src.api.auth.dependencies import get_current_internal_user, get_current_user
+from src.api.auth.dependencies import get_current_internal_user, require_roles
 from src.api.models import User
 from src.api.models.schemas import RuntimeProviderSnapshotResponse, RuntimeProviderSnapshotUpsert
 from src.api.services.operator_state import (
@@ -20,11 +20,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/runtime", tags=["runtime"])
 
 
+async def require_internal_admin(
+    current_user: User = Depends(require_roles("ADMIN")),
+    _internal_user: User = Depends(get_current_internal_user),
+) -> User:
+    """Require both a persisted administrator role and internal-user eligibility."""
+    return current_user
+
+
 @router.get("/providers/{provider}", response_model=RuntimeProviderSnapshotResponse)
 async def runtime_provider_state(
     provider: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     return await get_runtime_provider_snapshot(db, user=current_user, provider=provider)
 
@@ -34,7 +42,7 @@ async def upsert_runtime_provider_state(
     provider: str,
     request: RuntimeProviderSnapshotUpsert,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     payload = request.model_dump(mode="json", exclude_none=True)
     payload["provider"] = provider
@@ -48,7 +56,7 @@ async def upsert_runtime_provider_state(
 
 @router.get("/governance/metrics")
 async def governance_metrics(
-    current_user: User = Depends(get_current_internal_user),
+    current_user: User = Depends(require_internal_admin),
 ):
     try:
         from cli.faramesh_runtime import (
@@ -70,7 +78,7 @@ async def governance_metrics(
 
 @router.get("/governance/status")
 async def governance_status(
-    current_user: User = Depends(get_current_internal_user),
+    current_user: User = Depends(require_internal_admin),
 ):
     try:
         from cli.faramesh_runtime import collect_faramesh_snapshot, get_faramesh_health

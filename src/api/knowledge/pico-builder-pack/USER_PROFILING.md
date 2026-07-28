@@ -78,7 +78,7 @@ Pick **4–8** of the highest-signal questions. Do not ask all of them by defaul
 - Do you already have Claude Code working?
 - Docker or Apple Container?
 - Are you on v1.2.35+ and using OneCLI Agent Vault yet?
-- Are you running `/setup` inside Claude Code or mistakenly in the shell?
+- Are you on NanoClaw v2 and running `nanoclaw.sh`, or following an older v1 `/setup` guide?
 
 ### If PicoClaw is involved
 

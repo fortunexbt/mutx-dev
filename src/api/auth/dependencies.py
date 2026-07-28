@@ -22,6 +22,7 @@ from src.api.middleware.auth import (
     require_auth,
     require_plan,
 )
+from src.api.models.models import User
 from src.api.services.auth import Role, TokenPayload, check_role, verify_access_token
 
 settings = get_settings()
@@ -76,11 +77,15 @@ async def get_current_sso_user(
 
 
 def require_role(roles: list[str]) -> Callable[..., object]:
-    """Require at least one role on a role-bearing SSO principal."""
+    """Require a persisted role on the canonical dashboard principal.
+
+    The user is reloaded by :func:`get_current_user` for every request, so role
+    changes and revocations do not depend on claims embedded in an access token.
+    """
 
     async def role_checker(
-        current_user: SSOTokenUser = Depends(get_current_sso_user),
-    ) -> SSOTokenUser:
+        current_user: User = Depends(get_current_user),
+    ) -> User:
         required_role_enums: list[Role] = []
         for role_name in roles:
             try:
@@ -88,7 +93,7 @@ def require_role(roles: list[str]) -> Callable[..., object]:
             except ValueError:
                 continue
 
-        if not check_role(current_user.roles, required_role_enums):
+        if not check_role(current_user.roles or [], required_role_enums):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Insufficient permissions. Required roles: {roles}",

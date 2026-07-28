@@ -6,6 +6,8 @@ from typing import Any, Optional
 
 import httpx
 
+from mutx._http import api_path
+
 
 class GovernedIdentity:
     def __init__(self, data: dict[str, Any]):
@@ -81,14 +83,14 @@ class Governance:
 
     def list_trust(self) -> list[GovernedIdentity]:
         self._require_sync_client()
-        response = self._client.get("/governance/trust")
+        response = self._client.get("governance/trust")
         response.raise_for_status()
         payload = response.json()
         return [GovernedIdentity(item) for item in payload.get("items", [])]
 
     async def alist_trust(self) -> list[GovernedIdentity]:
         self._require_async_client()
-        response = await self._client.get("/governance/trust")
+        response = await self._client.get("governance/trust")
         response.raise_for_status()
         payload = response.json()
         return [GovernedIdentity(item) for item in payload.get("items", [])]
@@ -120,26 +122,30 @@ class Governance:
         if display_name is not None:
             payload["display_name"] = display_name
 
-        response = self._client.post(f"/governance/trust/{agent_id}", json=payload)
+        response = self._client.post(
+            api_path("governance/trust/{agent_id}", agent_id=agent_id), json=payload
+        )
         response.raise_for_status()
         return GovernedIdentity(response.json())
 
     async def aupdate_trust(self, agent_id: str, **kwargs: Any) -> GovernedIdentity:
         self._require_async_client()
-        response = await self._client.post(f"/governance/trust/{agent_id}", json=kwargs)
+        response = await self._client.post(
+            api_path("governance/trust/{agent_id}", agent_id=agent_id), json=kwargs
+        )
         response.raise_for_status()
         return GovernedIdentity(response.json())
 
     def list_lifecycle(self) -> list[GovernedIdentity]:
         self._require_sync_client()
-        response = self._client.get("/governance/lifecycle")
+        response = self._client.get("governance/lifecycle")
         response.raise_for_status()
         payload = response.json()
         return [GovernedIdentity(item) for item in payload.get("items", [])]
 
     async def alist_lifecycle(self) -> list[GovernedIdentity]:
         self._require_async_client()
-        response = await self._client.get("/governance/lifecycle")
+        response = await self._client.get("governance/lifecycle")
         response.raise_for_status()
         payload = response.json()
         return [GovernedIdentity(item) for item in payload.get("items", [])]
@@ -154,7 +160,7 @@ class Governance:
     ) -> GovernedIdentity:
         self._require_sync_client()
         response = self._client.post(
-            f"/governance/lifecycle/{agent_id}",
+            api_path("governance/lifecycle/{agent_id}", agent_id=agent_id),
             json={
                 "state": state,
                 "reason": reason,
@@ -174,7 +180,7 @@ class Governance:
     ) -> GovernedIdentity:
         self._require_async_client()
         response = await self._client.post(
-            f"/governance/lifecycle/{agent_id}",
+            api_path("governance/lifecycle/{agent_id}", agent_id=agent_id),
             json={
                 "state": state,
                 "reason": reason,
@@ -186,50 +192,50 @@ class Governance:
 
     def list_discovery(self) -> list[DiscoveryFinding]:
         self._require_sync_client()
-        response = self._client.get("/governance/discovery")
+        response = self._client.get("governance/discovery")
         response.raise_for_status()
         payload = response.json()
         return [DiscoveryFinding(item) for item in payload.get("items", [])]
 
     async def alist_discovery(self) -> list[DiscoveryFinding]:
         self._require_async_client()
-        response = await self._client.get("/governance/discovery")
+        response = await self._client.get("governance/discovery")
         response.raise_for_status()
         payload = response.json()
         return [DiscoveryFinding(item) for item in payload.get("items", [])]
 
     def scan_discovery(self) -> dict[str, Any]:
         self._require_sync_client()
-        response = self._client.post("/governance/discovery/scan")
+        response = self._client.post("governance/discovery/scan")
         response.raise_for_status()
         return response.json()
 
     async def ascan_discovery(self) -> dict[str, Any]:
         self._require_async_client()
-        response = await self._client.post("/governance/discovery/scan")
+        response = await self._client.post("governance/discovery/scan")
         response.raise_for_status()
         return response.json()
 
     def get_attestations(self) -> AttestationBundle:
         self._require_sync_client()
-        response = self._client.get("/governance/attestations")
+        response = self._client.get("governance/attestations")
         response.raise_for_status()
         return AttestationBundle(response.json())
 
     async def aget_attestations(self) -> AttestationBundle:
         self._require_async_client()
-        response = await self._client.get("/governance/attestations")
+        response = await self._client.get("governance/attestations")
         response.raise_for_status()
         return AttestationBundle(response.json())
 
     def verify(self) -> AttestationBundle:
         self._require_sync_client()
-        response = self._client.post("/governance/attestations/verify")
+        response = self._client.post("governance/attestations/verify")
         response.raise_for_status()
         return AttestationBundle(response.json())
 
     async def averify(self) -> AttestationBundle:
         self._require_async_client()
-        response = await self._client.post("/governance/attestations/verify")
+        response = await self._client.post("governance/attestations/verify")
         response.raise_for_status()
         return AttestationBundle(response.json())

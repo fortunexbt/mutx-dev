@@ -1,0 +1,119 @@
+.visualContract {
+  --dashboard-contract-radius-action: 4px;
+  --dashboard-contract-radius-panel: 6px;
+  --dashboard-contract-radius-dialog: 8px;
+}
+
+.visualContract :global(.dashboard-content) {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.visualContract :global(.dashboard-content) :where(section, article, form, li, div)[class*="rounded-"][class*="border"]:not([role="alert"]):not([role="status"]):not([role="dialog"]) {
+  border-color: var(--mutx-dashboard-border-subtle) !important;
+  border-radius: var(--dashboard-contract-radius-panel) !important;
+  background-color: var(--mutx-dashboard-bg-surface) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.visualContract :global(.dashboard-content) :where(button, input, textarea, select, a[class*="inline-flex"], a[class*="flex"])[class*="rounded-"] {
+  border-radius: var(--dashboard-contract-radius-action) !important;
+}
+
+.visualContract :global(.dashboard-content) :where([role="alert"], [role="status"])[class*="rounded-"] {
+  border-radius: var(--dashboard-contract-radius-action) !important;
+  box-shadow: none !important;
+}
+
+.visualContract :global(.dashboard-content) :where(div)[class*="rounded-full"] {
+  border-radius: var(--dashboard-contract-radius-action) !important;
+}
+
+.visualContract :global(.dashboard-content) :where(button, a[class*="inline-flex"], a[class*="flex"]) {
+  min-height: 44px;
+}
+
+.visualContract :global(.dashboard-content) :where(input, select, textarea):not([type="checkbox"]):not([type="radio"]) {
+  min-height: 44px;
+  max-width: 100%;
+}
+
+.visualContract :global(.dashboard-content) :where([class*="text-[8px]"], [class*="text-[9px]"], [class*="text-[10px]"]) {
+  font-size: 11px !important;
+}
+
+.visualContract :global(.dashboard-content) :where([class*="text-cyan"], [class*="text-violet"], [class*="text-fuchsia"], [class*="text-purple"]) {
+  color: var(--mutx-dashboard-brand-strong) !important;
+}
+
+.visualContract :global(.dashboard-content) :where([class*="border-cyan"], [class*="border-violet"], [class*="border-fuchsia"], [class*="border-purple"]) {
+  border-color: var(--mutx-dashboard-border-interactive) !important;
+}
+
+.visualContract :global(.dashboard-content) :where([class*="bg-cyan"], [class*="bg-violet"], [class*="bg-fuchsia"], [class*="bg-purple"]) {
+  background-color: var(--mutx-dashboard-brand-soft) !important;
+  background-image: none !important;
+}
+
+.visualContract :global(.dashboard-content) :where([class*="hover:-translate"], [class*="hover:shadow"]):hover,
+.visualContract :global(.dashboard-content) :global(.panel):hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.visualContract :global(.dashboard-content) :global(.panel) {
+  border-color: var(--mutx-dashboard-border-subtle) !important;
+  border-radius: var(--dashboard-contract-radius-panel) !important;
+  background: var(--mutx-dashboard-bg-surface) !important;
+  box-shadow: none !important;
+}
+
+.visualContract :global(.dashboard-content) :global(.panel) > :global(.pointer-events-none.absolute) {
+  display: none;
+}
+
+.visualContract :global(.dashboard-content) :where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--mutx-dashboard-trace) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 1px var(--mutx-dashboard-bg-canvas) !important;
+}
+
+.visualContract :global(.dashboard-content) :where(table) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.visualContract :global(.dashboard-content) :where(pre, code) {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.visualContract :global(.dashboard-content) :where([role="dialog"]) {
+  border-radius: var(--dashboard-contract-radius-dialog) !important;
+}
+
+@container (max-width: 360px) {
+  .visualContract :global(.dashboard-content) :where([role="toolbar"], form, header) {
+    min-width: 0;
+  }
+
+  .visualContract :global(.dashboard-content) :where(button, a[class*="inline-flex"], a[class*="flex"]) {
+    max-width: 100%;
+    white-space: normal;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .visualContract :global(.dashboard-content) *,
+  .visualContract :global(.dashboard-content) *::before,
+  .visualContract :global(.dashboard-content) *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

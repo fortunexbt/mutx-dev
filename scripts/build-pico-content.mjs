@@ -18,9 +18,11 @@ const STACKS = [
   { id: 'picoclaw', name: 'PicoClaw', filename: 'PICOCLAW.md' },
 ]
 
+const githubToken = process.env.GITHUB_TOKEN?.trim()
 const GITHUB_HEADERS = {
   Accept: 'application/vnd.github+json',
   'User-Agent': 'mutx-pico-content-sync',
+  ...(githubToken ? { Authorization: `Bearer ${githubToken}` } : {}),
 }
 
 function compactWhitespace(value) {
@@ -43,6 +45,15 @@ function humanJoin(values) {
   if (values.length <= 1) return values[0] ?? ''
   if (values.length === 2) return `${values[0]} and ${values[1]}`
   return `${values.slice(0, -1).join(', ')}, and ${values.at(-1)}`
+}
+
+function getPortableSourcePath(sourcePath) {
+  const relativePath = path.relative(ROOT, sourcePath)
+  if (relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)) {
+    return relativePath
+  }
+
+  return `external-pack:${path.basename(sourcePath)}`
 }
 
 function parseArgs(argv) {
@@ -303,16 +314,16 @@ function buildLandingContent({ packSnapshot, stackProfiles, lessonCount, totalLe
     nav: {
       brand: 'PicoMUTX',
       brandTag: ' by MUTX',
-      cta: 'Pre-register',
+      cta: 'Open onboarding',
     },
     hero: {
-      badge: `Docs synced ${packSnapshot.refreshedAt ?? packSnapshot.generatedOn} · ${packSnapshot.visibleDocCount} live playbooks`,
-      title: 'Build, deploy, and govern real ',
-      titleAccent: `${stackSentence} stacks without stale guesswork.`,
+      badge: `Product path live · ${packSnapshot.visibleDocCount} synced playbooks`,
+      title: 'Get your agent ',
+      titleAccent: 'unstuck.',
       subtitle:
-        `PicoMUTX is grounded in the official install, dashboard, security, and troubleshooting surfaces for ${stackSentence}. It gives founders and operators one guided path instead of another pile of tabs.`,
-      cta: 'Pre-Register for Early Access',
-      ctaSecondary: 'See pricing',
+        `Start from zero, recover a broken setup, or bring an active agent under control with guided paths grounded in ${stackSentence}.`,
+      cta: 'Open onboarding',
+      ctaSecondary: 'See how it works',
       meta: `${lessonCount} guided lessons · about ${totalLessonMinutes} minutes of sequenced work · Tailscale-first remote access defaults`,
     },
     trustItems: [
@@ -409,24 +420,11 @@ function buildLandingContent({ packSnapshot, stackProfiles, lessonCount, totalLe
           after: 'Tutor prompts start from real install, dashboard, and launcher breakpoints',
         },
         {
-          before: 'A WIP route apologizes for being empty',
-          after: 'The route becomes a live build ledger with tracked repos, docs, and remote-access defaults',
+          before: 'The implementation ledger is hidden behind a provisional route name',
+          after: 'A dedicated build ledger publishes tracked repos, docs, and remote-access defaults',
         },
       ],
       close: 'The point is not prettier filler. The point is a UI that stays attached to the stack reality underneath it.',
-    },
-    earlyAccess: {
-      eyebrow: 'Current Build State',
-      title: 'PicoMUTX is still opening in stages, but the content path is now live.',
-      body:
-        'Pre-registering now gets you into the release loop while the platform is being filled from the builder pack, Academy data, and current repo surfaces rather than placeholder text.',
-      benefits: [
-        'Early access to the guided stack map and tutorial flow',
-        'Faster feedback loops while the tutor and support surfaces are still sharpening',
-        'Visibility into how Hermes, OpenClaw, NanoClaw, and PicoClaw are evolving',
-        'A closer line to the product while the content system is still being shaped',
-        'First notice when additional surfaces move from placeholder to source-backed',
-      ],
     },
     faq: {
       eyebrow: 'Questions',
@@ -455,14 +453,13 @@ function buildLandingContent({ packSnapshot, stackProfiles, lessonCount, totalLe
       ],
     },
     finalCta: {
-      eyebrow: 'Early Access · Live Build',
-      title: 'Stop treating stack selection and setup drift like a side quest.',
-      body:
-        'PicoMUTX is being turned into a product surface that names the stacks, tracks the repos, and keeps the operator route visible from first install to safer runtime control.',
-      formHeadline: 'Pre-register for PicoMUTX',
-      formSubline: 'Join the list while the source-backed build fills in.',
-      ctaButton: 'Pre-Register Now',
-      formCtaMeta: 'Free to pre-register · No credit card required · Product updates arrive as the live build sharpens',
+      eyebrow: 'Start with one real step',
+      title: 'Bring the blocker.',
+      body: 'Pico will find the next move.',
+      formHeadline: 'What is stuck?',
+      formSubline: 'Tell us what you are trying to ship.',
+      ctaButton: 'Open onboarding',
+      formCtaMeta: 'Live routes: onboarding, Academy, Tutor, Support, and Autopilot',
     },
   }
 }
@@ -527,7 +524,7 @@ function buildTutorContent() {
     examplePrompts: [
       'Hermes opens locally but the VPS run fails. What should I verify before changing anything?',
       'OpenClaw onboard completed, but the Control UI still does not load. What is the clean verification path?',
-      'NanoClaw `/setup` ran in Claude Code, but the container path still feels broken. What should I isolate first?',
+      'NanoClaw v2 `nanoclaw.sh` ran, but the container path still feels broken. What should I isolate first?',
       'PicoClaw launcher works on localhost only. Should I change the bind address or keep it private with Tailscale?',
     ],
   }
@@ -564,22 +561,6 @@ function buildSupportContent() {
         body: 'A good escalation should end with the shortest route back into a lesson, tutor answer, or live control action.',
       },
     ],
-  }
-}
-
-function buildWipContent({ packSnapshot }) {
-  return {
-    meta: {
-      title: 'Live Build Ledger — PicoMUTX',
-      description:
-        `Inspect the ${packSnapshot.visibleDocCount} builder-pack docs, tracked repo snapshots, and remote-access defaults now feeding the PicoMUTX experience.`,
-    },
-    title: 'Live build ledger',
-    subtitle:
-      'This route no longer exists to apologize for being unfinished. It now shows the source material actively feeding Pico: pack docs, Academy lessons, tracked repos, and the remote-access posture they imply.',
-    overviewTitle: 'What is already wired in',
-    overviewBody:
-      'The content path now reads the local builder pack, optional updated pack drops, structured Academy lessons, and live GitHub metadata. This page is the honest place to inspect that feed.',
   }
 }
 
@@ -624,7 +605,7 @@ async function buildContent() {
     visibleDocCount: manifest.docs.filter((doc) => doc.visible).length,
     lessonCount: lessons.length,
     totalLessonMinutes,
-    sourcePaths: packDirectories,
+    sourcePaths: packDirectories.map(getPortableSourcePath),
     currentProductNotes: extractBullets(getMarkdownSection(readme, 'Current product notes worth knowing')),
   }
 
@@ -703,7 +684,6 @@ async function buildContent() {
     }),
     tutor: buildTutorContent(),
     support: buildSupportContent(),
-    wip: buildWipContent({ packSnapshot }),
   }
 }
 

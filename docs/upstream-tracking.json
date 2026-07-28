@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "sota_epic": "https://github.com/mutx-dev/mutx-dev/issues/3688",
+  "evidence_file": "docs/legal/oss-attribution-evidence.json",
+  "projects": [
+    {
+      "id": "agent-run",
+      "evidence_project": "agent-run",
+      "policy": "quarantined-do-not-import",
+      "checks": [
+        {
+          "kind": "branch",
+          "branch": "main",
+          "pinned_commit_field": "current_ref"
+        }
+      ]
+    },
+    {
+      "id": "aarm-docs",
+      "evidence_project": "aarm-docs",
+      "checks": [
+        {
+          "kind": "branch",
+          "branch": "main",
+          "pinned_commit_field": "current_ref"
+        }
+      ]
+    },
+    {
+      "id": "faramesh-core",
+      "evidence_project": "faramesh-core",
+      "checks": [
+        {
+          "kind": "branch",
+          "branch": "main",
+          "pinned_commit_field": "current_ref"
+        },
+        {
+          "kind": "release",
+          "pinned_tag_field": "installer_version",
+          "pinned_commit_field": "installer_ref"
+        },
+        {
+          "kind": "tag",
+          "pinned_tag_field": "latest_semver_tag",
+          "pinned_commit_field": "latest_semver_tag_ref"
+        }
+      ]
+    },
+    {
+      "id": "fpl-lang",
+      "evidence_project": "fpl-lang",
+      "checks": [
+        {
+          "kind": "branch",
+          "branch": "main",
+          "pinned_commit_field": "current_ref"
+        }
+      ]
+    },
+    {
+      "id": "mission-control",
+      "evidence_project": "mission-control",
+      "checks": [
+        {
+          "kind": "release",
+          "pinned_tag_field": "current_version",
+          "pinned_commit_field": "current_ref"
+        }
+      ]
+    },
+    {
+      "id": "orchestra-research",
+      "evidence_project": "orchestra-research",
+      "checks": [
+        {
+          "kind": "release",
+          "pinned_tag_field": "current_version",
+          "pinned_commit_field": "current_ref"
+        }
+      ]
+    },
+    {
+      "id": "predict-rlm",
+      "evidence_project": "predict-rlm",
+      "checks": [
+        {
+          "kind": "release",
+          "pinned_tag_field": "current_version",
+          "pinned_commit_field": "current_ref"
+        }
+      ]
+    },
+    {
+      "id": "guild-ai",
+      "evidence_project": "guild-ai",
+      "checks": [
+        {
+          "kind": "branch",
+          "branch": "main",
+          "pinned_commit_field": "current_ref"
+        },
+        {
+          "kind": "tag",
+          "pinned_tag_field": "current_version"
+        }
+      ]
+    },
+    {
+      "id": "lacp",
+      "evidence_project": "lacp",
+      "policy": "unresolved-do-not-adopt",
+      "checks": [
+        {
+          "kind": "unresolved"
+        }
+      ]
+    },
+    {
+      "id": "pico-hermes",
+      "repository": "https://github.com/NousResearch/hermes-agent",
+      "checks": [
+        {
+          "kind": "release",
+          "pinned_tag": "v2026.7.20",
+          "pinned_commit": "3ef6bbd201263d354fd83ec55b3c306ded2eb72a"
+        }
+      ]
+    },
+    {
+      "id": "pico-openclaw",
+      "repository": "https://github.com/openclaw/openclaw",
+      "checks": [
+        {
+          "kind": "release",
+          "pinned_tag": "v2026.7.1",
+          "pinned_commit": "2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4"
+        }
+      ]
+    },
+    {
+      "id": "pico-nanoclaw",
+      "repository": "https://github.com/nanocoai/nanoclaw",
+      "checks": [
+        {
+          "kind": "release",
+          "pinned_tag": "v2.1.17",
+          "pinned_commit": "ee7f891698760f21b9e79a850d64c7f633cd95ef"
+        }
+      ]
+    },
+    {
+      "id": "pico-picoclaw",
+      "repository": "https://github.com/sipeed/picoclaw",
+      "checks": [
+        {
+          "kind": "release",
+          "pinned_tag": "v0.3.1",
+          "pinned_commit": "2cf030d2fd3b871d7ec17e3be34c24688aac76da"
+        }
+      ]
+    },
+    {
+      "id": "pico-picoclaw-android",
+      "repository": "https://github.com/sipeed/picoclaw_fui",
+      "checks": [
+        {
+          "kind": "release",
+          "pinned_tag": "picoclaw_fui-v0.1.4",
+          "pinned_commit": "d689c94c1b67f625f70ec4111a9aa3f01be9cbb3"
+        }
+      ]
+    }
+  ]
+}

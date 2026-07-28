@@ -1,5 +1,39 @@
 {
   "pico": {
+    "auth": {
+      "eyebrow": "PicoMUTX 账户",
+      "orUseEmail": "或使用电子邮件",
+      "forgotPassword": "忘记密码？",
+      "fields": {
+        "name": { "label": "姓名", "placeholder": "请输入姓名" },
+        "email": { "label": "电子邮件地址", "placeholder": "you@company.com" },
+        "password": { "label": "密码", "placeholder": "至少输入 8 个字符" },
+        "confirmPassword": { "label": "确认密码", "placeholder": "再次输入密码" }
+      },
+      "modes": {
+        "login": { "title": "登录 PicoMUTX", "subtitle": "通过身份提供商或电子邮件登录，并继续已保存的进度。", "submit": "登录", "loading": "正在登录...", "toggleQuestion": "还没有账户？", "toggleAction": "创建账户" },
+        "register": { "title": "创建 PicoMUTX 账户", "subtitle": "创建账户后，即可在 PicoMUTX 会话之间保存进度。", "submit": "创建账户", "loading": "正在创建...", "toggleQuestion": "已有账户？", "toggleAction": "登录" }
+      },
+      "errors": { "passwordMismatch": "两次输入的密码不一致", "passwordTooShort": "密码必须至少包含 8 个字符", "loginFailed": "无法登录", "registerFailed": "无法创建账户", "emailRequired": "请先输入电子邮件地址", "resendFailed": "无法重新发送" },
+      "notice": { "verificationSent": "验证邮件已发送", "resending": "正在发送...", "resendVerification": "重新发送验证邮件" }
+    },
+    "authRecovery": {
+      "forgotPassword": {
+        "eyebrow": "密码恢复", "title": "恢复运营者账户访问权限。", "description": "输入 MUTX 账户的电子邮件地址，我们会发送重置链接。文档和仪表板仍可继续使用。", "asideEyebrow": "恢复说明", "asideTitle": "让身份恢复路径保持清晰。", "asideBody": "密码重置流程应简单、诚实并且容易验证。",
+        "highlights": ["请使用与托管账户关联的工作电子邮件。", "重置链接会过期，请在收到邮件后尽快处理。", "如果只需要产品信息，仍可使用文档和仪表板。"],
+        "successTitle": "请检查电子邮件", "successBody": "我们已将密码重置说明发送至 {email}。", "successHint": "如果没有收到，请检查垃圾邮件或申请新的链接。", "backToSignIn": "返回登录", "tryAgain": "重试", "sendTitle": "发送重置说明", "sendBody": "输入电子邮件地址，我们会发送一个新链接。", "emailLabel": "电子邮件地址", "emailPlaceholder": "you@company.com", "sending": "正在发送...", "sendLink": "发送重置链接", "sendFailed": "无法发送重置链接"
+      },
+      "resetPassword": {
+        "eyebrow": "重置密码", "title": "设置新密码。", "description": "输入并确认安全的新密码，然后在结果明确的状态下完成重置。", "asideEyebrow": "重置规则", "asideTitle": "让恢复路径保持简单。", "asideBody": "密码重置应快速、清晰并且可以验证。",
+        "highlights": ["重置链接使用令牌；令牌缺失或过期时应明确失败。", "请使用足够安全的密码，而不只是满足最低要求。", "即使托管身份验证不是当前路径，也可以继续查看文档和仪表板。"],
+        "invalidTitle": "重置链接无效", "invalidBody": "此密码重置链接缺失、无效或已经过期。", "requestNewLink": "申请新链接", "backToSignIn": "返回登录", "completeTitle": "重置完成", "completeBody": "密码已更新。现在可以使用新凭据登录。", "signIn": "登录", "formTitle": "选择新密码", "formBody": "输入安全的新密码并再次确认。", "newPassword": "新密码", "confirmPassword": "确认密码", "resetting": "正在重置...", "resetPassword": "重置密码", "passwordsMismatch": "两次输入的密码不一致", "passwordTooShort": "密码必须至少包含 8 个字符"
+      },
+      "verifyEmail": {
+        "eyebrow": "验证电子邮件", "title": "确认账户电子邮件地址。", "description": "验证流程会检查令牌，可从当前主机重新发送，并保留下一步目的地。", "asideEyebrow": "验证规则", "asideTitle": "让确认状态保持明确。", "asideBody": "身份提供商已验证来源身份，因此可以跳过此步骤。使用密码注册时仍需确认电子邮件。",
+        "highlights": ["验证链接会返回当前前端主机，而不是写死的营销页面。", "令牌过期或无效时会明确失败，并提供重新发送的路径。", "确认后，登录可以返回预定的产品目的地。"],
+        "verifying": "正在验证电子邮件...", "missingContext": "此验证路径需要令牌或接收邮件的电子邮件地址。", "sentTo": "我们已向 {email} 发送验证链接。", "verificationComplete": "验证完成", "verificationCompleteBody": "该账户现在可以登录。请使用同一电子邮件地址继续。", "signIn": "登录", "checkInbox": "检查收件箱", "checkInboxBody": "如果可以，请在同一设备上打开验证链接。如果没有收到，可以在此重新发送。", "resend": "重新发送验证邮件", "resendSending": "正在发送...", "resendNeedsEmail": "请先输入注册表单中的电子邮件地址，再重新发送验证邮件。", "resendSent": "我们已向 {email} 再次发送验证链接。", "verifySuccess": "电子邮件地址验证成功。", "verifyFailure": "无法验证电子邮件地址", "resendFailure": "无法重新发送验证邮件", "verificationFailed": "验证失败", "verificationFailedBody": "如果令牌已过期，请向该账户的电子邮件地址申请新消息。"
+      }
+    },
     "meta": {
       "title": "PicoMUTX — 别再盯着 AI 智能体，先让它可用可控",
       "description": "PicoMUTX 帮助创始人和运营者构建、修复并控制能在真实业务中被信任的 AI 智能体。"
@@ -7,19 +41,19 @@
     "nav": {
       "brand": "PicoMUTX",
       "brandTag": " by MUTX",
-      "cta": "申请访问",
-      "ctaMobile": "申请",
+      "cta": "打开引导",
+      "ctaMobile": "开始",
       "sectionsLabel": "页面分区",
       "skipToMain": "跳到主要内容"
     },
     "hero": {
-      "badge": "候补名单已开放 · 创始访问",
+      "badge": "产品路径已开放",
       "title": "别再守着",
       "titleAccent": "你的 AI。",
       "subtitle": "从零开始、救回坏掉的设置，或管住已经上线的智能体。Pico 会把一个真实卡点路由到构建、修复或控制。",
-      "cta": "申请访问",
+      "cta": "打开引导",
       "ctaSecondary": "查看运作方式",
-      "meta": "候补名单已开放。学院打磨完成后，产品路径将重新开放。"
+      "meta": "免费开始。需要跨会话同步进度时再登录。"
     },
     "agentSlider": {
       "ariaLabel": "自主智能体类型",
@@ -90,6 +124,7 @@
       "eyebrow": "Pico 如何工作",
       "title": "先诊断。再构建、修复或控制。",
       "body": "Pico 找到卡点并路由下一步，避免一出问题进度就消失。",
+      "sampleLabel": "示例设置记录",
       "howItWorks": {
         "0": {
           "title": "描述目标，或连接智能体",
@@ -170,6 +205,7 @@
       "eyebrow": "创始价格",
       "title": "产品路径重新开放前，先锁定创始通道。",
       "tiers": {
+        "free": { "name": "免费", "price": "$0", "period": "长期", "description": "付费前先查看技术栈地图和课程流程。", "features": ["每月 100 积分", "只读 Academy 指南", "基础 Academy 课程", "社区支持"], "cta": "当前方案", "ctaHref": null },
         "starter": {
           "name": "创始 Tier",
           "price": "29€",
@@ -178,7 +214,9 @@
           "features": [
             "AI 诊断入口",
             "构建、修复和控制引导路径",
-            "为独立执行而设计"
+            "为独立执行而设计",
+            "Autopilot 模式",
+            "优先支持"
           ],
           "cta": "申请创始访问",
           "ctaHref": "/pricing",
@@ -195,7 +233,10 @@
           "features": [
             "创始 Tier 的全部内容",
             "每周群组排障",
-            "共享运营者责任"
+            "共享运营者责任",
+            "优先支持",
+            "自定义工作流",
+            "提前使用新功能"
           ],
           "cta": "申请支持型访问",
           "ctaHref": "/pricing",
@@ -252,8 +293,8 @@
           "a": "适合实用型智能体系统：支持流程、内部副驾、线索捕获、销售跟进，以及需要在真实世界中构建、修复或控制的运营流程。"
         },
         "3": {
-          "q": "候补名单开放了吗？",
-          "a": "是的。公开候补名单已重新开放。学院和产品路径仍保持私有，直到这次落地页 redesign 继续推进。"
+          "q": "现在可以开始吗？",
+          "a": "可以。打开引导，继续进入 Academy；需要同步进度、Tutor 或结账时再登录。"
         },
         "4": {
           "q": "这是给企业用的吗？",
@@ -262,21 +303,22 @@
       }
     },
     "finalCta": {
-      "eyebrow": "创始访问",
+      "eyebrow": "从真实的一步开始",
       "title": "申请进入正确路径。",
       "body": "Pico 帮你把有用的东西跑起来，坏了能救回来，并在真实工作中持续可控。",
       "faqLabel": "还在犹豫？先厘清最后几个卡点。",
       "formHeadline": "从真实卡点开始。",
       "formSubline": "告诉我们你需要构建、修复还是控制。我们会把你路由到正确路径。",
-      "ctaButton": "申请访问",
-      "formCtaMeta": "免费试用 · 创始价格 90% 折扣 · €29 / €79 · Pico Pilot €1,000+ 起",
+      "ctaButton": "打开引导",
+      "formCtaMeta": "已开放：引导、Academy、Tutor、支持和 Autopilot",
       "secondaryButton": "预约规划通话"
     },
+    "localeSwitcher": { "currentLanguage": "当前语言", "listLabel": "选择界面语言", "changedTo": "语言已更改为 {language}" },
     "contactForm": {
       "dialogLabel": "联系表单",
       "closeLabel": "关闭",
-      "title": "申请 Pico 访问",
-      "subtitle": "告诉我们你想交付、修复或控制什么。我们会路由到正确的下一步。",
+      "title": "联系 Pico 团队",
+      "subtitle": "告诉我们你想交付、修复或控制什么。请求会保存，供团队后续处理。",
       "emailLabel": "工作邮箱",
       "emailPlaceholder": "you@company.com",
       "nameLabel": "姓名",
@@ -297,11 +339,13 @@
       "messageLabel": "还有什么需要我们了解？",
       "messageOptional": "（可选）",
       "messagePlaceholder": "描述目标、卡点或线上系统…",
+      "productUpdatesLabel": "偶尔通过邮件向我发送 Pico 产品与版本更新。",
+      "productUpdatesHint": "可选，默认不勾选。无论是否订阅，你的请求都会被递交。",
       "submitting": "发送中...",
-      "submit": "申请访问",
-      "disclaimer": "没有泛化培育漏斗。会有真人回复诚实的下一条路径。",
-      "successTitle": "已收到申请。",
-      "successBody": "我们已收到你的上下文。请查看邮件，了解进入 Pico 的下一条路径。",
+      "submit": "发送请求",
+      "disclaimer": "请求会保存以供团队后续处理。只有你在上方明确同意时，我们才发送产品更新。",
+      "successTitle": "请求已受理。",
+      "successBody": "请求已保存。团队可以通过你提供的电子邮件地址回复。",
       "successBack": "返回页面",
       "errorFallback": "出了点问题。请重试。",
       "networkError": "网络错误。请重试。"
@@ -316,7 +360,20 @@
       "successBody": "当你的 PicoMUTX 访问批次开放时，我们会联系你。不发垃圾邮件，也不要求付款。",
       "errorFallback": "出了点问题。请重试。"
     },
+    "pages": {
+      "onboarding": { "meta": { "title": "开始使用 — PicoMUTX", "description": "设置 PicoMUTX 工作区并开始学习。" } },
+      "pricing": { "meta": { "title": "价格 — PicoMUTX", "description": "覆盖课程、Tutor、运行时上下文和智能体技术栈的方案。" } },
+      "academy": { "meta": { "title": "Academy — PicoMUTX", "description": "探索 PicoMUTX Academy 的课程和学习路径。" } },
+      "lesson": { "meta": { "title": "{title} — PicoMUTX Academy", "description": "{summary}" } },
+      "autopilot": { "meta": { "title": "Autopilot — PicoMUTX", "description": "使用 Autopilot 检查工作流和运行时信号。" } },
+      "tutor": { "meta": { "title": "Tutor — PicoMUTX", "description": "获得 PicoMUTX Tutor 的引导式帮助。" } },
+      "support": { "meta": { "title": "支持 — PicoMUTX", "description": "获得 PicoMUTX 的帮助与支持。" } },
+      "wip": { "meta": { "title": "实时构建台账 — PicoMUTX", "description": "检查用于 PicoMUTX 的构建包文档、仓库快照和远程访问默认设置。" }, "title": "实时构建台账", "subtitle": "此页面展示 Pico 的来源：构建包文档、Academy 课程、跟踪的仓库和远程访问默认设置。", "backToPico": "返回 Pico", "mutxPlatform": "MUTX 平台", "imageAlt": "正在检查实时技术栈简报的 PicoMUTX 机器人" }
+    },
     "footer": {
+      "brand": "PicoMUTX",
+      "logoAlt": "PicoMUTX 标志",
+      "tagline": "PicoMUTX 是面向 AI 智能体构建者的学习与运营平台。",
       "links": {
         "releases": "版本发布",
         "docs": "文档",
@@ -326,6 +383,9 @@
         "contact": "联系",
         "privacy": "隐私"
       },
+      "supportPrompt": "还需要帮助？",
+      "supportCta": "联系我们",
+      "supportBody": "了解 Enterprise 价格（100K+ 积分、SSO、SLA）。",
       "copyright": "© MUTX 2026. 已部署智能体的开放控制。"
     },
     "waitlistForm": {
@@ -644,6 +704,171 @@
         "stepsClear": "{completed}/{total} 步已清除"
       }
     },
+    "welcomeTour": { "page": { "eyebrow": "01 页面", "title": "Pico 的每个页面只有一个主要任务。", "body": "使用与当前设置步骤对应的页面，不要把每个屏幕都变成研究项目。", "current": "你位于第 {chapter} 章：{label}。", "back": "返回：{label}。", "backOnboarding": "返回：入门设置。", "next": "下一步：{label}。", "nextSupport": "下一步：支持。" }, "routes": { "currentPage": "当前页面：{pageTitle}。", "academy": { "eyebrow": "02 先学课程", "title": "一次处理一个设置步骤。", "body": "打开当前课程，完成可见步骤；设置稳定前先不要展开其他内容。", "bullets": ["地图说明顺序。", "当前课程应始终容易找到。"] }, "tutor": { "eyebrow": "02 一个阻碍", "title": "Tutor 用于获得准确的下一步。", "body": "询问阻碍设置的命令、路径、提供商或验证步骤。", "bullets": ["如果顺序不对，请返回 Academy。", "如果 runtime 已运行，请打开 Autopilot。"] }, "autopilot": { "eyebrow": "02 运行时", "title": "有真实运行后再使用 Autopilot。", "body": "当答案取决于运行、警报、审批、支出或当前 runtime 状态时使用此页面。", "bullets": ["设置未完成时返回 Academy。", "托管、密钥或部署不清楚时寻求人类帮助。"] }, "support": { "eyebrow": "02 人类帮助", "title": "设置需要判断时使用支持。", "body": "附上课程、错误和 runtime 记录。工作人员可帮助处理 API 密钥、托管、集成和实施。", "bullets": ["无需独自解决托管问题。", "附上课程 slug、错误和当前 runtime 记录。"] }, "onboarding": { "eyebrow": "02 首次运行", "title": "入门设置带你获得一个可用的 runtime。", "body": "安装 runtime，运行一个提示，然后准备代理可读取的 Markdown 包。", "bullets": ["首次运行成功前先不要调整偏好。", "Academy 提供准确的设置步骤。"] } }, "output": { "eyebrow": "03 输出", "title": "继续前保存输出。", "body": "保留命令、结果和简短变更说明，代理包会更可靠。", "bullets": ["阻碍明确时询问 Tutor。", "runtime 已在线时打开 Autopilot。", "需要判断时附上记录寻求支持。"] }, "dialog": { "label": "快速帮助", "title": "了解一次流程，然后关闭。", "closeLabel": "关闭快速导览", "close": "关闭", "step": "第 {current}/{total} 步 · {eyebrow}", "back": "返回", "finish": "完成", "next": "下一步" } },
+    "signalDiagram": { "signal": "信号 / {index}", "routes": { "landing": { "label": "起点标记", "title": "从一条可用路径开始。", "caption": "入口保持简单，设置交给产品页面。" }, "onboarding": { "label": "引导标记", "title": "安装。运行。记录。", "caption": "入门设置同时显示一个步骤和代理包。" }, "academy": { "label": "课程标记", "title": "一次完成一个章节。", "caption": "Academy 逐课推进设置。" }, "tutor": { "label": "Tutor 标记", "title": "准确说明阻碍。", "caption": "Tutor 回答一个阻碍并带你返回设置。" }, "autopilot": { "label": "Runtime 标记", "title": "先读状态，再行动。", "caption": "Autopilot 将运行、支出和审批放在一起。" }, "support": { "label": "支持标记", "title": "提供最短且有用的信息包。", "caption": "支持处理密钥、托管、集成和实施。" } } },
+    "surfaceCompass": { "label": "页面指南针", "operatingRule": "操作规则", "forwardSymbol": "→" },
+    "routeStates": { "error": { "route": "Pico 路径", "step": "路径错误", "eyebrow": "当前步骤发生错误", "title": "无法完成加载此路径。", "body": "请重试。如果再次失败，请将当前页面和阻碍交给支持。", "retry": "重试", "support": "打开支持", "scopeLabel": "恢复原则", "scopeTitle": "保留路径", "scopeBody": "页面失败后应回到同一任务，而不是清除已有工作。" }, "loading": { "route": "Pico 路径", "step": "加载中", "eyebrow": "正在准备当前步骤", "title": "Pico 正在恢复路径。", "body": "正在加载托管状态、课程上下文和最有用的下一步。", "postureLabel": "加载状态", "waiting": "等待实时上下文", "postureBody": "在取得已验证状态前保持界面安静。" }, "notFound": { "route": "Pico 路径", "step": "未找到", "eyebrow": "地图中没有这条路径", "title": "此 Pico 页面不存在。", "body": "返回 Pico 或打开 Academy 地图。", "recoveryLabel": "页面恢复", "home": "返回 Pico", "academy": "打开 Academy", "nextLabel": "下一步", "nextTitle": "返回已知路径", "nextBody": "产品应通过真实页面恢复，而不是猜测 URL。" } },
+    "buildLedger": {
+      "meta": {
+        "title": "实时构建台账 — PicoMUTX",
+        "description": "基于源信息呈现 PicoMUTX 技术栈、Academy 课程和构建者资料包的覆盖情况。"
+      },
+      "snapshotUnavailable": "不可用",
+      "brandSuffix": "/ 构建台账",
+      "navigationLabel": "构建台账导航",
+      "navigation": {
+        "academy": "Academy",
+        "onboarding": "入门设置"
+      },
+      "hero": {
+        "sourceStatus": "源快照已于 {date} 刷新",
+        "title": "Pico 背后的实时构建台账。",
+        "subtitle": "查看技术栈简报、Academy 路径和构建者资料包，让设置指导始终有据可依。"
+      },
+      "actions": {
+        "continueOnboarding": "继续 Onboarding",
+        "inspectAcademy": "查看 Academy"
+      },
+      "remote": {
+        "postureLabel": "远程访问策略",
+        "kicker": "04 / 远程访问",
+        "title": "默认私有，按需开放。",
+        "body": "只公开操作员已选择并验证的访问路径。",
+        "defaults": [
+          "优先使用专用网络访问。",
+          "有意识地绑定网关。",
+          "开放访问前先验证实时来源。",
+          "仅当应用有意监听 tailnet 接口时，才直接绑定到 tailnet。",
+          "仅在有意公开暴露时使用 Tailscale Funnel。"
+        ],
+        "readSource": "阅读来源指南"
+      },
+      "metrics": {
+        "label": "构建者资料包指标",
+        "packDocs": "份资料包文档",
+        "lessons": "节 Academy 课程",
+        "minutes": "分钟引导内容",
+        "stacks": "个已追踪技术栈"
+      },
+      "stacks": {
+        "kicker": "01 / 技术栈简报",
+        "title": "实时技术栈说明",
+        "body": "基于源信息的摘要让建议保持最新，同时避免把设置变成研究项目。",
+        "repositorySnapshot": "代码仓库快照",
+        "stars": "{count} 个 Star",
+        "openIssues": "{count} 个开放 Issue",
+        "installNote": "实际安装情况：",
+        "repository": "代码仓库",
+        "officialDocs": "官方文档",
+        "snapshotRef": "快照引用",
+        "items": {
+          "hermes": {
+            "strength": "完整的操作员运行时",
+            "profile": "功能全面的本地智能体运行时，支持工具、记忆和网关工作流。",
+            "installReality": "使用文档中的安装程序，并在全新 shell 中验证命令。"
+          },
+          "openclaw": {
+            "strength": "网关与渠道控制",
+            "profile": "以网关为中心的运行时，用于管理渠道、工作区状态和远程操作。",
+            "installReality": "将网关暴露和渠道配置视为操作员需要明确作出的决策。"
+          },
+          "nanoclaw": {
+            "strength": "隔离容器执行",
+            "profile": "规模更小的运行时，专注于容器隔离和可审计执行。",
+            "installReality": "添加集成前，先验证容器边界和持久化工作区。"
+          },
+          "picoclaw": {
+            "strength": "轻量级边缘运行时",
+            "profile": "面向低资源主机和范围明确的智能体任务的紧凑型运行时。",
+            "installReality": "选择最小构建版本前，先确认目标架构和资源限制。"
+          }
+        }
+      },
+      "academy": {
+        "kicker": "02 / Academy 台账",
+        "title": "按顺序推进设置路径",
+        "body": "通过轨道和课程，将技术栈研究收束成一条边界清晰的路径，并在每一站产出一份证明材料。",
+        "lessonCount": "{count} 节课程",
+        "lessonMeta": "{difficulty} · {minutes} 分钟",
+        "difficulty": {
+          "setup": "设置",
+          "operator": "操作员",
+          "builder": "构建者"
+        }
+      },
+      "pack": {
+        "kicker": "03 / 构建者资料包",
+        "title": "智能体可读取的来源资料包",
+        "body": "每份文档都将设置、操作、安全或交接的一部分收束为可复用的上下文。"
+      },
+      "access": {
+        "kicker": "04 / 访问策略",
+        "title": "根据实时技术栈验证远程访问",
+        "body": "优先使用专用连接，有意识地绑定网关，并在暴露运行时前确认官方指南。",
+        "verifySource": "验证来源指南"
+      },
+      "footer": {
+        "generated": "台账生成于 {date}",
+        "sourceGrounded": "基于源信息、感知快照，并有意保持简洁。"
+      },
+      "topics": {
+        "workflow": "工作流",
+        "operating-model": "运营模式",
+        "guidance": "指导",
+        "persona": "角色画像",
+        "audience": "受众",
+        "coaching": "辅导",
+        "conversation": "对话",
+        "questioning": "提问",
+        "profiling": "用户画像",
+        "skill-level": "技能水平",
+        "context": "上下文",
+        "install": "安装",
+        "bootstrap": "引导启动",
+        "order-of-operations": "操作顺序",
+        "diagnostics": "诊断",
+        "triage": "问题分诊",
+        "repair": "修复",
+        "commands": "命令",
+        "verification": "验证",
+        "formatting": "格式化",
+        "research": "研究",
+        "official-docs": "官方文档",
+        "version-sensitive": "版本敏感",
+        "safety": "安全",
+        "risk": "风险",
+        "exposure": "暴露面",
+        "secrets": "密钥",
+        "tailscale": "Tailscale 网络",
+        "remote-access": "远程访问",
+        "networking": "网络",
+        "ssh": "SSH 访问",
+        "hermes": "Hermes 运行时",
+        "gateway": "网关",
+        "profiles": "配置文件",
+        "memory": "记忆",
+        "openclaw": "OpenClaw 运行时",
+        "channels": "渠道",
+        "workspace": "工作区",
+        "nanoclaw": "NanoClaw 运行时",
+        "containers": "容器",
+        "auditability": "可审计性",
+        "isolation": "隔离",
+        "picoclaw": "PicoClaw 运行时",
+        "edge": "边缘",
+        "lightweight": "轻量级",
+        "low-resource": "低资源",
+        "comparison": "比较",
+        "recommendation": "建议",
+        "tradeoffs": "权衡",
+        "examples": "示例",
+        "answer-style": "回答风格",
+        "format": "格式",
+        "tool-selection": "工具选择",
+        "capabilities": "能力",
+        "mapping": "映射"
+      }
+    },
     "autopilotPage": {
       "shared": {
         "loadState": {
@@ -659,6 +884,7 @@
         "error": {
           "partialSignals": "部分实时 MUTX 信号加载失败。当前显示的是部分真实数据，而不是编造出来的。",
           "loadLiveData": "加载实时 Autopilot 数据失败",
+          "loadLiveDataFallback": "实时 Autopilot 数据不可用。",
           "resolveRequest": "处理 {action} 请求失败",
           "createApprovalRequiredFields": "创建审批请求前需要 agent、session 和 action type",
           "createApproval": "创建审批请求失败"
@@ -690,7 +916,8 @@
           "loading": "加载中",
           "saving": "保存中",
           "synced": "已同步",
-          "offline": "离线"
+          "offline": "离线",
+          "error": "同步错误"
         },
         "timelineSources": {
           "runs": "运行",
@@ -738,6 +965,50 @@
           }
         }
       },
+      "signals": {
+        "runtime": "运行时",
+        "runs": "运行",
+        "budget": "预算",
+        "usage": "使用量",
+        "alerts": "告警",
+        "approvals": "审批"
+      },
+      "signalFailure": {
+        "authRequired": "登录后才能加载{signal}。",
+        "permissionDenied": "你没有加载{signal}的权限。",
+        "notFound": "未找到{signal}资源。",
+        "conflict": "此页面加载期间，{signal}已发生变化。",
+        "controlPlaneUnavailable": "控制平面无法提供{signal}。",
+        "network": "{signal}的网络请求失败。",
+        "invalidResponse": "{signal}返回了无效响应。",
+        "invalidPaginatedResponse": "{signal}返回了无效页面。",
+        "requestFailed": "无法加载{signal}。",
+        "requestUnavailable": "{signal}不可用。",
+        "traceRequestsUnavailable": "此次运行的追踪请求不可用。",
+        "detail": "详情：{detail}"
+      },
+      "pagination": {
+        "loadFailed": "无法加载下一页。",
+        "queueChanged": "加载期间队列已发生变化。请刷新后再操作。",
+        "signalUnavailable": "此信号不可用。"
+      },
+      "runtimePresentation": {
+        "loadingLabel": "正在加载运行时真相",
+        "loadingDetail": "正在等待控制平面的首次响应。",
+        "waitingForFirstFetch": "等待首次获取",
+        "waitingForObservation": "等待观测时间戳",
+        "fetchedAt": "获取于 {timestamp}",
+        "observedAt": "观测于 {timestamp}",
+        "fetchedWithoutObservation": "获取于 {timestamp}；来源观测时间不可用",
+        "fresh": { "label": "最新运行时快照", "detail": "提供商当前报告的状态为 {status}。快照最新并不能证明操作安全。" },
+        "stale": { "label": "过期运行时快照", "detail": "上次报告的状态为 {status}。请将其视为历史记录，而不是当前的健康或安全信号。" },
+        "unavailable": { "label": "运行时快照不可用", "detail": "目前没有可信的观测结果。报告的状态为 {status}。" }
+      },
+      "visuals": [
+        { "index": "01", "label": "运行信号", "title": "先查看最新运行", "caption": "当前运行让后续每项判断都以已观测的工作为依据。" },
+        { "index": "02", "label": "支出线", "title": "将进展与成本比较", "caption": "实时支出让操作员阈值成为具体依据，而非装饰。" },
+        { "index": "03", "label": "人工关卡", "title": "让高风险工作保持可见", "caption": "操作越过边界前，审批必须保持可审查。" }
+      ],
       "emptyStates": {
         "runs": {
           "noAgent": {
@@ -780,8 +1051,8 @@
             "body": "审批队列只有在真实智能体能执行高风险动作时才有意义。先创建或部署这个智能体。"
           },
           "gateOff": {
-            "title": "审批历史存在，但本地闸门还是关着的",
-            "body": "MUTX 已经有审批记录，但 Pico 仍然显示闸门已关闭。请在这里把闸门打开，让本地产品状态与 control-plane 现实一致。"
+          "title": "已有审批历史，但尚未验证是否强制执行",
+          "body": "审批记录能证明复核流程已使用，但不能证明运行时审批门处于启用状态。"
           },
           "none": {
             "title": "还没有审批记录",
@@ -804,7 +1075,8 @@
           "label": "运行状态",
           "authRequired": "需要认证",
           "noLiveRun": "没有实时运行",
-          "triggerTaskFirst": "先触发一个真实任务"
+          "triggerTaskFirst": "先触发一个真实任务",
+          "unavailable": "运行状态不可用"
         },
         "budgetLine": {
           "label": "预算线",
@@ -819,7 +1091,8 @@
           "armed": "已武装",
           "off": "关闭",
           "reviewVisible": "人工审核仍然可见",
-          "enableBeforeRisk": "在高风险动作前先开启"
+          "enableBeforeRisk": "在高风险动作前先开启",
+          "unavailable": "不可用"
         },
         "nextCheck": {
           "label": "下一个操作员检查点",
@@ -834,7 +1107,8 @@
           "budget": "预算 {value}",
           "gate": "闸门 {value}",
           "recovery": "恢复 {value}",
-          "recoveryNotSet": "未设置"
+          "recoveryNotSet": "未设置",
+          "runtime": "运行时 {value}"
         },
         "decisionLine": {
           "label": "决策线",
@@ -846,7 +1120,8 @@
           "finishLesson": "先完成 {lessonTitle}",
           "goBackToAcademy": "回到 Academy",
           "inspectRun": "检查运行 {runId}"
-        }
+        },
+        "providerSnapshot": "提供商快照"
       },
       "surfaceCompass": {
         "title": "只有当实时运行时才是真正的真相来源时，才留在这里",
@@ -886,21 +1161,26 @@
             "title": "从最强的实时信号开始",
             "authRequired": "如果没有托管会话，这个房间就不该靠即兴补出来。先把实时流接上。",
             "withRun": "首先要读的是运行 {runId}。{detail}",
-            "noRun": "还没有任何实时运行。此时诚实的动作，是在调整其他东西之前，先触发一个真实任务。"
+            "noRun": "还没有任何实时运行。此时诚实的动作，是在调整其他东西之前，先触发一个真实任务。",
+            "loading": "正在加载最近运行...",
+            "unavailable": "运行信号不可用。"
           },
           "judge": {
             "label": "02 • 判",
             "title": "把决策线明确出来",
             "authRequired": "在实时账户接入之前，预算审查不可用。",
             "withBudget": "当前使用量 {usage}，对应阈值 {threshold}。这条线应该告诉你，什么时候该由人介入。",
-            "noBudget": "还没有实时预算快照。在它与真实花费相遇之前，不要假装阈值有意义。"
+            "noBudget": "还没有实时预算快照。在它与真实花费相遇之前，不要假装阈值有意义。",
+            "loading": "正在加载实时花费...",
+            "unavailable": "预算信号不可用。"
           },
           "intervene": {
             "label": "03 • 介入",
             "title": "让高风险动作保持可审查",
             "pending": "有 {count} 个 approval item{pluralSuffix} 正在等待。很好。危险工作仍然是可见的。",
             "configured": "闸门已经配置好了，但现在没有任何东西在等。让它保持可审查、平稳、无戏剧性。",
-            "off": "闸门还没打开。在高风险动作变成看不见的副作用之前，先把它打开。"
+            "off": "闸门还没打开。在高风险动作变成看不见的副作用之前，先把它打开。",
+            "unavailable": "审批信号不可用。"
           }
         },
         "postureLabel": "控制室姿态",
@@ -1048,7 +1328,8 @@
         "title": "在碰设置之前，先读实时故事",
         "body": "这就是操作员叙事。如果时间线是空的，正确答案就是：还没有任何真正有意义的事发生。",
         "authRequired": "没有实时 control-plane 访问，就没有时间线。这才是诚实的答案。",
-        "olderSignalsHidden": "我们有意隐藏了 {count} 条较早的 signal{pluralSuffix}。先看最强的四条。"
+        "olderSignalsHidden": "我们有意隐藏了 {count} 条较早的 signal{pluralSuffix}。先看最强的四条。",
+        "loading": "正在加载实时信号..."
       },
       "runs": {
         "sectionLabel": "运行复盘",
@@ -1056,6 +1337,9 @@
         "body": "从这里开始。在碰阈值或审批之前，先读最近一次运行。",
         "refresh": "刷新实时数据",
         "authRequired": "先登录，然后再回到这里检查第一次真实运行。",
+        "loading": "正在加载运行...",
+        "refreshing": "正在刷新运行...",
+        "unavailable": "运行历史不可用。",
         "card": {
           "title": "运行 {runId}",
           "operatorReadLabel": "操作员解读",
@@ -1071,7 +1355,8 @@
           "started": "开始于 {timestamp}",
           "startUnavailable": "开始时间不可用",
           "traceSignalsLabel": "追踪信号",
-          "noTraces": "这次运行没有返回任何追踪。"
+          "noTraces": "这次运行没有返回任何追踪。",
+          "tracesUnavailable": "追踪信号不可用。"
         },
         "olderRunsHidden": "为了让复盘优先聚焦最近的判断，我们隐藏了 {count} 次较早的 run{pluralSuffix}。"
       },
@@ -1081,13 +1366,17 @@
         "usageLabel": "使用量",
         "thresholdStatus": {
           "above": "超过阈值",
-          "within": "阈值以内"
+          "within": "阈值以内",
+          "noSnapshot": "无快照",
+          "unavailable": "不可用"
         },
         "summary": {
           "authRequired": "实时预算需要认证。",
           "withBudget": "已使用 {used} / {total}。重置时间 {reset}。",
           "resetUnknown": "未知",
-          "noSnapshot": "没有返回实时预算快照。"
+          "noSnapshot": "没有返回实时预算快照。",
+          "loading": "正在加载实时预算...",
+          "unavailable": "实时预算不可用。"
         },
         "thresholdLabel": "阈值",
         "thresholdBody": "Pico 在这里保存本地预算线。真实告警投递仍然遵循实时 MUTX 监控设置，所以当邮件或 webhook 路由并未真的启用时，这个界面不会假装它们已经生效。",
@@ -1098,13 +1387,19 @@
         "topSpendersLabel": "高花费来源",
         "usageDriversLabel": "使用量驱动因素",
         "breakdownAuthRequired": "登录后才能读取使用量明细。",
-        "breakdownRow": "{events} 个事件，共 {credits} 积分"
+        "breakdownRow": "{events} 个事件，共 {credits} 积分",
+        "breakdownLoading": "正在加载使用量明细...",
+        "breakdownUnavailable": "使用量明细不可用。",
+        "driversLoading": "正在加载使用量驱动因素...",
+        "driversUnavailable": "使用量驱动因素不可用。"
       },
       "alerts": {
         "sectionLabel": "告警",
         "title": "真正有意义的监控事件",
         "body": "这就是实时告警流。没有假的警告徽章，也没有合成事故。",
         "authRequired": "登录后才能加载实时告警。",
+        "loading": "正在加载告警...",
+        "unavailable": "告警不可用。",
         "card": {
           "resolvedTitle": "已解决告警",
           "activeTitle": "活动告警",
@@ -1120,12 +1415,22 @@
         "body": "这个队列现在已经成为 Pico 的审批真相来源。它不应该因为进程重启就消失。",
         "authRequired": "登录后才能加载实时审批请求。",
         "gateMismatch": "MUTX 中已经存在审批记录，但 Pico 仍然显示本地闸门关闭。请在这里打开闸门，让产品状态与 control-plane 现实保持一致。",
+        "loading": "正在加载审批...",
+        "loadingPending": "正在加载待处理审批...",
+        "partial": "部分审批数据不可用。",
+        "pendingPageCount": "本页有 {count} 项待处理",
+        "showMorePending": "显示更多待处理审批",
+        "requestFailed": "审批请求失败。",
+        "createdNotice": "审批请求已创建。",
+        "resolvedNotice": "审批请求已{action}。",
         "card": {
           "pendingLabel": "待处理",
           "fallbackSummary": "{requester} 为智能体 {agentId} 请求了这个动作。",
           "approve": "批准",
           "reject": "拒绝",
-          "working": "处理中..."
+          "working": "处理中...",
+          "approveLabel": "批准{action}",
+          "rejectLabel": "拒绝{action}"
         },
         "hiddenPending": "为了让最尖锐的决策留在队列顶部，我们隐藏了另外 {count} 个 pending approval{pluralSuffix}。"
       },
@@ -1156,11 +1461,15 @@
       },
       "recentDecisions": {
         "sectionLabel": "最近决策",
-        "hiddenOlder": "为了让最近记录保持可读，我们隐藏了 {count} 条较早的 decision{pluralSuffix}。"
+        "hiddenOlder": "为了让最近记录保持可读，我们隐藏了 {count} 条较早的 decision{pluralSuffix}。",
+        "loading": "正在加载最近决策...",
+        "pageCount": "本页有 {count} 项决策",
+        "showMore": "显示更多决策"
       }
     },
     "sessionBanner": {
       "errors": {
+        "sessionUnavailable": "托管会话不可用",
         "loadWebhookRoutes": "无法加载 webhook 路线"
       },
       "authenticated": {
@@ -1172,7 +1481,7 @@
           "emailVerified": "电子邮件已验证",
           "emailStatusUnknown": "电子邮件状态未知",
           "loadingWebhooks": "正在加载 webhooks",
-          "webhookCount": "{count} webhook{pluralSuffix}",
+          "webhookCount": "{count} 个 Webhook{pluralSuffix}",
           "webhooksUnavailable": "webhook 不可用"
         },
         "body": "以 {identity} 身份登录。进度同步、入职状态、批准和实时运行时数据现在可以使用此主机上托管的 MUTX 帐户。",
@@ -1206,12 +1515,12 @@
       },
       "loading": {
         "label": "主持会议",
-        "body": "检查此 Pico 主机是否附加了操作员会话。"
+        "body": "正在检查 PicoMUTX 账户会话是否可用。"
       },
       "anonymous": {
         "chips": {
           "sessionRequired": "需要主持会议",
-          "picoHostAuth": "pico 主机验证"
+          "picoHostAuth": "PicoMUTX 账户"
         },
         "body": "Pico 平台路由已在此处生效，但托管会话尚未附加到该域上。在 Pico 上登录以保存进度、读取实时运行并使用后端载入/运行时状态。 Google、GitHub、Discord、Apple、密码注册和电子邮件确认现在均在此主机上终止。",
         "rails": {
@@ -1250,19 +1559,19 @@
       "surfaceOptions": {
         "onboarding": {
           "label": "入职",
-          "note": "Launch bay memory"
+          "note": "启动区记忆"
         },
         "academy": {
           "label": "Academy",
-          "note": "Primary learning spine"
+          "note": "核心学习路径"
         },
         "lesson": {
           "label": "课",
-          "note": "Active step memory"
+          "note": "当前步骤记忆"
         },
         "tutor": {
           "label": "Tutor",
-          "note": "Grounded next-step help"
+          "note": "有依据的下一步帮助"
         },
         "autopilot": {
           "label": "Autopilot",
@@ -1369,7 +1678,19 @@
         "proofCaptured": "捕获的证据",
         "runtimeNotAttached": "未附上",
         "nextMove": "下一步行动",
-        "visibleSuccess": "看得见的成功"
+        "visibleSuccess": "看得见的成功",
+        "continueWith": "继续学习 {lessonTitle}",
+        "firstRunReady": "首次运行已就绪",
+        "gatewayLive": "网关在线",
+        "gatewayUnbound": "网关未绑定",
+        "hostedSyncOffline": "托管同步离线",
+        "installThenPacket": "先安装，再准备资料包",
+        "onePromptAway": "只差一个提示词",
+        "openAutopilot": "打开 Autopilot",
+        "refreshingStatus": "正在刷新状态",
+        "saveFirstRun": "保存首次运行",
+        "saveThenPacket": "保存证明，再准备资料包",
+        "stepsClear": "{completed}/{total} 步已完成"
       },
       "labels": {
         "chapterPulse": "章脉",
@@ -1461,7 +1782,11 @@
         "nextMove": "下一步行动",
         "blocked": "被阻止",
         "runtime": "运行时",
-        "messyEdge": "边缘凌乱"
+        "messyEdge": "复杂边界",
+        "primaryCaption": "留在当前任务中，直到证明真正成立。",
+        "tutorCaption": "当某个可明确解决的命令或设置步骤受阻时，使用 Tutor。",
+        "runtimeCaption": "当实时运行时状态成为真相来源时，使用 Autopilot。",
+        "supportCaption": "仅当产品路径已无法如实解决边界问题时再升级。"
       },
       "doctrine": {
         "label": "开球原则",
@@ -1473,16 +1798,44 @@
         "postTitle": "章节姿势",
         "postBody": "故意缩小第一章的范围。在一件真正的文物存在之前，没有浏览，没有堆栈旅游，也没有额外的设置剧院。",
         "trackTitle": "跟踪清单",
-        "trackBody": "当第一个证据仍在形成时，一个清晰的引导提示就足够了。"
+        "trackBody": "当第一个证据仍在形成时，一个清晰的引导提示就足够了。",
+        "fastestPath": {
+          "start": "从这里开始",
+          "installed": "已安装",
+          "cleared": "已完成"
+        },
+        "items": {
+          "install": {
+            "label": "01 • 安装",
+            "body": "安装 Hermes，并确保命令能在全新 shell 中运行。"
+          },
+          "firstRun": {
+            "label": "02 • 首次运行",
+            "body": "将一个提示词和一个回答保存到稍后可重新打开的文件中。"
+          },
+          "packet": {
+            "label": "03 • 智能体资料包",
+            "title": "下载 Markdown 资料包",
+            "body": "将已验证的设置带入下一个智能体或运行时，无需重新构建上下文。"
+          }
+        }
       },
       "protocol": {
         "title": "证明协议",
         "body": "在地面获得变宽的权利之前，这些是唯一重要的动作。",
-        "chip": "先胜协议"
+        "chip": "先胜协议",
+        "items": {
+          "0": { "title": "安装 Hermes", "body": "让一次干净的本地 Hermes 安装完整运行。" },
+          "1": { "title": "运行首个智能体", "body": "证明运行时能够使用刚配置的提供商回答一个范围明确的提示。" },
+          "2": { "title": "保留证明", "body": "Hermes 回答一个小型提示，并将记录保存到可重新打开的文件中。" }
+        }
       },
       "runtime": {
         "signInFirst": "首先登录。运行时快照是针对每个操作员帐户的。",
+        "signInShort": "登录",
         "loading": "加载后端载入和运行时状态。",
+        "checking": "检查中",
+        "localOnly": "仅本地",
         "noHostedState": "尚未记录托管入职状态。",
         "currentProvider": "当前提供者",
         "availableSoon": "即将推出",
@@ -1509,7 +1862,9 @@
         "unknown": "未知",
         "noRuntimeSnapshot": "尚未同步运行时快照。",
         "gatewayHealth": "网关健康状况",
-        "noDoctorSummary": "尚未同步医生摘要。"
+        "noDoctorSummary": "尚未同步 doctor 摘要。",
+        "statusOptions": { "client_required": "需要客户端", "healthy": "正常", "degraded": "性能下降", "offline": "离线", "warning": "警告", "unknown": "未知" },
+        "installMethods": { "npm": "npm", "brew": "Homebrew", "binary": "二进制文件", "manual": "手动" }
       },
       "mission": {
         "firstWinProtocol": "先胜协议",
@@ -1523,7 +1878,77 @@
         "completed": "完全的",
         "missing": "丢失的",
         "resumeInstall": "恢复安装任务",
-        "resumePrompt": "恢复提示任务"
+        "resumePrompt": "恢复提示任务",
+        "title": "先完成一个可见任务，再扩展设置范围",
+        "body": "完成当前步骤，保存证明，并且只将已验证的上下文带到下一步。",
+        "continuity": "你的课程工作区会继续作为下一个界面的连续性记录。"
+      },
+      "stack": {
+        "label": "实时技术栈雷达",
+        "title": "不离开任务也能了解技术栈",
+        "body": "只使用这些说明来回答当前的设置问题。",
+        "itemBody": "打开 {stack} 的简明操作简报。",
+        "openNotes": "打开说明",
+        "items": {
+          "hermes": { "whyNow": "内置学习循环", "latestSignal": "版本 v2026.7.20 · 2026年7月20日" },
+          "openclaw": { "whyNow": "本地优先的网关控制平面", "latestSignal": "版本 v2026.7.1 · 2026年7月13日" },
+          "nanoclaw": { "whyNow": "轻量心智模型", "latestSignal": "版本 v2.1.17 · 2026年6月17日" },
+          "picoclaw": { "whyNow": "使用 Go 编写", "latestSignal": "版本 v0.3.1 · 2026年7月3日" }
+        }
+      },
+      "operatorRecord": {
+        "title": "操作员记录",
+        "body": "托管进度和运行时真相会始终关联到已登录的操作员。",
+        "signIn": "登录以关联托管状态",
+        "errorDetail": "托管详情：{detail}",
+        "track": {
+          "active": "当前轨道",
+          "select": "选择轨道"
+        },
+        "trackStatus": {
+          "start": "未开始",
+          "installed": "已安装",
+          "firstRunSaved": "首次运行已保存"
+        }
+      },
+      "runtimeEditor": {
+        "title": "托管运行时编辑器",
+        "body": "仅记录来自操作员主机且已经验证的运行时值。",
+        "savingSnapshot": "正在保存运行时快照...",
+        "dismissChecklist": "关闭清单"
+      },
+      "coach": {
+        "label": "Pico Coach 辅导",
+        "title": "让一次设置对话始终关联到当前任务",
+        "body": "询问当前阻塞点，并让回答以托管设置状态为依据。",
+        "fields": { "stack": "技术栈", "os": "操作系统", "provider": "提供商", "goal": "目标" },
+        "checkingSession": "正在检查辅导会话...",
+        "loadingHistory": "正在加载对话历史...",
+        "emptyHistory": "还没有辅导对话。请询问让你停下的具体步骤。",
+        "you": "你",
+        "picoCoach": "Pico Coach 辅导助手",
+        "placeholder": "描述受阻的设置步骤...",
+        "send": "发送",
+        "savingTurn": "正在保存本轮对话...",
+        "session": "会话 {sessionId}",
+        "readiness": "就绪度 {percent}%",
+        "needsDetails": "需要更多详情",
+        "notConfirmed": "尚未确认",
+        "signInFirst": "登录以开始托管辅导会话。",
+        "verifyEmail": "使用托管辅导前，请先验证你的电子邮箱。",
+        "planRequired": "托管辅导需要符合条件的方案。",
+        "comparePlans": "比较方案",
+        "refreshSignIn": "刷新登录状态",
+        "retryHostedSession": "重试托管会话",
+        "retryHistory": "重试加载历史记录",
+        "startNewSession": "开始新会话",
+        "startOver": "重新开始",
+        "continueSetup": "继续设置",
+        "downloadPackage": "下载资料包",
+        "preparingPackage": "正在准备资料包...",
+        "retryPackage": "重试生成资料包",
+        "upgradePlan": "升级方案",
+        "errorDetail": "辅导详情：{detail}"
       }
     },
     "tutorPage": {
@@ -1579,7 +2004,10 @@
           "groundedMode": "接地模式",
           "attachLesson": "附课",
           "notSet": "未设置",
-          "lessonSteps": "{completed}/{total} 步骤"
+          "lessonSteps": "{completed}/{total} 步骤",
+          "academyOnly": "只读 Academy 指导",
+          "providerMissing": "提供商不可用",
+          "statusUnavailable": "状态不可用"
         }
       },
       "actions": {
@@ -1674,10 +2102,18 @@
           "notSynced": "未同步"
         },
         "questionPlaceholder": "描述阻止程序、确切步骤以及您期望发生的情况。",
+        "questionProtocol": [
+          "说明你当时所在的确切步骤、命令或仪表板操作。",
+          "粘贴证明：输出、错误、对话记录或运行时状态。",
+          "只询问一个能证明该路径恢复运行的下一步操作。"
+        ],
+        "questionLabel": "受阻的设置问题",
         "blockedLessonLabel": "堵塞的课程",
         "noLessonSelected": "没有选择课程",
         "submitLoading": "寻找下一步...",
-        "submitIdle": "获取下一步"
+        "submitIdle": "获取下一步",
+        "cancelRequest": "取消请求",
+        "comparePlans": "比较方案"
       },
       "rail": {
         "label": "操作员轨道",
@@ -1701,7 +2137,10 @@
           "apiKeyPlaceholder": "sk-proj-...",
           "connecting": "正在连接 OpenAI...",
           "connect": "连接 OpenAI",
-          "platformHint": "平台访问已经可用。连接您自己的密钥只会覆盖此帐户的 Tutor 模型预算和所有权路径。"
+          "platformHint": "平台访问已经可用。连接您自己的密钥只会覆盖此帐户的 Tutor 模型预算和所有权路径。",
+          "personalKey": "个人密钥",
+          "platformStarterHint": "平台 Starter 访问权限",
+          "validatedAt": "已于 {timestamp} 验证"
         },
         "escalationRule": {
           "label": "升级规则",
@@ -1724,7 +2163,17 @@
         "reviewLine": "审查线",
         "fallbackRoute": "后备路线",
         "empty": "询问一个阻止者，而不是整个故事。当问题对版本敏感时，Pico Tutor 将在课程、精选操作包和官方文档中提供答案。",
-        "emptyHowItWorks": "其工作原理：说明失败的步骤、预期结果以及确切的失败。如果证据仍然薄弱，答案应该为您提供具体的行动、一个验证步骤以及一条清晰的升级路径。"
+        "emptyHowItWorks": "其工作原理：说明失败的步骤、预期结果以及确切的失败。如果证据仍然薄弱，答案应该为您提供具体的行动、一个验证步骤以及一条清晰的升级路径。",
+        "academyGuidance": "只读 Academy 指导",
+        "academyGuidanceEmpty": "免费访问提供只读 Academy 指导。打开匹配的课程以继续。",
+        "generationProof": "生成证明",
+        "lessonValidation": "课程验证",
+        "loadingAnnouncement": "Tutor 正在检查阻塞点。",
+        "nextLessonStep": "下一课程步骤",
+        "openLesson": "打开课程",
+        "readOnly": "只读",
+        "readyAnnouncement": "Tutor 回答已就绪。",
+        "retryHint": "请提供一个明确步骤和失败证据后重试。"
       },
       "matches": {
         "label": "接地课程匹配",
@@ -1753,13 +2202,33 @@
       "nextQuestion": {
         "label": "如果答案仍然模糊"
       },
+      "availability": {
+        "checkingEntitlement": "正在检查 Tutor 权益...",
+        "checkingProvider": "正在检查提供商连接...",
+        "platformProvider": "平台提供商",
+        "providerDetail": "提供商详情：{detail}",
+        "providerUnavailable": "Tutor 提供商不可用",
+        "readOnly": "只读 Academy 指导",
+        "readyThrough": "Tutor 已通过 {provider} 就绪",
+        "signIn": "登录以使用实时 Tutor",
+        "validatedKey": "已验证的个人密钥"
+      },
       "errors": {
         "loadOpenAIConnection": "无法加载 OpenAI 连接",
         "tutorRequestFailed": "Tutor 请求失败",
         "malformedResponse": "Tutor 返回的响应格式错误",
         "pasteOpenAIKeyFirst": "首先粘贴 OpenAI API 键",
         "connectOpenAIKey": "无法连接 OpenAI 键",
-        "disconnectOpenAIKey": "无法断开 OpenAI 键"
+        "disconnectOpenAIKey": "无法断开 OpenAI 键",
+        "detail": "Tutor 详情：{detail}",
+        "disconnectUnconfirmed": "提供商未确认已断开连接。",
+        "keyUpdateUnconfirmed": "提供商未确认密钥更新。",
+        "planRequired": "实时 Tutor 需要符合条件的方案。",
+        "proPlanRequired": "使用个人提供商密钥需要 Pro 方案。",
+        "providerStatusUnverified": "无法验证提供商状态。",
+        "requestCanceled": "Tutor 请求已取消。",
+        "signInForLiveTutor": "登录以使用实时 Tutor。",
+        "unverifiedResponse": "Tutor 返回了未经验证的响应。"
       },
       "shared": {
         "openLesson": "打开{lessonTitle}"
@@ -1967,10 +2436,10 @@
         },
         "5": {
           "title": "控制",
-          "objective": "添加成本阈值、警报和风险操作门。",
-          "projectOutcome": "可以在代理造成损害之前对其进行监视和中断。",
-          "completionState": "配置阈值和批准。",
-          "badge": "看门人",
+          "objective": "保存成本阈值，并用真实请求演练审批流程。",
+          "projectOutcome": "运营者可以检查支出，并有意处理队列中的操作。",
+          "completionState": "已保存阈值，并演练了一次审批流程。",
+          "badge": "审批复核员",
           "recommendedNextStep": "发布更深层次的模式。"
         },
         "6": {
@@ -2308,9 +2777,9 @@
           ]
         },
         "add-an-approval-gate": {
-          "title": "添加审批门",
-          "summary": "创建一个真正的审批检查点并有目的地解决它。",
-          "objective": "在您相信运行时会产生任何后果之前，请先执行危险操作门。",
+          "title": "演练审批流程",
+          "summary": "创建并处理真实审批请求，但不要据此推断运行时会强制执行。",
+          "objective": "在信任有后果的运行时行为之前，先演练审批队列。",
           "outcome": "一项工作批准请求和一项深思熟虑的决议。",
           "expectedResult": "存在待审批，您可以有意批准或拒绝它。",
           "validation": "创建一个批准请求并从队列中解决它。",
@@ -2322,7 +2791,7 @@
             },
             {
               "title": "创建批准请求",
-              "body": "将操作推入批准队列而不是立即运行。",
+              "body": "在审批队列中创建请求。这能证明流程可用，但不能证明运行时会强制执行。",
               "command": "Open /pico/autopilot and create one approval request for the risky action."
             },
             {
@@ -2333,7 +2802,7 @@
           ],
           "troubleshooting": [
             "如果无法获得批准，请明确说明。运行时尚未受到控制。",
-            "如果每个人都认可一切，那么门是存在的，但政策是弱的。记录下这个差距并继续前进。",
+            "如果每个人都能批准一切，说明流程存在但策略很弱。记录差距并继续。",
             "如果你限制了微不足道的噪音，队列就会变成垃圾邮件，操作员就会不再信任它。"
           ]
         },
@@ -2466,24 +2935,24 @@
           "actionLabel": "设定成本阈值"
         },
         "cap-approvals": {
-          "title": "审批之门已解锁",
-          "description": "预算意识是实时的。在危险的出境行为真正发生之前添加人工停留。",
-          "actionLabel": "添加审批门"
+          "title": "审批流程可用",
+          "description": "已保存的阈值只是本地设置。请演练真实审批请求并验证运行时行为。",
+          "actionLabel": "演练审批流程"
         },
         "cap-production-pattern": {
           "title": "生产模式解锁",
-          "description": "护栏已就位。交付看起来像产品的工作流程，而不是提示技巧。",
+          "description": "审批流程已经演练。是否强制执行仍应视为运行时拥有的事实。",
           "actionLabel": "出货生产模式"
         }
       },
       "planMatrix": {
         "free": {
           "academy": "完整的学院访问权限",
-          "tutor": "接地导师，每日轻度使用",
+          "tutor": "只读 Academy 指南",
           "project_limit": "1 个活跃项目通道",
-          "monitored_agents": "仅预览",
+          "monitored_agents": "只读运行时概览",
           "alerts": "应用内阈值警报",
-          "approvals": "预览审批流程",
+          "approvals": "审批工作流概览",
           "retention": "7天产品记忆"
         },
         "starter": {
@@ -2531,7 +3000,7 @@
       },
       "wordmark": {
         "logoAlt": "PicoMUTX 标志",
-        "atlas": "operator atlas"
+        "atlas": "运营者地图"
       },
       "robotCard": {
         "signalLabel": "Pico 信号"
@@ -2562,6 +3031,7 @@
         "proof": "证据"
       },
       "defaultMode": {
+        "mobileNavigation": "Pico 移动导航",
         "currentChapter": "当前章节",
         "chapter": "第 {chapter} 章",
         "quickHelp": "快速帮助",
@@ -2602,6 +3072,10 @@
       "primaryCta": "开始使用",
       "secondaryCta": "联系支持",
       "returnToLanding": "返回落地页",
+      "navigation": { "homeLabel": "Pico 首页", "label": "Pico 定价导航" },
+      "checkout": {
+        "confirming": "正在确认你的 {plan} 方案…", "confirmingShort": "正在确认方案…", "signInAgain": "请重新登录，以确认结账并刷新方案。", "signIn": "登录", "billingForbidden": "此账户无权访问账单或方案权益。", "refreshFailed": "无法刷新你的方案。结账尚未被标记为失败。", "retryRefresh": "重试刷新方案", "active": "你的 {plan} 方案已生效。", "stillSyncing": "结账已成功返回。你的方案仍在同步。", "refreshPlan": "刷新方案", "canceled": "结账已取消。当前方案没有变化。", "incompleteReturn": "结账返回链接不完整。此处未更改你的方案。", "forbidden": "此账户无权结账。", "unavailable": "此方案暂时不可用。请重试。", "retryCheckout": "重试结账"
+      },
       "routeState": {
         "label": "路径状态",
         "title": "公开访问会把你带入正确路径。产品计费在系统更深处。",
@@ -2642,7 +3116,8 @@
               "是证明认真程度的最佳第一步"
             ],
             "cta": "开始使用",
-            "priceNote": "无需信用卡。"
+            "priceNote": "无需信用卡。",
+            "recommended": true
           },
           "starter": {
             "name": "入门版",
@@ -2656,7 +3131,8 @@
               "优先支持",
               "高级分析",
               "更多 AI 智能体",
-              "完整产品访问"
+              "完整产品访问",
+              "最适合首次构建者"
             ],
             "cta": "选择 Starter",
             "anchorPrice": "原价 €290"
@@ -2671,7 +3147,8 @@
               "增强型 onboarding 支持",
               "每周群组排障",
               "共享运营者支持环境",
-              "实现变复杂时降低摩擦"
+              "实现变复杂时降低摩擦",
+              "实施期间更紧密的支持"
             ],
             "cta": "选择 Pro",
             "anchorPrice": "原价 €790",
@@ -2694,7 +3171,91 @@
             "anchorPrice": "后续原价 €10,000+"
           }
         }
-      }
+      },
+      "livePlans": {
+        "label": "方案",
+        "title": "免费开始。等工作证明价值后再升级。",
+        "body": "选择能够覆盖眼前工作的最小方案，之后可以随时调整。",
+        "badge": "按月",
+        "badgePopular": "运营者默认选择",
+        "currentPlan": "当前方案",
+        "loading": "正在开始结账...",
+        "checkoutError": "结账失败，请重试。",
+        "truths": [
+          "免费方案无需信用卡",
+          "付费方案包含托管式进度同步",
+          "Enterprise 从 rollout 计划开始"
+        ],
+        "tiers": {
+          "free": {
+            "name": "免费",
+            "price": "US$0",
+            "period": "/月",
+            "description": "付费前先了解 onboarding、Academy 和产品形态。",
+            "features": [
+              "开放 onboarding 和 Academy",
+              "查看 Tutor 与 Autopilot 的产品形态",
+              "登录后使用托管式进度",
+              "适合结账前评估"
+            ],
+            "cta": "打开 onboarding"
+          },
+          "starter": {
+            "name": "入门版",
+            "price": "US$9",
+            "period": "/月",
+            "description": "一条完整的 setup 路径，包含 Academy 全部访问和 Tutor 支持。",
+            "features": [
+              "每月 1,000 credits",
+              "Academy 全部访问",
+              "Tutor 支持",
+              "Autopilot 模式",
+              "最佳首个付费步骤"
+            ],
+            "cta": "选择 Starter"
+          },
+          "pro": {
+            "name": "专业版",
+            "price": "US$29",
+            "period": "/月",
+            "description": "为活跃 workflow 提供更多 runtime 可见性、BYOK 和更快支持。",
+            "features": [
+              "每月 10,000 credits",
+              "完整 Tutor + BYOK",
+              "API 访问",
+              "优先支持",
+              "适合活跃 workflow 负责人"
+            ],
+            "cta": "选择 Pro"
+          },
+          "enterprise": {
+            "name": "企业版",
+            "price": "定制",
+            "period": "",
+            "description": "带有身份、控制和直接实施支持的团队 rollout 规划。",
+            "features": [
+              "SSO 和团队管理",
+              "专属 rollout 规划",
+              "符合 SLA 的支持",
+              "定制 workflow 设计",
+              "直接联系创始人"
+            ],
+            "cta": "预约规划通话"
+          }
+        }
+      },
+      "stackLabel": "所有方案均包含",
+      "stackTitle": "每个方案的共同基座",
+      "stackBody": "随着 Pico 与你的工作一同成长，Academy 课程、技术栈指南和产品文档会持续开放。",
+      "stackFooterPrefix": "构建者资料包最近刷新于",
+      "stackFooterMiddle": "，涵盖",
+      "stackFooterDocs": "份可见文档和",
+      "stackFooterStacks": "份已追踪的技术栈简报。",
+      "finalLabel": "下一步",
+      "finalTitle": "需要帮助选择吗？",
+      "finalBody": "无论问题在于紧迫程度、方案匹配还是上线方式，支持团队都会直接解答，并将你带回正确的 Pico 路径。",
+      "finalPrimary": "打开支持通道",
+      "finalSecondary": "返回落地页"
     },
     "lessonPage": {
       "shell": {
@@ -2739,6 +3300,11 @@
         "runYourFirstAgentNow": "现在运行第一个代理",
         "openLesson": "打开 {lessonTitle}",
         "openLiveApprovalSetup": "打开实时审批设置",
+        "completeLabel": {
+          "installHermesLocally": "Hermes 已安装",
+          "runYourFirstAgent": "太棒了，成功了",
+          "default": "封存本章"
+        },
         "askTutorAboutLesson": "就这节课询问 Tutor",
         "resetWorkspace": "重置 workspace",
         "reopenStep": "重新打开步骤",
@@ -2771,7 +3337,33 @@
       "studio": {
         "label": "工作室评审板",
         "title": "简报、交付物、评审",
-        "stamp": "一次只做一节真正的课"
+        "stamp": "一次只做一节真正的课",
+        "cards": {
+          "brief": {
+            "label": "01 • 简报",
+            "title": "工作室追求的成果"
+          },
+          "deliverable": {
+            "label": "02 • 交付物",
+            "title": "最终材料应当证明什么"
+          },
+          "critique": {
+            "label": "03 • 评审",
+            "title": "继续前的评审标准"
+          }
+        },
+        "context": {
+          "title": "章节上下文",
+          "trackArc": "轨道脉络",
+          "trackArcFallback": "完成一项真实的操作员成果。",
+          "lessonOutcome": "课程成果",
+          "timeAndWeight": "时间与权重",
+          "timeAndWeightValue": "{minutes} 分钟 • {xp} xp • {difficulty}"
+        },
+        "posture": {
+          "title": "工作室原则",
+          "body": "保持本章边界清晰。目标不是让自己显得忙碌或高级，而是产出一份严谨的操作员明天依然愿意信任的材料。"
+        }
       },
       "chapterSpine": {
         "title": "章节主轴"
@@ -2779,18 +3371,61 @@
       "workspace": {
         "label": "工作室工作区",
         "selectStep": "选择步骤",
-        "studioBrief": "工作室简报"
+        "studioBrief": "工作室简报",
+        "chooseStepBody": "从章节主轴中选择一个步骤来开始当前通道。",
+        "deliverableArtifact": "交付材料",
+        "deliverablePlaceholder": "粘贴能证明本章已成功完成的输出、对话记录或材料。",
+        "benchNotes": "工作台笔记",
+        "benchNotesPlaceholder": "记录关键的阻塞点、文件路径或命令变体。",
+        "reviewState": {
+          "label": "评审状态",
+          "sealedBody": "本章已封存。趁路径仍然清晰，继续前进。",
+          "readyBody": "证明已存在。封存本章并继续前进。",
+          "pendingBody": "在证明真正说明问题前，不要封存本章。"
+        },
+        "chapterCompletion": "章节完成情况",
+        "creativeDirection": {
+          "title": "创作方向",
+          "body": "完成当前实时步骤，记录一份证明材料，然后封存本章或将其交给下一个界面。"
+        }
       },
       "helpLane": {
-        "label": "现场笔记"
+        "label": "现场笔记",
+        "stayHereWhen": "适合留在这里的情况",
+        "stayHereBody": "答案仍在当前步骤中，并且路径暂时不需要升级。",
+        "exactBlocker": "具体阻塞点",
+        "runtimeTruth": "运行时真相",
+        "messyEdge": "复杂边界"
       },
       "surfaceCompass": {
         "title": "在证据成真之前，把这节课保持得足够窄",
-        "body": "单点阻塞先交给 Tutor，运行时真相开始主导时切到 Autopilot，只有两边都不够时才升级到 Support。"
+        "body": "单点阻塞先交给 Tutor，运行时真相开始主导时切到 Autopilot，只有两边都不够时才升级到 Support。",
+        "status": {
+          "blockedByPrerequisite": "受前置条件阻塞",
+          "chapterSealed": "章节已封存",
+          "routeLaneActive": "路径通道进行中",
+          "readyToExecute": "可以执行"
+        },
+        "aside": "恢复路径应位于证明通道下方，而不是混在其中。",
+        "items": {
+          "askTutorLabel": "就本课询问 Tutor",
+          "askTutorCaption": "当命令、文件路径或验证检查失败时使用此项。",
+          "blocked": "受阻",
+          "returnToAcademyMap": "返回 Academy 地图",
+          "returnCaption": "当问题出在顺序本身时，退回到已有映射的路径。",
+          "backtrack": "返回上一步",
+          "runtimeCaption": "当阻塞点取决于实时运行时或审批时，切换到这里。",
+          "runtime": "运行时",
+          "supportCaption": "仅当课程、Tutor 和运行时视图都已不足以解决问题时再升级。",
+          "messyEdge": "复杂边界"
+        }
       },
       "troubleshooting": {
         "label": "排错附录",
-        "title": "只有路径歪掉时才需要看的小笔记"
+        "title": "只有路径歪掉时才需要看的小笔记",
+        "stepsCount": "{count} 个步骤",
+        "nextCapability": "下一项能力",
+        "routeMemory": "路径记忆"
       }
     }
   }

@@ -9,12 +9,11 @@ from datetime import datetime, timezone
 from typing import Any
 import uuid
 
+from src.api.config import get_settings
 from src.api.integrations.tool_names import RUNTIME_BUILTIN_TOOL_NAMES
 from src.api.services.audit_log import AuditEvent, AuditEventType, AuditLog, get_audit_log
 from src.security import (
     ActionMediator,
-    ApprovalRequest,
-    ApprovalService,
     ContextAccumulator,
     NormalizedAction,
     PolicyDecision,
@@ -44,7 +43,6 @@ class GovernanceEvaluation:
     actor_id: str
     actor_display: str | None
     policy_refs: list[str]
-    approval: ApprovalRequest | None = None
 
 
 class GovernanceRuntime:
@@ -58,7 +56,6 @@ class GovernanceRuntime:
         mediator: ActionMediator | None = None,
         context_accumulator: ContextAccumulator | None = None,
         policy_engine: PolicyEngine | None = None,
-        approval_service: ApprovalService | None = None,
         receipt_generator: ReceiptGenerator | None = None,
         telemetry_exporter: TelemetryExporter | None = None,
         audit_log_factory: AuditLogFactory = get_audit_log,
@@ -67,7 +64,6 @@ class GovernanceRuntime:
         self.mediator = mediator or ActionMediator()
         self.context_accumulator = context_accumulator or ContextAccumulator()
         self.policy_engine = policy_engine or PolicyEngine()
-        self.approval_service = approval_service or ApprovalService()
         self.receipt_generator = receipt_generator or ReceiptGenerator()
         self.telemetry_exporter = telemetry_exporter or TelemetryExporter()
         self.audit_log_factory = audit_log_factory
@@ -134,15 +130,6 @@ class GovernanceRuntime:
         decision = self.policy_engine.evaluate(action, context)
         policy_refs = self._resolve_policy_refs(decision)
         decision_id = str(uuid.uuid4())
-        approval = None
-        if decision.is_deferred:
-            approval = self.approval_service.request_approval(
-                action=action,
-                context=context,
-                reason=decision.reason,
-                metadata={"run_id": run_id, "policy_decision_id": decision_id},
-            )
-
         return GovernanceEvaluation(
             action=action,
             context=context,
@@ -153,7 +140,6 @@ class GovernanceRuntime:
             actor_id=resolved_actor_id,
             actor_display=actor_display,
             policy_refs=policy_refs,
-            approval=approval,
         )
 
     def _resolve_policy_refs(self, decision: PolicyDecisionResult) -> list[str]:
@@ -232,9 +218,10 @@ class GovernanceRuntime:
             metadata={
                 "run_id": evaluation.run_id,
                 "policy_decision_id": evaluation.decision_id,
-                "approval_id": evaluation.approval.id if evaluation.approval else None,
+                "approval_id": None,
             },
         )
+        self.receipt_generator.sign_for_persistence(receipt)
         audit_event = self._build_audit_event(
             evaluation,
             receipt=receipt,
@@ -350,7 +337,7 @@ class GovernanceRuntime:
             actor_display=evaluation.actor_display,
             policy_decision_id=evaluation.decision_id,
             policy_refs=evaluation.policy_refs,
-            approval_id=evaluation.approval.id if evaluation.approval else None,
+            approval_id=None,
             cost_record=cost_record,
             redaction_status=redaction_status,
         )
@@ -363,5 +350,13 @@ def get_governance_runtime() -> GovernanceRuntime:
     """Return the process-wide security composition root."""
     global _governance_runtime
     if _governance_runtime is None:
-        _governance_runtime = GovernanceRuntime()
+        settings = get_settings()
+        _governance_runtime = GovernanceRuntime(
+            receipt_generator=ReceiptGenerator(
+                signing_private_key=settings.receipt_signing_private_key,
+                signing_key_id=settings.receipt_signing_key_id,
+                trusted_public_keys=settings.receipt_trusted_public_keys,
+                signing_required=settings.is_production,
+            )
+        )
     return _governance_runtime

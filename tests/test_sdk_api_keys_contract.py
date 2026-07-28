@@ -50,7 +50,7 @@ def test_api_keys_list_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json=[_api_key_payload()])
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     api_keys = APIKeys(client)
 
     api_keys.list()
@@ -67,7 +67,9 @@ def test_api_keys_alist_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json=[_api_key_payload()])
 
-    client = httpx.AsyncClient(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.AsyncClient(
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
+    )
     api_keys = APIKeys(client)
 
     import asyncio
@@ -87,7 +89,7 @@ def test_api_keys_create_hits_contract_route_and_maps_payload() -> None:
         captured["json"] = json.loads(request.content.decode())
         return httpx.Response(201, json=_api_key_with_secret_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     api_keys = APIKeys(client)
 
     api_keys.create(name="my-key", expires_in_days=30)
@@ -105,7 +107,7 @@ def test_api_keys_create_without_expiry() -> None:
         captured["json"] = json.loads(request.content.decode())
         return httpx.Response(201, json=_api_key_with_secret_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     api_keys = APIKeys(client)
 
     api_keys.create(name="permanent-key")
@@ -122,7 +124,9 @@ def test_api_keys_acreate_hits_contract_route() -> None:
         captured["json"] = json.loads(request.content.decode())
         return httpx.Response(201, json=_api_key_with_secret_payload())
 
-    client = httpx.AsyncClient(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.AsyncClient(
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
+    )
     api_keys = APIKeys(client)
 
     import asyncio
@@ -142,7 +146,7 @@ def test_api_keys_revoke_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(204)
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     api_keys = APIKeys(client)
 
     api_keys.revoke(key_id)
@@ -160,7 +164,9 @@ def test_api_keys_arevoke_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(204)
 
-    client = httpx.AsyncClient(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.AsyncClient(
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
+    )
     api_keys = APIKeys(client)
 
     import asyncio
@@ -180,7 +186,7 @@ def test_api_keys_rotate_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json=_api_key_with_secret_payload(name="rotated-key"))
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     api_keys = APIKeys(client)
 
     result = api_keys.rotate(key_id)
@@ -199,7 +205,9 @@ def test_api_keys_arotate_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json=_api_key_with_secret_payload())
 
-    client = httpx.AsyncClient(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.AsyncClient(
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
+    )
     api_keys = APIKeys(client)
 
     import asyncio
@@ -239,7 +247,7 @@ def test_api_key_with_secret_includes_key_field() -> None:
 
 
 def test_api_keys_list_rejects_async_client() -> None:
-    client = httpx.AsyncClient(base_url="https://api.test")
+    client = httpx.AsyncClient(base_url="https://api.test/v1/")
     api_keys = APIKeys(client)
 
     with pytest.raises(RuntimeError, match="requires a sync httpx.Client"):
@@ -247,7 +255,7 @@ def test_api_keys_list_rejects_async_client() -> None:
 
 
 def test_api_keys_create_rejects_async_client() -> None:
-    client = httpx.AsyncClient(base_url="https://api.test")
+    client = httpx.AsyncClient(base_url="https://api.test/v1/")
     api_keys = APIKeys(client)
 
     with pytest.raises(RuntimeError, match="requires a sync httpx.Client"):
@@ -258,7 +266,7 @@ def test_api_keys_list_works_with_sync_client() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=[])
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     api_keys = APIKeys(client)
 
     result = api_keys.list()

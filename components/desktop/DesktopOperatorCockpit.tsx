@@ -14,8 +14,6 @@ import {
   ArrowRight,
   ArrowUpRight,
   Bot,
-  CheckCircle2,
-  ChevronRight,
   Copy,
   FolderOpen,
   Globe,
@@ -37,6 +35,11 @@ import {
 
 import { DesktopRouteListener } from "@/components/desktop/DesktopRouteListener";
 import { DesktopJobNotice } from "@/components/desktop/DesktopJobNotice";
+import { DASHBOARD_ROUTE_PATHS } from "@/components/desktop/desktopRouteConfig";
+import {
+  DESKTOP_ACTION_CLASS,
+  DESKTOP_FOCUS_CLASS,
+} from "@/components/desktop/desktopVisualContract";
 import type {
   DoctorResult,
   GovernanceStatus,
@@ -45,6 +48,7 @@ import type {
   WizardState,
 } from "@/components/desktop/types";
 import { useDesktopJob } from "@/components/desktop/useDesktopJob";
+import { useDesktopRouteNavigation } from "@/components/desktop/useDesktopRouteNavigation";
 import { useDesktopStatus } from "@/components/desktop/useDesktopStatus";
 import { useDesktopWindow } from "@/components/desktop/useDesktopWindow";
 import { cn } from "@/lib/utils";
@@ -248,23 +252,23 @@ function SurfaceCard({
 }) {
   const toneClass =
     tone === "good"
-      ? "border-emerald-500/20"
+      ? "border-[#285a43]"
       : tone === "warn"
-        ? "border-amber-500/20"
+        ? "border-[#65502b]"
         : tone === "danger"
-          ? "border-rose-500/25"
-          : "border-white/10";
+          ? "border-[#66302e]"
+          : "border-[#2b2b26]";
 
   return (
     <section
-      className={`rounded-[28px] border bg-[rgba(6,10,18,0.82)] p-5 shadow-[0_24px_80px_rgba(2,8,23,0.35)] ${toneClass}`}
+      className={`rounded-[6px] border bg-[#11120f] p-4 sm:p-5 ${toneClass}`}
     >
       {eyebrow ? (
-        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-          {eyebrow}
+        <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#ff8355]">
+          <span aria-hidden="true">REC / </span>{eyebrow}
         </p>
       ) : null}
-      <h2 className="mt-2 text-lg font-semibold text-white">{title}</h2>
+      <h2 className="mt-2 font-[family:var(--font-site-display)] text-lg font-medium tracking-[-0.03em] text-[#eee9dc]">{title}</h2>
       <div className="mt-4">{children}</div>
     </section>
   );
@@ -279,16 +283,16 @@ function StatusPill({
 }) {
   const className =
     tone === "good"
-      ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-100"
+      ? "border-[#285a43] bg-[#0f2018] text-[#78e3b4]"
       : tone === "warn"
-        ? "border-amber-400/20 bg-amber-400/10 text-amber-100"
+        ? "border-[#65502b] bg-[#211a0e] text-[#f4cc82]"
         : tone === "danger"
-          ? "border-rose-400/20 bg-rose-400/10 text-rose-100"
-          : "border-white/10 bg-white/5 text-slate-300";
+          ? "border-[#66302e] bg-[#241312] text-[#ff9b96]"
+          : "border-[#34342e] bg-[#171813] text-[#aaa397]";
 
   return (
     <span
-      className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${className}`}
+      className={`rounded-full border px-2.5 py-1 font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.12em] ${className}`}
     >
       {label}
     </span>
@@ -312,22 +316,22 @@ function ActionButton({
 }) {
   const toneClass =
     tone === "primary"
-      ? "border-cyan-400/25 bg-cyan-400/10 text-cyan-50 hover:bg-cyan-400/15"
+      ? "border-[#ff6a32] bg-[#ff571c] text-[#090a08] hover:bg-[#ff7545]"
       : tone === "danger"
-        ? "border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/15"
-        : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10";
+        ? "border-[#66302e] bg-[#241312] text-[#ff9b96] hover:border-[#ff6d66]"
+        : "border-[#48463e] bg-[#151612] text-[#c8c0b0] hover:border-[#777268] hover:text-[#eee9dc]";
 
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled || loading}
-      className={`inline-flex items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${toneClass}`}
+      className={`inline-flex items-center justify-center gap-2 px-4 ${DESKTOP_ACTION_CLASS} ${toneClass}`}
     >
       {loading ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <Loader2 className="h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" aria-hidden="true" />
       ) : (
-        <Icon className="h-4 w-4" />
+        <Icon className="h-4 w-4" aria-hidden="true" />
       )}
       {label}
     </button>
@@ -347,21 +351,21 @@ function SignalTile({
 }) {
   const toneClass =
     tone === "good"
-      ? "border-emerald-500/20"
+      ? "border-[#285a43] bg-[#0f2018]"
       : tone === "warn"
-        ? "border-amber-500/20"
+        ? "border-[#65502b] bg-[#211a0e]"
         : tone === "danger"
-          ? "border-rose-500/20"
-          : "border-white/10";
+          ? "border-[#66302e] bg-[#241312]"
+          : "border-[#34342e] bg-[#151612]";
 
   return (
-    <div className={`rounded-[22px] border bg-black/20 p-4 ${toneClass}`}>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+    <div className={`rounded-[4px] border p-4 ${toneClass}`}>
+      <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">
         {label}
       </p>
-      <p className="mt-2 text-lg font-semibold text-white">{value}</p>
+      <p className="mt-2 font-[family:var(--font-mono)] text-lg font-medium text-[#eee9dc]">{value}</p>
       {detail ? (
-        <p className="mt-2 text-sm leading-5 text-slate-400">{detail}</p>
+        <p className="mt-2 text-sm leading-5 text-[#999284]">{detail}</p>
       ) : null}
     </div>
   );
@@ -378,12 +382,12 @@ function MetricChip({
 }) {
   return (
     <div
-      className={`rounded-[22px] border px-4 py-3 ${tone || "border-white/10 bg-black/20"}`}
+      className={`rounded-[4px] border px-4 py-3 ${tone || "border-[#34342e] bg-[#151612]"}`}
     >
-      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+      <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">
         {label}
       </p>
-      <p className="mt-2 text-lg font-semibold text-white">{value}</p>
+      <p className="mt-2 font-[family:var(--font-mono)] text-lg font-medium text-[#eee9dc]">{value}</p>
     </div>
   );
 }
@@ -404,33 +408,29 @@ function DeskPanel({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-[20px] border shadow-[0_12px_28px_rgba(15,23,42,0.06)]",
+        "overflow-hidden rounded-[6px] border bg-[#11120f]",
         tone === "graphite"
-          ? "border-[#2b3238] bg-[linear-gradient(180deg,#171d26_0%,#10151c_100%)] text-white shadow-[0_18px_42px_rgba(15,23,42,0.16)]"
+          ? "border-[#48463e] text-[#eee9dc]"
           : tone === "success"
-            ? "border-emerald-200 bg-[linear-gradient(180deg,#f7fcf8_0%,#eef8f2_100%)]"
+            ? "border-[#285a43]"
             : tone === "warning"
-              ? "border-amber-200 bg-[linear-gradient(180deg,#fffaf0_0%,#fbf3e2_100%)]"
+              ? "border-[#65502b]"
               : tone === "danger"
-                ? "border-rose-200 bg-[linear-gradient(180deg,#fff6f7_0%,#fbecee_100%)]"
-                : "border-[#d9dee6] bg-[linear-gradient(180deg,#fbfcfe_0%,#f4f6fa_100%)]",
+                ? "border-[#66302e]"
+                : "border-[#2b2b26]",
         className,
       )}
     >
       <div
         className={cn(
-          "flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3.5",
-          tone === "graphite"
-            ? "border-[#252c33] bg-[rgba(255,255,255,0.02)]"
-            : "border-[#e3e7ee] bg-[rgba(255,255,255,0.55)]",
+          "flex flex-wrap items-center justify-between gap-3 border-b border-[#2b2b26] bg-[#0c0d0b] px-4 py-3.5",
         )}
       >
         <div className="min-w-0">
           {meta ? (
             <p
               className={cn(
-                "text-[10px] font-semibold uppercase tracking-[0.18em]",
-                tone === "graphite" ? "text-[#8d97a4]" : "text-[#7d8793]",
+                "font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#ff8355]",
               )}
             >
               {meta}
@@ -438,8 +438,7 @@ function DeskPanel({
           ) : null}
           <h2
             className={cn(
-              "mt-1 text-[0.97rem] font-semibold tracking-[-0.03em]",
-              tone === "graphite" ? "text-[#f5f7fb]" : "text-[#171a1f]",
+              "mt-1 font-[family:var(--font-site-display)] text-[0.97rem] font-medium tracking-[-0.03em] text-[#eee9dc]",
             )}
           >
             {title}
@@ -465,24 +464,24 @@ function DeskMetric({
   return (
     <div
       className={cn(
-        "rounded-[16px] border px-3.5 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.38)]",
+        "rounded-[4px] border px-3.5 py-3.5",
         tone === "good"
-          ? "border-emerald-200 bg-[linear-gradient(180deg,#f7fdf8_0%,#edf9f0_100%)]"
+          ? "border-[#285a43] bg-[#0f2018]"
           : tone === "warn"
-            ? "border-amber-200 bg-[linear-gradient(180deg,#fffaf0_0%,#fbf1dd_100%)]"
+            ? "border-[#65502b] bg-[#211a0e]"
             : tone === "danger"
-              ? "border-rose-200 bg-[linear-gradient(180deg,#fff7f8_0%,#fbecef_100%)]"
-              : "border-[#d9dee6] bg-[linear-gradient(180deg,#ffffff_0%,#f4f6fa_100%)]",
+              ? "border-[#66302e] bg-[#241312]"
+              : "border-[#34342e] bg-[#151612]",
       )}
     >
-      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7d8692]">
+      <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">
         {label}
       </p>
-      <p className="mt-2 text-[0.98rem] font-semibold tracking-[-0.03em] text-[#171a1f]">
+      <p className="mt-2 font-[family:var(--font-mono)] text-[0.98rem] font-medium tracking-[-0.03em] text-[#eee9dc]">
         {value}
       </p>
       {detail ? (
-        <p className="mt-2 text-[11.5px] leading-5 text-[#6f7885]">{detail}</p>
+        <p className="mt-2 text-[11.5px] leading-5 text-[#999284]">{detail}</p>
       ) : null}
     </div>
   );
@@ -509,18 +508,18 @@ function DeskActionButton({
       onClick={onClick}
       disabled={disabled || loading}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-[12px] border px-3.5 py-2.5 text-[12.5px] font-medium tracking-[-0.01em] transition disabled:cursor-not-allowed disabled:opacity-50",
+        `inline-flex items-center justify-center gap-2 px-3.5 ${DESKTOP_ACTION_CLASS}`,
         tone === "primary"
-          ? "border-[#526171] bg-[linear-gradient(180deg,#29323c_0%,#1d242d_100%)] text-[#f5f7fb] hover:bg-[#222a33]"
+          ? "border-[#ff6a32] bg-[#ff571c] text-[#090a08] hover:bg-[#ff7545]"
           : tone === "danger"
-            ? "border-rose-200 bg-[linear-gradient(180deg,#fff7f8_0%,#fdeff1_100%)] text-[#a11d33] hover:bg-[#fde8ec]"
-            : "border-[#d7dce4] bg-[linear-gradient(180deg,#ffffff_0%,#f3f5f9_100%)] text-[#2a3340] hover:bg-[#eef2f7]",
+            ? "border-[#66302e] bg-[#241312] text-[#ff9b96] hover:border-[#ff6d66]"
+            : "border-[#48463e] bg-[#151612] text-[#c8c0b0] hover:border-[#777268] hover:text-[#eee9dc]",
       )}
     >
       {loading ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <Loader2 className="h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" aria-hidden="true" />
       ) : (
-        <Icon className="h-4 w-4" />
+        <Icon className="h-4 w-4" aria-hidden="true" />
       )}
       {label}
     </button>
@@ -535,9 +534,9 @@ function DeskKeyValue({
   value: string | null | undefined;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-[#e7ebf1] py-3 text-[12.5px] last:border-b-0 last:pb-0">
-      <span className="text-[#76808c]">{label}</span>
-      <span className="max-w-[68%] break-all text-right text-[#1b2430]">
+    <div className="flex items-start justify-between gap-4 border-b border-[#2b2b26] py-3 text-[12.5px] last:border-b-0 last:pb-0">
+      <span className="text-[#8d867a]">{label}</span>
+      <span className="max-w-[68%] break-all text-right font-[family:var(--font-mono)] text-[11px] text-[#c8c0b0]">
         {value || "n/a"}
       </span>
     </div>
@@ -567,36 +566,36 @@ function DeskStepRow({
       type="button"
       onClick={onClick}
       className={cn(
-        "w-full rounded-[16px] border px-3.5 py-3 text-left transition",
+        `w-full rounded-[4px] border px-3.5 py-3 text-left transition-colors ${DESKTOP_FOCUS_CLASS}`,
         active
-          ? "border-[#bfc9d6] bg-white shadow-[0_10px_28px_rgba(15,23,42,0.08)]"
+          ? "border-[#663619] bg-[#21150f] shadow-[inset_3px_0_0_#ff571c]"
           : step.status === "error"
-            ? "border-rose-200 bg-[#fff7f8]"
-            : "border-[#e0e5ec] bg-white/72 hover:bg-white",
+            ? "border-[#66302e] bg-[#241312]"
+            : "border-[#2b2b26] bg-[#11120f] hover:border-[#48463e] hover:bg-[#151612]",
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[13px] font-semibold text-[#171a1f]">
+          <p className="text-[13px] font-semibold text-[#eee9dc]">
             {step.title}
           </p>
-          <p className="mt-1 text-[11.5px] leading-5 text-[#707985]">
+          <p className="mt-1 text-[11.5px] leading-5 text-[#999284]">
             {step.description}
           </p>
           {step.error ? (
-            <p className="mt-2 text-[12px] text-[#b42336]">{step.error}</p>
+            <p className="mt-2 text-[12px] text-[#ff9b96]">{step.error}</p>
           ) : null}
         </div>
         <span
           className={cn(
             "rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
             step.status === "complete"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              ? "border-[#285a43] bg-[#0f2018] text-[#78e3b4]"
               : step.status === "running"
-                ? "border-sky-200 bg-sky-50 text-sky-700"
+                ? "border-[#294d6c] bg-[#101c26] text-[#8ac7ff]"
                 : step.status === "error"
-                  ? "border-rose-200 bg-rose-50 text-rose-700"
-                  : "border-[#d7dce4] bg-[#f5f7fa] text-[#66707d]",
+                  ? "border-[#66302e] bg-[#241312] text-[#ff9b96]"
+                  : "border-[#34342e] bg-[#171813] text-[#aaa397]",
           )}
         >
           {statusLabel}
@@ -615,45 +614,7 @@ function StepRow({
   active: boolean;
   onClick: () => void;
 }) {
-  const icon =
-    step.status === "complete" ? (
-      <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-    ) : step.status === "running" ? (
-      <Loader2 className="h-5 w-5 animate-spin text-cyan-300" />
-    ) : step.status === "error" ? (
-      <AlertCircle className="h-5 w-5 text-rose-400" />
-    ) : (
-      <ChevronRight className="h-5 w-5 text-slate-600" />
-    );
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`w-full rounded-[22px] border p-4 text-left transition ${
-        active
-          ? "border-cyan-500/30 bg-cyan-500/10"
-          : step.status === "error"
-            ? "border-rose-500/20 bg-rose-500/5"
-            : step.status === "complete"
-              ? "border-emerald-500/20 bg-emerald-500/5"
-              : "border-white/10 bg-black/20 hover:bg-white/5"
-      }`}
-    >
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5">{icon}</div>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-white">{step.title}</p>
-          <p className="mt-1 text-sm leading-5 text-slate-400">
-            {step.description}
-          </p>
-          {step.error ? (
-            <p className="mt-2 text-sm text-rose-300">{step.error}</p>
-          ) : null}
-        </div>
-      </div>
-    </button>
-  );
+  return <DeskStepRow step={step} active={active} onClick={onClick} />;
 }
 
 function DetailRow({
@@ -663,39 +624,32 @@ function DetailRow({
   label: string;
   value: string | null | undefined;
 }) {
-  return (
-    <div className="flex items-start justify-between gap-4 border-b border-white/5 py-3 text-sm last:border-b-0 last:pb-0">
-      <span className="text-slate-500">{label}</span>
-      <span className="max-w-[65%] break-all text-right text-slate-200">
-        {value || "n/a"}
-      </span>
-    </div>
-  );
+  return <DeskKeyValue label={label} value={value} />;
 }
 
 function SessionRow({ session }: { session: LocalSession }) {
   return (
-    <div className="rounded-[22px] border border-white/10 bg-black/20 px-4 py-3">
+    <div className="rounded-[4px] border border-[#2b2b26] bg-[#11120f] px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-white">
+          <p className="text-sm font-medium text-[#eee9dc]">
             {session.channel || session.kind || session.id}
           </p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-[#8d867a]">
             {session.model || "model unknown"} • {session.age || "age unknown"}
           </p>
         </div>
         <span
           className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
             session.active
-              ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
-              : "border-slate-500/20 bg-slate-500/10 text-slate-300"
+              ? "border-[#285a43] bg-[#0f2018] text-[#78e3b4]"
+              : "border-[#34342e] bg-[#171813] text-[#aaa397]"
           }`}
         >
           {session.active ? "active" : "idle"}
         </span>
       </div>
-      <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-400">
+      <div className="mt-3 flex flex-wrap gap-2 text-xs text-[#999284]">
         <span>{session.agent || "assistant unknown"}</span>
         <span>{session.tokens || "tokens unavailable"}</span>
       </div>
@@ -709,8 +663,8 @@ export function DesktopOperatorCockpit({
   variant?: CockpitVariant;
 }) {
   const { status, refetch, isDesktop } = useDesktopStatus();
-  const { currentWindow, openPreferences, updateCurrentWindow } =
-    useDesktopWindow();
+  const { currentWindow, openPreferences } = useDesktopWindow();
+  const navigateCurrentRoute = useDesktopRouteNavigation();
   const {
     job,
     resetJob,
@@ -1325,7 +1279,10 @@ export function DesktopOperatorCockpit({
         payload.requires_email_verification === true;
 
       if (authMode === "register" && requiresEmailVerification) {
-        const verificationMessage = `Verification email sent to ${email}. Confirm it before syncing desktop auth.`;
+        const verificationMessage =
+          payload.verification_email_sent === false
+            ? `Account created for ${email}, but the email provider did not accept the verification message. Retry from the web verification route when delivery is configured.`
+            : `Verification email sent to ${email}. Confirm it before syncing desktop auth.`;
         setError(verificationMessage);
         addLog(verificationMessage);
         setStepState(
@@ -1600,37 +1557,32 @@ export function DesktopOperatorCockpit({
 
   function navigate(route: string) {
     if (!window.mutxDesktop?.isDesktop) {
-      window.location.href = route;
+      navigateCurrentRoute(route);
       return;
     }
 
-    void (async () => {
-      if (route === "/dashboard/control") {
-        await openPreferences("advanced");
-        return;
-      }
+    if (route === DASHBOARD_ROUTE_PATHS.control) {
+      void openPreferences("advanced");
+      return;
+    }
 
-      const nextPayload =
-        route === "/dashboard"
-          ? {
-              ...currentWindow.currentWindow.payload,
-              pane: "overview",
-            }
-          : currentWindow.currentWindow.payload;
+    const nextPayload =
+      route === DASHBOARD_ROUTE_PATHS.home
+        ? {
+            ...currentWindow.currentWindow.payload,
+            pane: "overview",
+          }
+        : currentWindow.currentWindow.payload;
 
-      await updateCurrentWindow({
-        route,
-        payload: nextPayload,
-      });
-    })();
+    navigateCurrentRoute(route, nextPayload);
   }
 
   function launchDashboard() {
-    navigate("/dashboard");
+    navigate(DASHBOARD_ROUTE_PATHS.home);
   }
 
   function launchAdvancedControl() {
-    navigate("/dashboard/control");
+    navigate(DASHBOARD_ROUTE_PATHS.control);
   }
 
   function renderPreflightPanel() {
@@ -1687,7 +1639,7 @@ export function DesktopOperatorCockpit({
           />
         </div>
 
-        <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+        <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] p-4">
           <DetailRow label="MUTX version" value={preflight?.mutxVersion} />
           <DetailRow label="API target" value={preflight?.apiUrl} />
           <DetailRow label="API source" value={preflight?.apiUrlSource} />
@@ -1709,17 +1661,17 @@ export function DesktopOperatorCockpit({
           type="button"
           onClick={() => void chooseMode("hosted")}
           disabled={loading}
-          className={`rounded-[24px] border p-5 text-left transition ${
+          className={`rounded-[6px] border p-5 text-left transition ${
             runtimeMode === "hosted"
-              ? "border-cyan-500/30 bg-cyan-500/10"
-              : "border-white/10 bg-black/20 hover:bg-white/5"
+              ? "border-[#663619] bg-[#21150f]"
+              : "border-[#2b2b26] bg-[#0c0d0b] hover:bg-[#151612]"
           }`}
         >
-          <Globe className="h-8 w-8 text-cyan-300" />
-          <p className="mt-4 text-lg font-semibold text-white">Hosted</p>
-          <p className="mt-2 text-sm leading-6 text-slate-400">
+          <Globe className="h-8 w-8 text-[#ff8355]" />
+          <p className="mt-4 text-lg font-semibold text-[#eee9dc]">Hosted</p>
+          <p className="mt-2 text-sm leading-6 text-[#999284]">
             Use the managed MUTX control plane at{" "}
-            <span className="text-slate-200">{HOSTED_API_URL}</span>.
+            <span className="text-[#c8c0b0]">{HOSTED_API_URL}</span>.
           </p>
         </button>
 
@@ -1727,17 +1679,17 @@ export function DesktopOperatorCockpit({
           type="button"
           onClick={() => void chooseMode("local")}
           disabled={loading}
-          className={`rounded-[24px] border p-5 text-left transition ${
+          className={`rounded-[6px] border p-5 text-left transition ${
             runtimeMode === "local"
-              ? "border-emerald-500/30 bg-emerald-500/10"
-              : "border-white/10 bg-black/20 hover:bg-white/5"
+              ? "border-[#285a43] bg-[#0f2018]"
+              : "border-[#2b2b26] bg-[#0c0d0b] hover:bg-[#151612]"
           }`}
         >
           <Server className="h-8 w-8 text-emerald-300" />
-          <p className="mt-4 text-lg font-semibold text-white">Local</p>
-          <p className="mt-2 text-sm leading-6 text-slate-400">
+          <p className="mt-4 text-lg font-semibold text-[#eee9dc]">Local</p>
+          <p className="mt-2 text-sm leading-6 text-[#999284]">
             Drive a local stack on{" "}
-            <span className="text-slate-200">{LOCAL_API_URL}</span> and
+            <span className="text-[#c8c0b0]">{LOCAL_API_URL}</span> and
             bootstrap the control plane if needed.
           </p>
         </button>
@@ -1754,10 +1706,10 @@ export function DesktopOperatorCockpit({
               key={mode}
               type="button"
               onClick={() => setAuthMode(mode)}
-              className={`rounded-2xl border px-3 py-3 text-sm font-medium ${
+              className={`rounded-[6px] border px-3 py-3 text-sm font-medium ${
                 authMode === mode
-                  ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-100"
-                  : "border-white/10 bg-white/5 text-slate-400 hover:bg-white/10"
+                  ? "border-[#663619] bg-[#21150f] text-[#ff8355]"
+                  : "border-[#2b2b26] bg-[#151612] text-[#999284] hover:bg-[#1a1b17]"
               }`}
             >
               {mode === "login"
@@ -1771,29 +1723,32 @@ export function DesktopOperatorCockpit({
 
         {(authMode === "register" || authMode === "local") && (
           <input
+            aria-label="Operator name"
             type="text"
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Operator name"
-            className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white placeholder:text-slate-600"
+            className="w-full rounded-[6px] border border-[#2b2b26] bg-[#090a08] px-4 py-3 text-sm text-[#eee9dc] placeholder:text-[#777268]"
           />
         )}
 
         {authMode !== "local" && (
           <>
             <input
+              aria-label="Operator email"
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="Email"
-              className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white placeholder:text-slate-600"
+              className="w-full rounded-[6px] border border-[#2b2b26] bg-[#090a08] px-4 py-3 text-sm text-[#eee9dc] placeholder:text-[#777268]"
             />
             <input
+              aria-label="Operator password"
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="Password"
-              className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white placeholder:text-slate-600"
+              className="w-full rounded-[6px] border border-[#2b2b26] bg-[#090a08] px-4 py-3 text-sm text-[#eee9dc] placeholder:text-[#777268]"
             />
           </>
         )}
@@ -1813,11 +1768,11 @@ export function DesktopOperatorCockpit({
         />
 
         {authMode !== "local" ? (
-          <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+          <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">
               Hosted provider auth
             </p>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
+            <p className="mt-2 text-sm leading-6 text-[#999284]">
               Google, GitHub, Discord, and the real email confirmation flow now
               live on the hosted auth pages. Use that lane when you need
               provider signup or inbox verification on the Railway deployment,
@@ -1864,17 +1819,17 @@ export function DesktopOperatorCockpit({
           <button
             type="button"
             onClick={() => setRuntimeAction("import")}
-            className={`rounded-[22px] border p-4 text-left ${
+            className={`rounded-[6px] border p-4 text-left ${
               runtimeAction === "import"
-                ? "border-amber-500/30 bg-amber-500/10"
-                : "border-white/10 bg-black/20 hover:bg-white/5"
+                ? "border-[#65502b] bg-[#211a0e]"
+                : "border-[#2b2b26] bg-[#0c0d0b] hover:bg-[#151612]"
             }`}
           >
             <FolderOpen className="h-7 w-7 text-amber-300" />
-            <p className="mt-3 text-base font-semibold text-white">
+            <p className="mt-3 text-base font-semibold text-[#eee9dc]">
               Import existing runtime
             </p>
-            <p className="mt-1 text-sm text-slate-400">
+            <p className="mt-1 text-sm text-[#999284]">
               Adopt the local OpenClaw installation without relocating it.
             </p>
           </button>
@@ -1882,17 +1837,17 @@ export function DesktopOperatorCockpit({
           <button
             type="button"
             onClick={() => setRuntimeAction("install")}
-            className={`rounded-[22px] border p-4 text-left ${
+            className={`rounded-[6px] border p-4 text-left ${
               runtimeAction === "install"
-                ? "border-cyan-500/30 bg-cyan-500/10"
-                : "border-white/10 bg-black/20 hover:bg-white/5"
+                ? "border-[#663619] bg-[#21150f]"
+                : "border-[#2b2b26] bg-[#0c0d0b] hover:bg-[#151612]"
             }`}
           >
-            <Wrench className="h-7 w-7 text-cyan-300" />
-            <p className="mt-3 text-base font-semibold text-white">
+            <Wrench className="h-7 w-7 text-[#ff8355]" />
+            <p className="mt-3 text-base font-semibold text-[#eee9dc]">
               Install or repair runtime
             </p>
-            <p className="mt-1 text-sm text-slate-400">
+            <p className="mt-1 text-sm text-[#999284]">
               Let MUTX reconcile the local runtime into a sane state.
             </p>
           </button>
@@ -1900,17 +1855,17 @@ export function DesktopOperatorCockpit({
           <button
             type="button"
             onClick={() => void openTui()}
-            className={`rounded-[22px] border p-4 text-left ${
+            className={`rounded-[6px] border p-4 text-left ${
               runtimeAction === "tui"
-                ? "border-white/30 bg-white/10"
-                : "border-white/10 bg-black/20 hover:bg-white/5"
+                ? "border-[#48463e] bg-[#151612]"
+                : "border-[#2b2b26] bg-[#0c0d0b] hover:bg-[#151612]"
             }`}
           >
-            <Terminal className="h-7 w-7 text-slate-200" />
-            <p className="mt-3 text-base font-semibold text-white">
+            <Terminal className="h-7 w-7 text-[#c8c0b0]" />
+            <p className="mt-3 text-base font-semibold text-[#eee9dc]">
               Inspect via TUI first
             </p>
-            <p className="mt-1 text-sm text-slate-400">
+            <p className="mt-1 text-sm text-[#999284]">
               Open the runtime surface in Terminal before letting setup
               continue.
             </p>
@@ -1953,15 +1908,16 @@ export function DesktopOperatorCockpit({
     return (
       <div className="space-y-4">
         <input
+          aria-label="Assistant name"
           type="text"
           value={assistantName}
           onChange={(event) => setAssistantName(event.target.value)}
           placeholder="Assistant name"
-          className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white placeholder:text-slate-600"
+          className="w-full rounded-[6px] border border-[#2b2b26] bg-[#090a08] px-4 py-3 text-sm text-[#eee9dc] placeholder:text-[#777268]"
         />
 
-        <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
-          <p className="text-sm text-slate-400">
+        <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] p-4">
+          <p className="text-sm text-[#999284]">
             This runs the real desktop setup wizard through the Python bridge.
             It is the point where MUTX actually binds a workspace and assistant,
             not just a cosmetic step.
@@ -1971,25 +1927,25 @@ export function DesktopOperatorCockpit({
         {setupState ? (
           <div
             className={cn(
-              "rounded-[22px] border p-4",
+              "rounded-[6px] border p-4",
               setupStateFailed
-                ? "border-rose-500/25 bg-rose-500/10"
+                ? "border-[#66302e] bg-[#241312]"
                 : setupStateActive
-                  ? "border-cyan-500/25 bg-cyan-500/10"
-                  : "border-white/10 bg-black/20",
+                  ? "border-[#663619] bg-[#21150f]"
+                  : "border-[#2b2b26] bg-[#0c0d0b]",
             )}
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">
                   Live wizard state
                 </p>
-                <p className="mt-2 text-base font-semibold text-white">
+                <p className="mt-2 text-base font-semibold text-[#eee9dc]">
                   {setupState.current_step ||
                     setupState.failed_step ||
                     "waiting"}
                 </p>
-                <p className="mt-1 text-sm leading-6 text-slate-400">
+                <p className="mt-1 text-sm leading-6 text-[#999284]">
                   {setupState.last_error ||
                     `Provider ${setupState.provider || "unknown"} · ${setupState.completed_steps.length}/${setupState.steps.length} steps complete.`}
                 </p>
@@ -2005,14 +1961,14 @@ export function DesktopOperatorCockpit({
                 }
               />
             </div>
-            <div className="mt-4 overflow-hidden rounded-full border border-white/10 bg-black/30">
+            <div className="mt-4 overflow-hidden rounded-[4px] border border-[#2b2b26] bg-[#090a08]">
               <div
                 className={cn(
-                  "h-2 rounded-full transition-all duration-300",
+                  "h-2 rounded-[4px] motion-safe:transition-[width] motion-safe:duration-300 motion-reduce:transition-none",
                   setupStateFailed
                     ? "bg-rose-400"
                     : setupStateActive
-                      ? "bg-cyan-300"
+                      ? "bg-[#ff571c]"
                       : "bg-emerald-300",
                 )}
                 style={{ width: `${Math.max(setupProgress, 6)}%` }}
@@ -2023,14 +1979,14 @@ export function DesktopOperatorCockpit({
                 <div
                   key={step.id}
                   className={cn(
-                    "rounded-[16px] border px-3 py-2.5 text-sm",
+                    "rounded-[6px] border px-3 py-2.5 text-sm",
                     step.completed
-                      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-100"
+                      ? "border-[#285a43] bg-[#0f2018] text-[#78e3b4]"
                       : setupState.current_step === step.id
-                        ? "border-cyan-500/20 bg-cyan-500/10 text-cyan-100"
+                        ? "border-[#663619] bg-[#21150f] text-[#ff8355]"
                         : setupState.failed_step === step.id
-                          ? "border-rose-500/20 bg-rose-500/10 text-rose-100"
-                          : "border-white/10 bg-black/20 text-slate-400",
+                          ? "border-[#66302e] bg-[#241312] text-[#ff9b96]"
+                          : "border-[#2b2b26] bg-[#0c0d0b] text-[#999284]",
                   )}
                 >
                   {step.title}
@@ -2092,15 +2048,15 @@ export function DesktopOperatorCockpit({
 
     return (
       <div className="space-y-4">
-        <div className="rounded-[22px] border border-emerald-500/20 bg-emerald-500/10 p-4">
-          <p className="text-sm leading-6 text-emerald-100">
+        <div className="rounded-[6px] border border-[#285a43] bg-[#0f2018] p-4">
+          <p className="text-sm leading-6 text-[#78e3b4]">
             The desktop seat has enough state to move into steady-state
             operation. You can stay here for recovery and setup, or shift into
             the advanced control view.
           </p>
         </div>
 
-        <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+        <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] p-4">
           <div className="grid gap-3 md:grid-cols-2">
             <DetailRow
               label="Hosted identity"
@@ -2146,8 +2102,8 @@ export function DesktopOperatorCockpit({
             tone="primary"
           />
           <ActionButton
-            label="Open Webhooks"
-            onClick={() => navigate("/dashboard/webhooks")}
+            label="Open Connectors"
+            onClick={() => navigate(DASHBOARD_ROUTE_PATHS.webhooks)}
             icon={Workflow}
           />
           <ActionButton
@@ -2169,7 +2125,7 @@ export function DesktopOperatorCockpit({
   function renderCurrentPanel() {
     if (!isDesktop) {
       return (
-        <div className="rounded-[22px] border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+        <div className="rounded-[6px] border border-[#65502b] bg-[#211a0e] p-4 text-sm text-[#f4cc82]">
           This surface only makes sense inside MUTX.app.
         </div>
       );
@@ -2195,7 +2151,7 @@ export function DesktopOperatorCockpit({
 
   if (!isDesktop) {
     return standalone ? (
-      <div className="min-h-screen bg-[linear-gradient(180deg,#04070d_0%,#09111d_55%,#050910_100%)]">
+      <div className="min-h-screen bg-[#090a08] font-[family:var(--font-site-body)] text-[#eee9dc]">
         <DesktopRouteListener />
         <main className="mx-auto flex min-h-screen max-w-5xl items-center justify-center px-6 py-10">
           <SurfaceCard
@@ -2203,7 +2159,7 @@ export function DesktopOperatorCockpit({
             eyebrow="MUTX.app"
             tone="warn"
           >
-            <p className="text-sm leading-7 text-slate-300">
+            <p className="text-sm leading-7 text-[#c8c0b0]">
               The native operator cockpit depends on the Electron bridge. Open
               this route inside MUTX.app to use runtime inspection, local stack
               control, governance, and setup actions.
@@ -2277,7 +2233,7 @@ export function DesktopOperatorCockpit({
         <div className="space-y-4">
           <DeskPanel
             title={
-              advancedView ? "Advanced Operator Control" : "Mission Control"
+              advancedView ? "Advanced Operator Control" : "Overview"
             }
             meta={
               advancedView ? "Native controls" : "Desktop workspace"
@@ -2285,15 +2241,15 @@ export function DesktopOperatorCockpit({
             className="min-h-[320px]"
           >
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-[#d7dce4] bg-white px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#5f6a76]">
+              <span className="rounded-full border border-[#34342e] bg-[#171813] px-3 py-1.5 font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.12em] text-[#aaa397]">
                 {advancedView ? "Advanced Control" : "Native Workspace"}
               </span>
               <span
                 className={cn(
                   "rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]",
                   status.authenticated
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : "border-amber-200 bg-amber-50 text-amber-700",
+                    ? "border-[#285a43] bg-[#0f2018] text-[#78e3b4]"
+                    : "border-[#65502b] bg-[#211a0e] text-[#f4cc82]",
                 )}
               >
                 {status.authenticated ? "Session Synced" : "Session Pending"}
@@ -2302,12 +2258,12 @@ export function DesktopOperatorCockpit({
                 className={cn(
                   "rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]",
                   bridgeTone === "good"
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    ? "border-[#285a43] bg-[#0f2018] text-[#78e3b4]"
                     : bridgeTone === "warn"
-                      ? "border-amber-200 bg-amber-50 text-amber-700"
+                      ? "border-[#65502b] bg-[#211a0e] text-[#f4cc82]"
                       : bridgeTone === "danger"
-                        ? "border-rose-200 bg-rose-50 text-rose-700"
-                        : "border-[#d7dce4] bg-[#f5f7fa] text-[#66707d]",
+                        ? "border-[#66302e] bg-[#241312] text-[#ff9b96]"
+                        : "border-[#34342e] bg-[#171813] text-[#aaa397]",
                 )}
               >
                 {bridgeLabel}
@@ -2316,8 +2272,8 @@ export function DesktopOperatorCockpit({
                 className={cn(
                   "rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]",
                   status.faramesh?.available
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : "border-[#d7dce4] bg-[#f5f7fa] text-[#66707d]",
+                    ? "border-[#285a43] bg-[#0f2018] text-[#78e3b4]"
+                    : "border-[#34342e] bg-[#171813] text-[#aaa397]",
                 )}
               >
                 {status.faramesh?.available
@@ -2328,16 +2284,16 @@ export function DesktopOperatorCockpit({
 
             <div className="mt-4 grid gap-5 min-[1560px]:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
               <div className="min-w-0">
-                <h1 className="text-[1.55rem] font-semibold tracking-[-0.055em] text-[#171a1f] min-[1800px]:text-[1.75rem]">
+                <h1 className="text-[1.55rem] font-semibold tracking-[-0.055em] text-[#eee9dc] min-[1800px]:text-[1.75rem]">
                   {advancedView
                     ? "Operate the machine directly, without falling back to a browser mirror."
-                    : "Use the whole window like an operator desk, not a web dashboard."}
+                    : "Use the whole window as the native MUTX operator workspace."}
                 </h1>
-                <p className="mt-3 max-w-3xl text-[13px] leading-6 text-[#66707d]">
+                <p className="mt-3 max-w-3xl text-[13px] leading-6 text-[#999284]">
                   The desktop shell now keeps setup, recovery, runtime control,
-                  and local diagnostics in one native workspace. The summary,
-                  active setup lane, and machine-side inspector stay visible
-                  together so the window feels useful when it expands.
+                  and local diagnostics in one native workspace. Its record,
+                  action, state, and inspector hierarchy now matches the MUTX
+                  dashboard while keeping machine-side actions native.
                 </p>
 
                 <div className="mt-5 flex flex-wrap gap-2">
@@ -2477,13 +2433,13 @@ export function DesktopOperatorCockpit({
             </div>
 
             {error ? (
-              <div className="mt-4 rounded-[16px] border border-rose-200 bg-[#fff6f7] px-4 py-3 text-[12.5px] leading-6 text-[#b42336]">
+              <div role="alert" className="mt-4 rounded-[6px] border border-[#66302e] bg-[#241312] px-4 py-3 text-[12.5px] leading-6 text-[#ff9b96]">
                 {error}
               </div>
             ) : null}
 
             {bridgeIssue ? (
-              <div className="mt-4 rounded-[16px] border border-amber-200 bg-[#fff8eb] px-4 py-3 text-[12.5px] leading-6 text-[#9a6700]">
+              <div role="status" className="mt-4 rounded-[6px] border border-[#65502b] bg-[#211a0e] px-4 py-3 text-[12.5px] leading-6 text-[#f4cc82]">
                 Bridge recovery: MUTX is currently using{" "}
                 <span className="font-mono text-[#6b4900]">
                   {status.bridge.pythonCommand || "an unknown interpreter"}
@@ -2500,7 +2456,7 @@ export function DesktopOperatorCockpit({
             tone="graphite"
             className="min-h-[460px]"
           >
-            <p className="mb-5 max-w-2xl text-[13px] leading-6 text-[#97a0ad]">
+            <p className="mb-5 max-w-2xl text-[13px] leading-6 text-[#999284]">
               {STEP_ORDER[currentStepIndex]?.description}
             </p>
             <div className="mb-5">
@@ -2642,7 +2598,7 @@ export function DesktopOperatorCockpit({
           <DesktopJobNotice job={job} onDismiss={resetJob} tone="light" />
 
           <DeskPanel title="Operator Feed" meta="Setup log" tone="graphite">
-            <div className="h-[340px] overflow-y-auto rounded-[16px] border border-[#2a3139] bg-black/30 p-4 font-mono text-[12px] leading-6 text-[#d9e1ea]">
+            <div className="h-[340px] overflow-y-auto rounded-[6px] border border-[#2a3139] bg-[#090a08] p-4 font-mono text-[12px] leading-6 text-[#d9e1ea]">
               {logs.length === 0 ? (
                 <p className="text-[#758090]">
                   Waiting for the first real bridge event...
@@ -2656,18 +2612,18 @@ export function DesktopOperatorCockpit({
           <DeskPanel title="Local Sessions" meta="Activity">
             <div className="space-y-3">
               {snapshotLoading && sessions.length === 0 ? (
-                <div className="rounded-[16px] border border-[#e1e6ed] bg-white/70 px-4 py-5 text-[13px] text-[#6b7582]">
+                <div className="rounded-[6px] border border-[#2b2b26] bg-[#11120f] px-4 py-5 text-[13px] text-[#999284]">
                   Loading local session snapshot...
                 </div>
               ) : sessions.length > 0 ? (
                 sessions.slice(0, 6).map((session) => (
                   <div
                     key={session.id}
-                    className="rounded-[16px] border border-[#e1e6ed] bg-white/78 px-4 py-3.5"
+                    className="rounded-[6px] border border-[#2b2b26] bg-[#11120f] px-4 py-3.5"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-[13px] font-semibold text-[#171a1f]">
+                        <p className="text-[13px] font-semibold text-[#eee9dc]">
                           {session.channel || session.kind || session.id}
                         </p>
                         <p className="mt-1 text-[12px] text-[#6d7784]">
@@ -2675,14 +2631,14 @@ export function DesktopOperatorCockpit({
                           {session.age || "age unknown"}
                         </p>
                       </div>
-                      <span className="rounded-full border border-[#d7dce4] bg-[#f5f7fa] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#66707d]">
+                      <span className="rounded-full border border-[#34342e] bg-[#171813] px-2.5 py-1 font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.12em] text-[#aaa397]">
                         {session.active ? "active" : "idle"}
                       </span>
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="rounded-[16px] border border-dashed border-[#d7dce4] bg-white/60 px-4 py-5 text-[13px] leading-6 text-[#6b7582]">
+                <div className="rounded-[6px] border border-dashed border-[#34342e] bg-[#11120f] px-4 py-5 text-[13px] leading-6 text-[#999284]">
                   No local assistant sessions detected yet. Open the TUI or
                   start a conversation to see local activity here.
                 </div>
@@ -2723,7 +2679,7 @@ export function DesktopOperatorCockpit({
                 />
               </div>
             ) : (
-              <div className="rounded-[16px] border border-[#e1e6ed] bg-white/70 px-4 py-4 text-[13px] leading-6 text-[#67717e]">
+              <div className="rounded-[6px] border border-[#2b2b26] bg-[#11120f] px-4 py-4 text-[13px] leading-6 text-[#999284]">
                 Run the desktop doctor when you want a deeper snapshot of API
                 reachability, runtime state, and assistant wiring.
               </div>
@@ -2738,26 +2694,27 @@ export function DesktopOperatorCockpit({
     <main
       className={
         standalone
-          ? "flex min-h-screen w-full flex-col gap-6 px-4 py-5 lg:px-6 xl:px-8 2xl:px-10"
-          : "flex flex-col gap-6"
+          ? "flex min-h-screen w-full flex-col gap-6 px-4 py-5 [&_button]:focus-visible:outline [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-offset-2 [&_button]:focus-visible:outline-[#ff7847] [&_input]:focus-visible:outline [&_input]:focus-visible:outline-2 [&_input]:focus-visible:outline-offset-2 [&_input]:focus-visible:outline-[#ff7847] lg:px-6 xl:px-8 2xl:px-10"
+          : "flex flex-col gap-6 [&_button]:focus-visible:outline [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-offset-2 [&_button]:focus-visible:outline-[#ff7847] [&_input]:focus-visible:outline [&_input]:focus-visible:outline-2 [&_input]:focus-visible:outline-offset-2 [&_input]:focus-visible:outline-[#ff7847]"
       }
     >
       <section className="grid gap-6 min-[1500px]:grid-cols-[minmax(0,1.42fr)_minmax(360px,0.78fr)]">
-        <div className="rounded-[34px] border border-[#183044] bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.14),transparent_28%),linear-gradient(180deg,rgba(7,15,27,0.96)_0%,rgba(4,9,16,0.98)_100%)] p-6 shadow-[0_32px_120px_rgba(2,8,23,0.45)]">
+        <div className="relative overflow-hidden rounded-[6px] border border-[#48463e] bg-[#11120f] p-5 sm:p-6">
+          <span className="absolute left-0 top-0 h-px w-24 bg-[#ff571c]" aria-hidden="true" />
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-50">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#663619] bg-[#21150f] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#ff8355]">
                 <Radar className="h-3.5 w-3.5" />
                 {advancedView
                   ? "Advanced Operator Cockpit"
                   : "Native Operator Cockpit"}
               </div>
-              <h1 className="mt-5 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+              <h1 className="mt-5 max-w-[22ch] font-[family:var(--font-site-display)] text-4xl font-medium leading-[0.95] tracking-[-0.055em] text-[#eee9dc] sm:text-5xl">
                 {advancedView
                   ? "Operate the local runtime without falling back to the web mirror."
                   : "Make this machine a serious operator seat."}
               </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-[#c8c0b0] sm:text-base">
                 The desktop app now uses one mission-control home for first-run
                 setup, recovery, and steady-state runtime work. The browser
                 mirror still exists, but it no longer pretends to be the native
@@ -2913,13 +2870,13 @@ export function DesktopOperatorCockpit({
           </div>
 
           {error ? (
-            <div className="mt-6 rounded-[22px] border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+            <div role="alert" className="mt-6 rounded-[6px] border border-[#66302e] bg-[#241312] p-4 text-sm text-[#ff9b96]">
               {error}
             </div>
           ) : null}
 
           {bridgeIssue ? (
-            <div className="mt-4 rounded-[22px] border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+            <div role="status" className="mt-4 rounded-[6px] border border-[#65502b] bg-[#211a0e] p-4 text-sm text-[#f4cc82]">
               Bridge recovery: MUTX is currently using{" "}
               <span className="font-mono text-amber-50">
                 {status.bridge.pythonCommand || "an unknown interpreter"}
@@ -2973,16 +2930,16 @@ export function DesktopOperatorCockpit({
       <section className="grid gap-6 min-[1480px]:grid-cols-[minmax(280px,0.62fr)_minmax(0,1.18fr)] min-[1860px]:grid-cols-[minmax(280px,0.6fr)_minmax(0,1.18fr)_minmax(340px,0.82fr)]">
         <SurfaceCard title="Setup Lane" eyebrow="Progress Rail">
           <div className="space-y-4">
-            <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+            <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d867a]">
                     Real desktop setup
                   </p>
-                  <p className="mt-2 text-sm font-semibold text-white">
+                  <p className="mt-2 text-sm font-semibold text-[#eee9dc]">
                     {setupState?.current_step || currentStep}
                   </p>
-                  <p className="mt-1 text-sm text-slate-400">
+                  <p className="mt-1 text-sm text-[#999284]">
                     {setupState
                       ? `${setupState.completed_steps.length}/${setupState.steps.length} wizard steps complete`
                       : "The native setup rail mirrors the live bridge state when available."}
@@ -2999,14 +2956,14 @@ export function DesktopOperatorCockpit({
                   }
                 />
               </div>
-              <div className="mt-4 overflow-hidden rounded-full border border-white/10 bg-black/30">
+              <div className="mt-4 overflow-hidden rounded-[4px] border border-[#2b2b26] bg-[#090a08]">
                 <div
                   className={cn(
-                    "h-2 rounded-full transition-all duration-300",
+                    "h-2 rounded-[4px] motion-safe:transition-[width] motion-safe:duration-300 motion-reduce:transition-none",
                     setupStateFailed
                       ? "bg-rose-400"
                       : setupStateActive
-                        ? "bg-cyan-300"
+                        ? "bg-[#ff571c]"
                         : "bg-emerald-300",
                   )}
                   style={{ width: `${Math.max(setupProgress, 6)}%` }}
@@ -3043,7 +3000,7 @@ export function DesktopOperatorCockpit({
                 : "default"
           }
         >
-          <p className="mb-5 max-w-2xl text-sm leading-6 text-slate-400">
+          <p className="mb-5 max-w-2xl text-sm leading-6 text-[#999284]">
             {STEP_ORDER[currentStepIndex]?.description}
           </p>
           <div className="mb-5">
@@ -3056,14 +3013,14 @@ export function DesktopOperatorCockpit({
           <DesktopJobNotice job={job} onDismiss={resetJob} tone="light" />
 
           <SurfaceCard title="Operator Feed" eyebrow="Setup Log">
-            <div className="h-[360px] overflow-y-auto rounded-[22px] border border-white/10 bg-black/40 p-4 font-mono text-sm">
+            <div className="h-[360px] overflow-y-auto rounded-[6px] border border-[#2b2b26] bg-[#090a08] p-4 font-mono text-sm">
               {logs.length === 0 ? (
-                <p className="text-slate-600">
+                <p className="text-[#777268]">
                   Waiting for the first real bridge event...
                 </p>
               ) : (
                 logs.map((log, index) => (
-                  <p key={index} className="leading-6 text-slate-300">
+                  <p key={index} className="leading-6 text-[#c8c0b0]">
                     {log}
                   </p>
                 ))
@@ -3108,7 +3065,7 @@ export function DesktopOperatorCockpit({
                 />
               </div>
             ) : (
-              <div className="rounded-[22px] border border-white/10 bg-black/20 p-4 text-sm leading-6 text-slate-400">
+              <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] p-4 text-sm leading-6 text-[#999284]">
                 Run the desktop doctor when you want a deeper snapshot of API
                 reachability, runtime state, and assistant wiring.
               </div>
@@ -3125,28 +3082,28 @@ export function DesktopOperatorCockpit({
         >
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-4">
-              <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+              <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-white">
+                    <p className="text-sm font-medium text-[#eee9dc]">
                       {status.assistant?.name || "Assistant not bound"}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-[#8d867a]">
                       {status.assistant?.workspace ||
                         "Run setup to bind the desktop workspace."}
                     </p>
                   </div>
-                  <Bot className="h-5 w-5 text-cyan-300" />
+                  <Bot className="h-5 w-5 text-[#ff8355]" />
                 </div>
               </div>
 
-              <div className="rounded-[22px] border border-white/10 bg-black/20 p-4">
+              <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-white">
+                    <p className="text-sm font-medium text-[#eee9dc]">
                       Gateway URL
                     </p>
-                    <p className="mt-1 break-all text-xs text-slate-500">
+                    <p className="mt-1 break-all text-xs text-[#8d867a]">
                       {runtimeGatewayUrl || "not detected"}
                     </p>
                   </div>
@@ -3154,7 +3111,7 @@ export function DesktopOperatorCockpit({
                     type="button"
                     onClick={() => void handleCopyGateway()}
                     disabled={!runtimeGatewayUrl}
-                    className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-[4px] border border-[#2b2b26] bg-[#151612] px-3 py-2 text-xs text-[#c8c0b0] disabled:opacity-50"
                   >
                     <Copy className="h-3.5 w-3.5" />
                     {copiedGateway ? "Copied" : "Copy"}
@@ -3163,36 +3120,36 @@ export function DesktopOperatorCockpit({
               </div>
             </div>
 
-            <div className="space-y-3 text-sm text-slate-300">
-              <div className="flex items-start gap-3 rounded-[22px] border border-white/10 bg-black/20 px-4 py-3">
-                <HardDrive className="mt-0.5 h-4 w-4 text-sky-300" />
+            <div className="space-y-3 text-sm text-[#c8c0b0]">
+              <div className="flex items-start gap-3 rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] px-4 py-3">
+                <HardDrive className="mt-0.5 h-4 w-4 text-[#58aaff]" />
                 <div>
-                  <p className="font-medium text-white">Binary Path</p>
-                  <p className="mt-1 break-all text-xs text-slate-500">
+                  <p className="font-medium text-[#eee9dc]">Binary Path</p>
+                  <p className="mt-1 break-all text-xs text-[#8d867a]">
                     {runtimeBinaryPath || "not available"}
                   </p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 rounded-[22px] border border-white/10 bg-black/20 px-4 py-3">
+              <div className="flex items-start gap-3 rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] px-4 py-3">
                 <Server className="mt-0.5 h-4 w-4 text-emerald-300" />
                 <div>
-                  <p className="font-medium text-white">Local Control Plane</p>
-                  <p className="mt-1 break-all text-xs text-slate-500">
+                  <p className="font-medium text-[#eee9dc]">Local Control Plane</p>
+                  <p className="mt-1 break-all text-xs text-[#8d867a]">
                     {runtimeLocalControl?.path ||
                       status.localControlPlane?.path ||
                       "not available"}
                   </p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 rounded-[22px] border border-white/10 bg-black/20 px-4 py-3">
-                <Workflow className="mt-0.5 h-4 w-4 text-cyan-300" />
+              <div className="flex items-start gap-3 rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] px-4 py-3">
+                <Workflow className="mt-0.5 h-4 w-4 text-[#ff8355]" />
                 <div>
-                  <p className="font-medium text-white">Runtime Details</p>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="font-medium text-[#eee9dc]">Runtime Details</p>
+                  <p className="mt-1 text-xs text-[#8d867a]">
                     {runtimePrivacySummary ||
                       "Desktop runtime state is synced from the local OpenClaw install."}
                   </p>
-                  <p className="mt-2 text-xs text-slate-500">
+                  <p className="mt-2 text-xs text-[#8d867a]">
                     {runtimeKeysStayLocal === null
                       ? "Key locality unavailable"
                       : runtimeKeysStayLocal
@@ -3200,7 +3157,7 @@ export function DesktopOperatorCockpit({
                         : "Keys may be proxied through the runtime"}
                   </p>
                   {runtimeConfigPath ? (
-                    <p className="mt-2 break-all text-xs text-slate-600">
+                    <p className="mt-2 break-all text-xs text-[#777268]">
                       {runtimeConfigPath}
                     </p>
                   ) : null}
@@ -3233,16 +3190,16 @@ export function DesktopOperatorCockpit({
               value={String(governance?.defers_today ?? 0)}
             />
           </div>
-          <div className="mt-4 space-y-3 rounded-[22px] border border-white/10 bg-black/20 p-4">
+          <div className="mt-4 space-y-3 rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] p-4">
             <div className="flex items-start gap-3">
               <Shield className="mt-0.5 h-4 w-4 text-emerald-300" />
               <div>
-                <p className="text-sm font-medium text-white">Daemon Status</p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="text-sm font-medium text-[#eee9dc]">Daemon Status</p>
+                <p className="mt-1 text-xs text-[#8d867a]">
                   {governance?.status ||
                     (status.faramesh?.available ? "active" : "idle")}
                 </p>
-                <p className="mt-1 text-xs text-slate-600">
+                <p className="mt-1 text-xs text-[#777268]">
                   Last decision: {formatTimestamp(governance?.last_decision_at)}
                 </p>
               </div>
@@ -3270,7 +3227,7 @@ export function DesktopOperatorCockpit({
         <SurfaceCard title="Local Sessions" eyebrow="Activity">
           <div className="space-y-3">
             {snapshotLoading && sessions.length === 0 ? (
-              <div className="rounded-[22px] border border-white/10 bg-black/20 px-4 py-5 text-sm text-slate-500">
+              <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] px-4 py-5 text-sm text-[#8d867a]">
                 Loading local session snapshot...
               </div>
             ) : sessions.length > 0 ? (
@@ -3280,7 +3237,7 @@ export function DesktopOperatorCockpit({
                   <SessionRow key={session.id} session={session} />
                 ))
             ) : (
-              <div className="rounded-[22px] border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-slate-500">
+              <div className="rounded-[6px] border border-dashed border-[#2b2b26] bg-[#0c0d0b] px-4 py-5 text-sm text-[#8d867a]">
                 No local assistant sessions detected yet. Open the TUI or start
                 a conversation to see local activity here.
               </div>
@@ -3317,17 +3274,17 @@ export function DesktopOperatorCockpit({
           </div>
 
           {job.error || snapshotError ? (
-            <div className="mt-5 rounded-[22px] border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+            <div role="alert" className="mt-5 rounded-[6px] border border-[#66302e] bg-[#241312] px-4 py-3 text-sm text-[#ff9b96]">
               {job.error || snapshotError}
             </div>
           ) : null}
 
           {doctorResult ? (
-            <details className="mt-5 rounded-[22px] border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
-              <summary className="cursor-pointer font-medium text-white">
+            <details className="mt-5 rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] p-4 text-sm text-[#c8c0b0]">
+              <summary className="cursor-pointer font-medium text-[#eee9dc]">
                 Raw diagnostics payload
               </summary>
-              <pre className="mt-4 max-h-80 overflow-auto text-xs text-slate-400">
+              <pre className="mt-4 max-h-80 overflow-auto text-xs text-[#999284]">
                 {JSON.stringify(doctorResult, null, 2)}
               </pre>
             </details>
@@ -3339,7 +3296,7 @@ export function DesktopOperatorCockpit({
 
   if (standalone) {
     return (
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.16),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.12),transparent_22%),linear-gradient(180deg,#04070d_0%,#09111d_55%,#050910_100%)]">
+      <div data-mutx-desktop="standalone-cockpit" className="min-h-screen bg-[#090a08] font-[family:var(--font-site-body)] text-[#eee9dc]">
         <DesktopRouteListener />
         {content}
       </div>

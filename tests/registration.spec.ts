@@ -63,6 +63,7 @@ test.describe('Registration Flow', () => {
 
     // Wait for error message
     await expect(page.getByText(/passwords do not match/i)).toBeVisible();
+    await expect(page.getByPlaceholder('••••••••').last()).toBeFocused();
   });
 
   test('registration form validates password length', async ({ page }) => {
@@ -80,6 +81,35 @@ test.describe('Registration Flow', () => {
 
     // Should show validation error for password
     await expect(page.getByText(/password must be at least/i)).toBeVisible();
+    await expect(page.getByPlaceholder('••••••••').first()).toBeFocused();
+  });
+
+  test('preserves the intended route through the verification handoff', async ({ page }) => {
+    let registrationBody: Record<string, unknown> | undefined;
+
+    await page.route('**/api/auth/register', async (route) => {
+      registrationBody = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          requires_email_verification: true,
+          verification_email_sent: true,
+        }),
+      });
+    });
+
+    await page.goto('/register?next=%2Fdashboard%2Fruns%3Fstatus%3Dheld');
+    await page.getByPlaceholder('Your name').fill('Test User');
+    await page.getByPlaceholder('you@company.com').fill('test@example.com');
+    await page.getByPlaceholder('••••••••').first().fill('password123');
+    await page.getByPlaceholder('••••••••').last().fill('password123');
+    await page.getByRole('button', { name: /sign up/i }).click();
+
+    expect(registrationBody?.return_path).toBe('/dashboard/runs?status=held');
+    await expect(page).toHaveURL(/\/verify-email\?/);
+    const verificationUrl = new URL(page.url());
+    expect(verificationUrl.searchParams.get('next')).toBe('/dashboard/runs?status=held');
   });
 
   test('registration form shows error for existing email', async ({ page }) => {

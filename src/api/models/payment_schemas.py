@@ -6,11 +6,13 @@ from datetime import datetime
 from typing import Literal, Optional
 import uuid
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class CheckoutSessionRequest(BaseModel):
     """Request body for creating a Stripe Checkout Session."""
+
+    model_config = ConfigDict(extra="forbid")
 
     plan_id: Optional[Literal["starter", "pro"]] = Field(
         None,
@@ -24,9 +26,6 @@ class CheckoutSessionRequest(BaseModel):
     )
     success_url: str = Field(..., min_length=1, description="URL to redirect on success")
     cancel_url: str = Field(..., min_length=1, description="URL to redirect on cancellation")
-    trial_days: Optional[int] = Field(
-        None, ge=1, le=365, description="Number of trial days (optional)"
-    )
 
     @model_validator(mode="after")
     def validate_checkout_target(self) -> CheckoutSessionRequest:

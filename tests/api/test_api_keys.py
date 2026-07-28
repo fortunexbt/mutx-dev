@@ -6,6 +6,7 @@ import hashlib
 import uuid
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,13 @@ from src.api.auth.jwt import create_access_token
 from src.api.models.models import APIKey
 from src.api.models import get_quota, PlanTier
 from src.api.services.user_service import extract_api_key_prefix, verify_api_key
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def developer_principals(db_session, test_user, other_user):
+    test_user.roles = ["DEVELOPER"]
+    other_user.roles = ["DEVELOPER"]
+    await db_session.commit()
 
 
 class TestListAPIKeys:

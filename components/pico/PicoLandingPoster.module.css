@@ -11,7 +11,7 @@
   --trace: #69a7ff;
   --trace-dark: #245fc7;
   min-height: 100vh;
-  overflow: clip;
+  min-height: 100dvh;
   background: var(--bone);
   color: var(--carbon);
   font-family: var(--font-site-body), sans-serif;
@@ -51,7 +51,7 @@
   border: 1px solid var(--carbon);
   background: var(--trace);
   font-family: var(--font-mono), monospace;
-  font-size: 0.55rem;
+  font-size: 0.68rem;
   font-weight: 600;
 }
 
@@ -64,7 +64,7 @@
 .brand small {
   color: var(--muted);
   font-family: var(--font-mono), monospace;
-  font-size: 0.5rem;
+  font-size: 0.7rem;
   letter-spacing: 0.13em;
   text-transform: uppercase;
 }
@@ -86,7 +86,7 @@
   background: transparent;
   color: var(--carbon);
   font-family: var(--font-mono), monospace;
-  font-size: 0.6rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-decoration: none;
@@ -110,6 +110,11 @@
 .nav nav > button:focus-visible {
   background: var(--carbon);
   color: var(--bone);
+}
+
+.nav nav > a.navCta {
+  min-width: 10rem;
+  background: var(--orange);
 }
 
 .hero {
@@ -143,7 +148,7 @@
   margin: 0;
   color: var(--trace-dark);
   font-family: var(--font-mono), monospace;
-  font-size: 0.62rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.14em;
   line-height: 1.5;
@@ -215,7 +220,7 @@
   background: var(--paper);
   color: var(--carbon);
   font-family: var(--font-mono), monospace;
-  font-size: 0.62rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-decoration: none;
@@ -233,6 +238,19 @@
 .heroActions a,
 .finalActions a {
   border-inline-start: 0;
+}
+
+.heroActions a.primaryAction,
+.finalActions a.primaryAction {
+  border-inline-start: 1px solid var(--carbon);
+  background: var(--carbon);
+  color: var(--bone);
+}
+
+.finalActions button.secondaryAction {
+  border-inline-start: 0;
+  background: transparent;
+  color: var(--carbon);
 }
 
 .heroActions button:hover,
@@ -258,7 +276,7 @@
   margin: 1.5rem 0 0;
   color: var(--muted);
   font-family: var(--font-mono), monospace;
-  font-size: 0.56rem;
+  font-size: 0.68rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -299,7 +317,7 @@
 .diagnosticFooter span,
 .recordNote {
   font-family: var(--font-mono), monospace;
-  font-size: 0.55rem;
+  font-size: 0.68rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -429,7 +447,7 @@
 .eventState,
 .diagnosticRail small {
   font-family: var(--font-mono), monospace;
-  font-size: 0.52rem;
+  font-size: 0.64rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -492,7 +510,7 @@
 .diagnosticFooter code {
   color: var(--muted);
   font-family: var(--font-mono), monospace;
-  font-size: 0.56rem;
+  font-size: 0.68rem;
 }
 
 .recordNote {
@@ -580,7 +598,7 @@
   display: grid;
   color: #8c9187;
   font-family: var(--font-mono), monospace;
-  font-size: 0.53rem;
+  font-size: 0.68rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -637,7 +655,7 @@
 .evidenceRows i,
 .evidence > footer span {
   font-family: var(--font-mono), monospace;
-  font-size: 0.54rem;
+  font-size: 0.66rem;
   font-style: normal;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -755,6 +773,11 @@
   overscroll-behavior-inline: contain;
 }
 
+.agentGallery:focus-visible {
+  outline: 2px solid var(--trace-dark);
+  outline-offset: 3px;
+}
+
 .agentTrack {
   display: flex;
   width: max-content;
@@ -789,7 +812,7 @@
   margin-bottom: 2.8rem;
   color: var(--trace-dark);
   font-family: var(--font-mono), monospace;
-  font-size: 0.55rem;
+  font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -877,7 +900,7 @@
   gap: 0.8rem;
   color: var(--muted);
   font-family: var(--font-mono), monospace;
-  font-size: 0.52rem;
+  font-size: 0.66rem;
   letter-spacing: 0.1em;
   line-height: 1.4;
   text-transform: uppercase;
@@ -914,7 +937,7 @@
   min-height: 2.4rem;
   color: var(--muted);
   font-family: var(--font-mono), monospace;
-  font-size: 0.58rem;
+  font-size: 0.7rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -924,6 +947,12 @@
 }
 
 .pricingName p {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.pricingName bdi {
   display: flex;
   align-items: baseline;
   gap: 0.4rem;
@@ -940,9 +969,13 @@
 .pricingName span {
   color: var(--muted);
   font-family: var(--font-mono), monospace;
-  font-size: 0.52rem;
+  font-size: 0.66rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.pricingCard[data-recommended="true"] .pricingName span {
+  color: #bfc3ba;
 }
 
 .pricingDescription {
@@ -962,7 +995,7 @@
   margin: 1.5rem 0;
   color: var(--muted);
   font-family: var(--font-mono), monospace;
-  font-size: 0.54rem;
+  font-size: 0.66rem;
   line-height: 1.5;
 }
 
@@ -972,13 +1005,18 @@
 
 .pricingNote del {
   width: max-content;
-  color: var(--orange);
+  color: var(--orange-dark);
   font-size: 0.72rem;
   font-weight: 700;
   text-decoration-thickness: 1px;
 }
 
-.pricingCard > button {
+.pricingCard[data-recommended="true"] .pricingNote del {
+  color: #ff6a32;
+}
+
+.pricingCard > button,
+.pricingCard > a.pricingAction {
   display: flex;
   min-height: 3.8rem;
   align-items: center;
@@ -990,29 +1028,34 @@
   background: var(--carbon);
   color: var(--bone);
   font-family: var(--font-mono), monospace;
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   line-height: 1.35;
   text-align: start;
+  text-decoration: none;
   text-transform: uppercase;
   cursor: pointer;
   transition: background-color 160ms ease, color 160ms ease;
 }
 
-.pricingCard[data-recommended="true"] > button {
+.pricingCard[data-recommended="true"] > button,
+.pricingCard[data-recommended="true"] > a.pricingAction {
   border-color: var(--orange);
   background: var(--orange);
   color: var(--carbon);
 }
 
 .pricingCard > button:hover,
-.pricingCard > button:focus-visible {
+.pricingCard > button:focus-visible,
+.pricingCard > a.pricingAction:hover,
+.pricingCard > a.pricingAction:focus-visible {
   background: var(--trace);
   color: var(--carbon);
 }
 
-.pricingCard > button svg {
+.pricingCard > button svg,
+.pricingCard > a.pricingAction svg {
   width: 0.9rem;
   height: 0.9rem;
   flex: none;
@@ -1135,7 +1178,7 @@
   }
 
   .hero h1 {
-    font-size: clamp(4.3rem, 20vw, 6.4rem);
+    font-size: clamp(3.7rem, 16vw, 4.75rem);
   }
 
   .support {
@@ -1229,7 +1272,7 @@
   }
 
   .methodHeader h2 {
-    font-size: clamp(3.9rem, 18vw, 5.8rem);
+    font-size: clamp(3.45rem, 14vw, 4.75rem);
   }
 
   .steps li {
@@ -1272,7 +1315,7 @@
 
   .agentScopeHeader h2,
   .pricingHeader h2 {
-    font-size: clamp(3.8rem, 17vw, 5.7rem);
+    font-size: clamp(3.4rem, 14vw, 4.75rem);
   }
 
   .agentTrack article {
@@ -1294,7 +1337,7 @@
   }
 
   .final h2 {
-    font-size: clamp(4rem, 18vw, 6rem);
+    font-size: clamp(3.55rem, 15vw, 4.75rem);
   }
 
   .finalActions {
@@ -1314,16 +1357,12 @@
 }
 
 @media (max-width: 420px) {
-  .brand > span {
-    display: none;
-  }
-
   .brand strong {
     font-size: 0.92rem;
   }
 
   .nav nav > button {
-    font-size: 0.54rem;
+    font-size: 0.68rem;
   }
 }
 
@@ -1338,6 +1377,7 @@
   .heroActions button,
   .heroActions a,
   .pricingCard > button,
+  .pricingCard > a.pricingAction,
   .finalActions button,
   .finalActions a {
     transition: none;

@@ -10,7 +10,7 @@ class RuntimeStateService(APIService):
     def get_onboarding(self) -> OnboardingStateRecord:
         response = self._request("get", "/v1/onboarding")
         self._expect_status(response, {200})
-        return OnboardingStateRecord.from_payload(response.json())
+        return OnboardingStateRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def update_onboarding(
         self,
@@ -27,14 +27,14 @@ class RuntimeStateService(APIService):
             request_payload["payload"] = payload
         response = self._request("post", "/v1/onboarding", json=request_payload)
         self._expect_status(response, {200})
-        return OnboardingStateRecord.from_payload(response.json())
+        return OnboardingStateRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def get_provider(self, provider: str) -> RuntimeProviderRecord:
         response = self._request("get", f"/v1/runtime/providers/{provider}")
         self._expect_status(response, {200})
-        return RuntimeProviderRecord.from_payload(response.json())
+        return RuntimeProviderRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def put_provider(self, provider: str, payload: dict[str, Any]) -> RuntimeProviderRecord:
         response = self._request("put", f"/v1/runtime/providers/{provider}", json=payload)
         self._expect_status(response, {200}, invalid_message="Unable to sync provider runtime")
-        return RuntimeProviderRecord.from_payload(response.json())
+        return RuntimeProviderRecord.from_payload(self._decode_json(response, expected_type=dict))

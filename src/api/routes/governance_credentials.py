@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from src.api.auth.dependencies import get_current_internal_user
+from src.api.auth.dependencies import get_current_internal_user, require_roles
 from src.api.models import User
 from src.api.services.credential_broker import (
     CredentialBackend,
@@ -16,6 +16,22 @@ from src.api.services.credential_broker import (
 )
 
 router = APIRouter(prefix="/governance/credentials", tags=["governance"])
+
+
+async def require_credential_reader(
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
+    _internal_user: User = Depends(get_current_internal_user),
+) -> User:
+    """Require an internal persisted principal with read access."""
+    return current_user
+
+
+async def require_credential_developer(
+    current_user: User = Depends(require_roles("DEVELOPER")),
+    _internal_user: User = Depends(get_current_internal_user),
+) -> User:
+    """Require an internal persisted principal with credential mutation access."""
+    return current_user
 
 
 def _broker_for_user(current_user: User):
@@ -51,7 +67,7 @@ class BackendHealthResponse(BaseModel):
 
 @router.get("/backends", response_model=list[BackendHealthResponse])
 async def list_credential_backends(
-    current_user: User = Depends(get_current_internal_user),
+    current_user: User = Depends(require_credential_reader),
 ):
     """List all registered credential backends."""
     broker = _broker_for_user(current_user)
@@ -72,7 +88,7 @@ async def list_credential_backends(
 @router.post("/backends", status_code=201)
 async def register_credential_backend(
     request: CredentialBackendRegister,
-    current_user: User = Depends(get_current_internal_user),
+    current_user: User = Depends(require_credential_developer),
 ):
     """Register a new credential backend."""
     try:
@@ -102,7 +118,7 @@ async def register_credential_backend(
 @router.delete("/backends/{backend_name}")
 async def unregister_credential_backend(
     backend_name: str,
-    current_user: User = Depends(get_current_internal_user),
+    current_user: User = Depends(require_credential_developer),
 ):
     """Unregister a credential backend."""
     broker = _broker_for_user(current_user)
@@ -117,7 +133,7 @@ async def unregister_credential_backend(
 @router.get("/backends/{backend_name}/health")
 async def check_backend_health(
     backend_name: str,
-    current_user: User = Depends(get_current_internal_user),
+    current_user: User = Depends(require_credential_reader),
 ):
     """Check health of a specific credential backend."""
     broker = _broker_for_user(current_user)
@@ -136,7 +152,7 @@ async def check_backend_health(
 
 @router.get("/health")
 async def check_all_backends_health(
-    current_user: User = Depends(get_current_internal_user),
+    current_user: User = Depends(require_credential_reader),
 ):
     """Check health of all credential backends."""
     broker = _broker_for_user(current_user)
@@ -146,7 +162,7 @@ async def check_all_backends_health(
 @router.get("/get/{full_path:path}", response_model=CredentialResponse)
 async def get_credential(
     full_path: str,
-    current_user: User = Depends(get_current_internal_user),
+    current_user: User = Depends(require_credential_reader),
 ):
     """
     Retrieve a credential by its full path.

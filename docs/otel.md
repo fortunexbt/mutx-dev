@@ -4,16 +4,63 @@ This guide covers OpenTelemetry integration for distributed tracing in MUTX.
 
 ## Overview
 
-MUTX supports OpenTelemetry for distributed tracing, enabling you to track requests across services. The system exports traces to configurable backends like Jaeger, Grafana Tempo, or any OTLP-compatible collector.
+MUTX supports OpenTelemetry distributed tracing. The API process configures its
+active exporter at startup from `OTEL_*` environment variables. Separately, the
+authenticated telemetry API stores a tenant-owned OTLP connectivity target and
+reports bounded transport reachability; it does not hot-swap the process-wide
+exporter.
+
+## Dynamic telemetry backend registry
+
+`GET`, `POST /v1/telemetry/config`, and `GET /v1/telemetry/health` require a
+verified internal user with the persisted `ADMIN` role. Each principal can read
+and update only its own durable configuration. A process restart does not erase
+the saved target, and another administrator cannot observe or overwrite it.
+
+Example request:
+
+```http
+POST /v1/telemetry/config
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "otlp_endpoint": "https://otel.example.com:4317",
+  "protocol": "grpc"
+}
+```
+
+The API accepts only `http` and `https` URLs without credentials, query strings,
+fragments, or scoped IPv6 addresses. The hostname must resolve entirely to
+public, globally routable addresses. Loopback, private, carrier-grade NAT,
+link-local, site-local, reserved, multicast, IPv4-mapped, 6to4, Teredo, and
+NAT64 targets are rejected. DNS and connect work have short deadlines and a
+bounded address count.
+
+Health is a TCP/TLS reachability probe, not proof that the collector accepted
+OTLP data. It re-resolves the hostname on every request and connects directly to
+the validated address, so HTTP redirects and environment proxies are not used.
+The response separates the saved target from runtime state:
+
+- `configured` means a target is durably saved for the caller.
+- `endpoint_reachable` means the bounded TCP/TLS probe connected.
+- `otel_enabled` and `exporter_type` describe the active API process.
+- `runtime_applied` is `false`; set deployment `OTEL_*` variables and restart to
+  apply an exporter change.
+
+Private in-cluster collectors such as `localhost` or Kubernetes service names
+must be configured through trusted deployment environment variables, not this
+user-influenced API surface.
 
 ## Quick Start
 
 ### 1. Install Dependencies
 
-Ensure you have the required packages:
+Install the repository requirements, which include the OpenTelemetry API, SDK,
+FastAPI instrumentation, and exporters used by MUTX:
 
 ```bash
-pip install opentelemetry-api   opentelemetry-sdk   opentelemetry-exporter-otlp   opentelemetry-instrumentation-flask   opentelemetry-instrumentation-requests
+pip install -r requirements.txt
 ```
 
 ### 2. Configure Environment Variables
@@ -21,54 +68,22 @@ pip install opentelemetry-api   opentelemetry-sdk   opentelemetry-exporter-otlp 
 Add these to your `.env` file:
 
 ```bash
-# Enable OpenTelemetry
-OTEL_ENABLED=true
 OTEL_SERVICE_NAME=mutx-api
 
-# Choose your exporter (otlp, jaeger, zipkin)
-OTEL_EXPORTER=otlp
+# Choose the startup exporter (console, otlp, or zipkin)
+OTEL_TRACES_EXPORTER=otlp
 
-# For OTLP (HTTP)
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-
-# For Jaeger
-OTEL_EXPORTER_JAEGER_ENDPOINT=http://localhost:14268/api/traces
+# For the OTLP gRPC exporter
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 
 # For Zipkin
 OTEL_EXPORTER_ZIPKIN_ENDPOINT=http://localhost:9411/api/v2/spans
 ```
 
-### 3. Initialize in Your Application
+### 3. Application initialization
 
-```python
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME
-
-# Configure resource
-resource = Resource(attributes={
-    SERVICE_NAME: os.getenv("OTEL_SERVICE_NAME", "mutx-api"),
-    "deployment.environment": os.getenv("ENVIRONMENT", "development")
-})
-
-# Setup provider
-provider = TracerProvider(resource=resource)
-processor = BatchSpanProcessor(OTLPSpanExporter(
-    endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces")
-))
-provider.add_span_processor(processor)
-trace.set_tracer_provider(provider)
-
-# Auto-instrument requests
-from opentelemetry.instrumentation.flask import FlaskInstrumentor
-from opentelemetry.instrumentation.requests import RequestsInstrumentor
-
-FlaskInstrumentor().instrument_app(app)
-RequestsInstrumentor().instrument()
-```
+`src.api.main.create_app()` initializes the tracer provider and instruments the
+FastAPI application. Do not initialize a second provider in route code.
 
 ## Environment Variable Configuration
 
@@ -76,43 +91,22 @@ RequestsInstrumentor().instrument()
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OTEL_ENABLED` | Enable/disable tracing | `false` |
 | `OTEL_SERVICE_NAME` | Service name for traces | `mutx-api` |
-| `OTEL_SERVICE_NAMESPACE` | Service namespace | - |
-| `OTEL_ENVIRONMENT` | Deployment environment | `development` |
-| `OTEL_DEBUG` | Enable debug logging | `false` |
 
 ### Exporter Configuration
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OTEL_EXPORTER` | Exporter type: `otlp`, `jaeger`, `zipkin` | `otlp` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP HTTP endpoint | `http://localhost:4318` |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | OTLP protocol | `http/protobuf` |
-| `OTEL_EXPORTER_OTLP_CERT` | TLS certificate path | - |
-| `OTEL_EXPORTER_JAEGER_ENDPOINT` | Jaeger HTTP thrift endpoint | `http://localhost:14268` |
-| `OTEL_EXPORTER_JAEGER_AGENT_HOST` | Jaeger agent host | `localhost` |
-| `OTEL_EXPORTER_JAEGER_AGENT_PORT` | Jaeger agent port | `6831` |
+| `OTEL_TRACES_EXPORTER` | Exporter type: `console`, `otlp`, or `zipkin` | `console` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint | `http://localhost:4317` |
 | `OTEL_EXPORTER_ZIPKIN_ENDPOINT` | Zipkin API endpoint | `http://localhost:9411` |
 
 ### Sampling Configuration
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OTEL_TRACES_SAMPLER` | Sampler type: `always_on`, `always_off`, `parentbased_always_on`, `parentbased_always_off`, `traceidratio` | `always_on` |
-| `OTEL_TRACES_SAMPLER_ARG` | Sampler argument (e.g., `0.1` for 10%) | - |
-
-### Resource Attributes
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OTEL_RESOURCE_ATTRIBUTES` | Comma-separated k=v pairs | - |
-
-### Propagators
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OTEL_PROPAGATORS` | Comma-separated: `tracecontext`, `baggage`, `b3`, `jaeger` | `tracecontext` |
+| `OTEL_TRACES_SAMPLER` | Sampler type: `always_on`, `always_off`, or `parentbased_traceidratio` | `parentbased_traceidratio` |
+| `OTEL_TRACES_SAMPLER_ARG` | Ratio used by the parent-based ratio sampler | `0.1` |
 
 ## Docker Compose Examples
 
@@ -177,33 +171,13 @@ See `infrastructure/docker/otel-compose.yml` for complete configuration.
 
 ## Troubleshooting
 
-### Enable Debug Logging
-
-Set `OTEL_DEBUG=true` to enable verbose logging:
-
-```bash
-OTEL_DEBUG=true OTEL_ENABLED=true docker-compose up
-```
-
-Or add to your `.env`:
-
-```bash
-OTEL_DEBUG=true
-```
-
-Debug mode outputs:
-- Span creation and completion
-- Exporter connection attempts
-- Sampling decisions
-- Propagator details
-
 ### Common Issues
 
 #### No traces appearing
 
-1. **Check OTEL_ENABLED is set**
+1. **Check the startup exporter setting**
    ```bash
-   echo $OTEL_ENABLED  # Should be "true"
+   echo $OTEL_TRACES_EXPORTER
    ```
 
 2. **Verify network connectivity**

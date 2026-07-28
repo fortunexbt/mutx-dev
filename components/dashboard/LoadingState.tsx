@@ -12,7 +12,7 @@ export interface LoadingStateProps extends HTMLAttributes<HTMLDivElement> {
 function SkeletonBlock({ className }: { className?: string }) {
   return (
     <div
-      className={cn("animate-pulse rounded-[3px]", className)}
+      className={cn("rounded-[3px] motion-safe:animate-pulse motion-reduce:animate-none", className)}
       aria-hidden="true"
       style={{ backgroundColor: dashboardTokens.bgSubtle }}
     />
@@ -100,12 +100,12 @@ export function LoadingState({
     >
       <span className="sr-only">Loading dashboard content</span>
       <div
-        className="mb-3 flex items-center gap-2 font-[family:var(--font-mono)] text-[8px] uppercase tracking-[0.18em]"
+        className="mb-3 flex items-center gap-2 font-[family:var(--font-mono)] text-[11px] uppercase tracking-[0.12em]"
         style={{ color: dashboardTokens.textMuted }}
         aria-hidden="true"
       >
         <span className="h-px w-5" style={{ backgroundColor: dashboardTokens.brand }} />
-        REC / buffering
+        BUFFER / loading records
       </div>
       {items.map((_, index) => {
         if (variant === "rows") {

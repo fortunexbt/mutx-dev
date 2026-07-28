@@ -1,213 +1,75 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
-  Bot,
   Brain,
   FolderOpen,
-  History,
-  Layers,
   LayoutPanelLeft,
-  MessagesSquare,
   Radar,
   Search,
   Settings2,
   ShieldCheck,
   TerminalSquare,
-  Wallet,
-  Webhook,
-  Workflow,
 } from "lucide-react";
 
+import {
+  DASHBOARD_ROUTE_PATHS,
+  DESKTOP_ROUTE_META,
+  DESKTOP_ROUTE_ORDER,
+  getDesktopRouteKeyForPath,
+  getDesktopWindowRoleForRoute,
+  getDesktopWorkspacePaneForRoute,
+  isDesktopRoutePathActive,
+  type DesktopRouteSection,
+} from "@/components/desktop/desktopRouteConfig";
+import { getNextDesktopTabIndex } from "@/components/desktop/desktopTabNavigation";
+import { useDesktopRouteNavigation } from "@/components/desktop/useDesktopRouteNavigation";
 import { useDesktopStatus } from "@/components/desktop/useDesktopStatus";
+import { useDesktopDialog } from "@/components/desktop/useDesktopDialog";
 import { useDesktopWindow } from "@/components/desktop/useDesktopWindow";
 import type { DesktopWindowPayload } from "@/components/desktop/types";
+import {
+  DESKTOP_ACTION_CLASS,
+  DESKTOP_FOCUS_CLASS,
+  DESKTOP_SOURCE_TONE_CLASS,
+  getDesktopStateTone,
+} from "@/components/desktop/desktopVisualContract";
 import { cn } from "@/lib/utils";
 
-type WorkspacePane =
-  | "overview"
-  | "fleet"
-  | "rollouts"
-  | "operations"
-  | "monitoring"
-  | "api-keys"
-  | "budgets"
-  | "analytics"
-  | "webhooks"
-  | "security"
-  | "automation"
-  | "memory"
-  | "swarm"
-  | "channels"
-  | "history"
-  | "skills"
-  | "spawn"
-  | "logs";
+type WorkspacePane = string;
 
 type SettingsPane = "account" | "runtime" | "gateway" | "governance" | "advanced";
 type AppRegionStyle = CSSProperties & {
   WebkitAppRegion?: "drag" | "no-drag";
 };
 
-const WORKSPACE_GROUPS: Array<{
-  title: string;
-  items: Array<{
-    pane: WorkspacePane;
-    label: string;
-    description: string;
-    href: string;
-    icon: typeof Activity;
-  }>;
-}> = [
-  {
-    title: "Workspace",
-    items: [
-      {
-        pane: "overview",
-        label: "Mission Control",
-        description: "Operator home, posture, and high-level recovery.",
-        href: "/dashboard",
-        icon: Activity,
-      },
-    ],
-  },
-  {
-    title: "Fleet",
-    items: [
-      {
-        pane: "fleet",
-        label: "Assistants",
-        description: "Assistant registry and ownership.",
-        href: "/dashboard/agents",
-        icon: Bot,
-      },
-      {
-        pane: "rollouts",
-        label: "Rollouts",
-        description: "Deployment and replica posture.",
-        href: "/dashboard/deployments",
-        icon: Layers,
-      },
-      {
-        pane: "operations",
-        label: "Operations",
-        description: "Run queue, execution state, and debugging pivots.",
-        href: "/dashboard/runs",
-        icon: Workflow,
-      },
-      {
-        pane: "monitoring",
-        label: "Monitoring",
-        description: "Alerts, health, and runtime posture.",
-        href: "/dashboard/monitoring",
-        icon: Radar,
-      },
-    ],
-  },
-  {
-    title: "Administration",
-    items: [
-      {
-        pane: "api-keys",
-        label: "Keys",
-        description: "Issuance and rotation.",
-        href: "/dashboard/api-keys",
-        icon: ShieldCheck,
-      },
-      {
-        pane: "budgets",
-        label: "Spend",
-        description: "Credits and budget posture.",
-        href: "/dashboard/budgets",
-        icon: Wallet,
-      },
-      {
-        pane: "analytics",
-        label: "Analytics",
-        description: "Volume, latency, and usage trends.",
-        href: "/dashboard/analytics",
-        icon: Brain,
-      },
-      {
-        pane: "webhooks",
-        label: "Webhooks",
-        description: "Outbound delivery endpoints.",
-        href: "/dashboard/webhooks",
-        icon: Webhook,
-      },
-      {
-        pane: "security",
-        label: "Security",
-        description: "Identity, trust, and token posture.",
-        href: "/dashboard/security",
-        icon: ShieldCheck,
-      },
-      {
-        pane: "automation",
-        label: "Automation",
-        description: "Workflow and orchestration posture.",
-        href: "/dashboard/orchestration",
-        icon: LayoutPanelLeft,
-      },
-      {
-        pane: "memory",
-        label: "Memory",
-        description: "Retention and context posture.",
-        href: "/dashboard/memory",
-        icon: Brain,
-      },
-    ],
-  },
-  {
-    title: "Tools",
-    items: [
-      {
-        pane: "swarm",
-        label: "Swarm",
-        description: "Topology and grouped runtime views.",
-        href: "/dashboard/swarm",
-        icon: Layers,
-      },
-      {
-        pane: "channels",
-        label: "Channels",
-        description: "Channel and gateway affordances.",
-        href: "/dashboard/channels",
-        icon: MessagesSquare,
-      },
-      {
-        pane: "history",
-        label: "History",
-        description: "Operator audit and event history.",
-        href: "/dashboard/history",
-        icon: History,
-      },
-      {
-        pane: "skills",
-        label: "Skills",
-        description: "Installed operator skills.",
-        href: "/dashboard/skills",
-        icon: Brain,
-      },
-      {
-        pane: "spawn",
-        label: "Spawn Lab",
-        description: "Create new operator assets.",
-        href: "/dashboard/spawn",
-        icon: Bot,
-      },
-      {
-        pane: "logs",
-        label: "Failure Logs",
-        description: "Machine-local failure surface.",
-        href: "/dashboard/logs",
-        icon: Radar,
-      },
-    ],
-  },
+const WORKSPACE_SECTIONS: Array<{ key: DesktopRouteSection; title: string }> = [
+  { key: "home", title: "Workspace" },
+  { key: "core", title: "Core Ops" },
+  { key: "execution", title: "Execution" },
+  { key: "admin", title: "Admin" },
+  { key: "support", title: "Support" },
 ];
+
+const WORKSPACE_GROUPS = WORKSPACE_SECTIONS.map((section) => ({
+  title: section.title,
+  items: DESKTOP_ROUTE_ORDER.filter((key) => {
+    const meta = DESKTOP_ROUTE_META[key];
+    return meta.section === section.key && getDesktopWindowRoleForRoute(key) === "workspace";
+  }).map((key) => {
+    const meta = DESKTOP_ROUTE_META[key];
+    return {
+      key,
+      pane: getDesktopWorkspacePaneForRoute(key),
+      label: meta.title,
+      description: meta.description,
+      href: meta.path,
+      icon: meta.icon,
+    };
+  }),
+})).filter((group) => group.items.length > 0);
 
 const SETTINGS_PANES: Array<{
   pane: SettingsPane;
@@ -221,16 +83,6 @@ const SETTINGS_PANES: Array<{
   { pane: "governance", label: "Governance", description: "Faramesh status and approvals.", icon: Brain },
   { pane: "advanced", label: "Advanced", description: "Bridge, diagnostics, and desktop internals.", icon: Settings2 },
 ];
-
-const NON_PRIMARY_WORKSPACE_PANES = new Set<WorkspacePane>([
-  "automation",
-  "memory",
-  "channels",
-  "history",
-  "skills",
-  "spawn",
-  "logs",
-]);
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
@@ -264,7 +116,9 @@ function WindowSwitcher({
 
   return (
     <div
-      className="inline-flex items-center gap-1 rounded-[14px] border border-[#d4d8df] bg-[linear-gradient(180deg,#f7f8fb_0%,#eef1f5_100%)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]"
+      role="group"
+      aria-label="Desktop windows"
+      className="inline-flex items-center gap-px rounded-[4px] border border-[#34342e] bg-[#090a08] p-1"
       style={style}
     >
       {items.map((item) => (
@@ -272,11 +126,12 @@ function WindowSwitcher({
           key={item.role}
           type="button"
           onClick={() => onSelect(item.role)}
+          aria-pressed={item.role === activeRole}
           className={cn(
-            "rounded-[11px] px-4 py-2 text-[12.5px] font-medium tracking-[-0.01em] transition",
+            `min-h-9 rounded-[4px] border px-3 py-1.5 font-[family:var(--font-mono)] text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors ${DESKTOP_FOCUS_CLASS}`,
             item.role === activeRole
-              ? "bg-white text-[#171a1f] shadow-[0_1px_2px_rgba(16,24,40,0.08),0_6px_16px_rgba(16,24,40,0.06)]"
-              : "text-[#5e6672] hover:bg-white/80 hover:text-[#171a1f]",
+              ? "border-[#663619] bg-[#21150f] text-[#ff8355] shadow-[inset_0_-2px_0_#ff571c]"
+              : "border-transparent text-[#999284] hover:border-[#34342e] hover:bg-[#151612] hover:text-[#eee9dc]",
           )}
         >
           {item.label}
@@ -299,33 +154,48 @@ function CommandPalette({
   onClose: () => void;
   actions: Array<{ id: string; label: string; detail: string; onSelect: () => void }>;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useDesktopDialog(open, onClose, inputRef);
+
   if (!open) {
     return null;
   }
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-start justify-center bg-[#0f1115]/45 px-4 py-20 backdrop-blur-[6px]">
-      <div className="w-full max-w-[760px] overflow-hidden rounded-[22px] border border-[#d7dce3] bg-[#f7f8fb] shadow-[0_28px_80px_rgba(15,23,42,0.28)]">
-        <div className="flex items-center gap-3 border-b border-[#dde1e8] px-5 py-4">
-          <Search className="h-4 w-4 text-[#7f8894]" />
+    <div className="fixed inset-0 z-[120] flex items-start justify-center bg-[#090a08]/90 px-4 py-16 motion-reduce:backdrop-blur-none sm:py-20">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="desktop-command-palette-title"
+        tabIndex={-1}
+        className="w-full max-w-[760px] overflow-hidden rounded-[8px] border border-[#48463e] bg-[#11120f] shadow-[0_24px_64px_rgba(0,0,0,0.48)]"
+      >
+        <h2 id="desktop-command-palette-title" className="sr-only">
+          Desktop command palette
+        </h2>
+        <div className="flex items-center gap-3 border-b border-[#34342e] bg-[#0c0d0b] px-4 py-3 sm:px-5 sm:py-4">
+          <Search className="h-4 w-4 text-[#ff7545]" aria-hidden="true" />
           <input
-            autoFocus
+            ref={inputRef}
+            aria-label="Search desktop commands"
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder="Search windows, panes, and desktop actions"
-            className="w-full bg-transparent text-[15px] text-[#171a1f] outline-none placeholder:text-[#8f97a3]"
+            className="w-full bg-transparent text-sm text-[#eee9dc] outline-none placeholder:text-[#777268]"
           />
           <button
             type="button"
             onClick={onClose}
-            className="rounded-[10px] border border-[#d8dde5] bg-white px-2.5 py-1.5 text-[12px] text-[#5c6672]"
+            aria-label="Close command palette"
+            className={cn("rounded-[4px] border border-[#3b3a33] bg-[#151612] px-2.5 py-1.5 font-[family:var(--font-mono)] text-[10px] uppercase tracking-[0.12em] text-[#aaa397]", DESKTOP_FOCUS_CLASS)}
           >
             Esc
           </button>
         </div>
-        <div className="max-h-[420px] overflow-y-auto p-3">
+        <div className="max-h-[min(420px,60vh)] overflow-y-auto p-2 sm:p-3">
           {actions.length === 0 ? (
-            <div className="rounded-[16px] border border-dashed border-[#d8dde5] px-4 py-10 text-center text-sm text-[#7c8694]">
+            <div className="rounded-[6px] border border-dashed border-[#34342e] bg-[#0c0d0b] px-4 py-10 text-center text-sm text-[#8d867a]">
               No matching desktop actions.
             </div>
           ) : (
@@ -338,10 +208,10 @@ function CommandPalette({
                     action.onSelect();
                     onClose();
                   }}
-                  className="w-full rounded-[14px] border border-[#dde1e8] bg-white px-4 py-3 text-left transition hover:border-[#c9d0db] hover:bg-[#fcfcfe]"
+                  className={cn("w-full rounded-[4px] border border-[#2b2b26] bg-[#0c0d0b] px-4 py-3 text-left transition-colors hover:border-[#663619] hover:bg-[#15120f]", DESKTOP_FOCUS_CLASS)}
                 >
-                  <p className="text-sm font-medium text-[#15181d]">{action.label}</p>
-                  <p className="mt-1 text-[12px] leading-5 text-[#7f8894]">{action.detail}</p>
+                  <p className="text-sm font-medium text-[#eee9dc]">{action.label}</p>
+                  <p className="mt-1 text-[12px] leading-5 text-[#999284]">{action.detail}</p>
                 </button>
               ))}
             </div>
@@ -354,7 +224,8 @@ function CommandPalette({
 
 export function DesktopWindowShell({ children }: { children: ReactNode }) {
   const { status } = useDesktopStatus();
-  const { currentWindow, openWindow, updateCurrentWindow, openPreferences } = useDesktopWindow();
+  const { currentWindow, openWindow, openPreferences } = useDesktopWindow();
+  const navigateCurrentRoute = useDesktopRouteNavigation();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const isMac = typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("mac");
@@ -375,28 +246,17 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
     () =>
       WORKSPACE_GROUPS.map((group) => ({
         ...group,
-        items: group.items.filter((item) => !NON_PRIMARY_WORKSPACE_PANES.has(item.pane)),
+        items: group.items.filter(
+          (item) => DESKTOP_ROUTE_META[item.key].showInPrimaryNav !== false,
+        ),
       })).filter((group) => group.items.length > 0),
     [],
   );
-  const primaryWorkspaceItems = useMemo(
-    () => primaryWorkspaceGroups.flatMap((group) => group.items),
-    [primaryWorkspaceGroups],
-  );
+  const activeWorkspaceRouteKey = getDesktopRouteKeyForPath(currentRoute);
   const visibleWorkspaceItem =
     workspaceItems
       .flatMap((group) => group.items)
-      .find(
-        (item) => item.href === currentRoute || item.pane === workspacePane,
-      ) || workspaceItems[0].items[0];
-  const currentWorkspaceIndex = Math.max(
-    0,
-    primaryWorkspaceItems.findIndex((item) => item.pane === visibleWorkspaceItem.pane),
-  );
-  const currentSettingsIndex = Math.max(
-    0,
-    SETTINGS_PANES.findIndex((item) => item.pane === settingsPane),
-  );
+      .find((item) => item.key === activeWorkspaceRouteKey) || workspaceItems[0].items[0];
 
   const shellTitle =
     role === "workspace"
@@ -422,34 +282,15 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
     () => [
       {
         label: `UI ${status.uiServer?.state || "unknown"}`,
-        tone:
-          status.uiServer?.state === "ready"
-            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-            : status.uiServer?.state === "starting" || status.uiServer?.state === "restarting"
-              ? "border-amber-200 bg-amber-50 text-amber-700"
-              : "border-rose-200 bg-rose-50 text-rose-700",
+        tone: DESKTOP_SOURCE_TONE_CLASS[getDesktopStateTone(status.uiServer?.state)],
       },
       {
         label: `Bridge ${status.bridge?.state || "unknown"}`,
-        tone:
-          status.bridge?.state === "ready"
-            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-            : status.bridge?.state === "idle"
-              ? "border-slate-200 bg-slate-50 text-slate-600"
-            : status.bridge?.state === "starting" || status.bridge?.state === "restarting"
-              ? "border-amber-200 bg-amber-50 text-amber-700"
-              : "border-rose-200 bg-rose-50 text-rose-700",
+        tone: DESKTOP_SOURCE_TONE_CLASS[getDesktopStateTone(status.bridge?.state)],
       },
       {
         label: `Runtime ${status.runtime?.state || "unknown"}`,
-        tone:
-          status.runtime?.state === "ready"
-            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-            : status.runtime?.state === "degraded" ||
-                status.runtime?.state === "starting" ||
-                status.runtime?.state === "restarting"
-              ? "border-amber-200 bg-amber-50 text-amber-700"
-              : "border-rose-200 bg-rose-50 text-rose-700",
+        tone: DESKTOP_SOURCE_TONE_CLASS[getDesktopStateTone(status.runtime?.state)],
       },
     ],
     [status],
@@ -489,6 +330,35 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
     return null;
   }, [status]);
 
+  const handleTraceTabKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (
+      !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) ||
+      !(event.target instanceof HTMLButtonElement) ||
+      event.target.getAttribute("role") !== "tab"
+    ) {
+      return;
+    }
+
+    const tabs = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+    );
+    const currentIndex = tabs.indexOf(event.target);
+    if (currentIndex < 0 || tabs.length === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    const isRtl = window.getComputedStyle(event.currentTarget).direction === "rtl";
+    const nextIndex = getNextDesktopTabIndex(
+      event.key,
+      currentIndex,
+      tabs.length,
+      isRtl,
+    );
+    tabs[nextIndex]?.focus();
+    tabs[nextIndex]?.click();
+  };
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isEditableTarget(event.target)) {
@@ -513,41 +383,11 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
       if (paletteOpen) {
         return;
       }
-
-      if (role === "workspace" && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
-        event.preventDefault();
-        const delta = event.key === "ArrowDown" ? 1 : -1;
-        const nextIndex =
-          (currentWorkspaceIndex + delta + primaryWorkspaceItems.length) % primaryWorkspaceItems.length;
-        void selectWorkspacePane(primaryWorkspaceItems[nextIndex]);
-        return;
-      }
-
-      if (role === "settings" && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
-        event.preventDefault();
-        const delta = event.key === "ArrowDown" ? 1 : -1;
-        const nextIndex = (currentSettingsIndex + delta + SETTINGS_PANES.length) % SETTINGS_PANES.length;
-        void selectSettingsPane(SETTINGS_PANES[nextIndex].pane);
-        return;
-      }
-
-      if (role === "traces" && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
-        event.preventDefault();
-        void selectTracesTab(tracesTab === "timeline" ? "logs" : "timeline");
-        return;
-      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [
-    currentSettingsIndex,
-    currentWorkspaceIndex,
-    paletteOpen,
-    primaryWorkspaceItems,
-    role,
-    tracesTab,
-  ]);
+  }, [paletteOpen]);
 
   const paletteActions = useMemo(() => {
     const baseActions = [
@@ -590,7 +430,7 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
         id: `workspace-${item.pane}`,
         label: `Go to ${item.label}`,
         detail: item.description,
-        onSelect: () => void updateCurrentWindow({ route: item.href, payload: { pane: item.pane } }),
+        onSelect: () => void navigateCurrentRoute(item.href, { pane: item.pane }),
       })),
     );
 
@@ -606,7 +446,7 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
       const haystack = `${action.label} ${action.detail}`.toLowerCase();
       return haystack.includes(paletteQuery.trim().toLowerCase());
     });
-  }, [openPreferences, openWindow, paletteQuery, primaryWorkspaceGroups, updateCurrentWindow, workspacePane]);
+  }, [navigateCurrentRoute, openPreferences, openWindow, paletteQuery, primaryWorkspaceGroups, workspacePane]);
 
   async function handleOpenWindow(
     nextRole: "workspace" | "sessions" | "traces" | "settings",
@@ -625,44 +465,32 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
     await openWindow(nextRole, payload);
   }
 
-  async function selectWorkspacePane(item: (typeof WORKSPACE_GROUPS)[number]["items"][number]) {
-    await updateCurrentWindow({
-      route: item.href,
-      payload: {
-        ...currentWindow.currentWindow.payload,
-        pane: item.pane,
-      },
+  function selectWorkspacePane(item: (typeof WORKSPACE_GROUPS)[number]["items"][number]) {
+    navigateCurrentRoute(item.href, {
+      ...currentWindow.currentWindow.payload,
+      pane: item.pane,
     });
   }
 
-  async function selectSettingsPane(pane: SettingsPane) {
-    await updateCurrentWindow({
-      route: "/dashboard/control",
-      payload: {
-        ...currentWindow.currentWindow.payload,
-        pane,
-      },
+  function selectSettingsPane(pane: SettingsPane) {
+    navigateCurrentRoute(DASHBOARD_ROUTE_PATHS.control, {
+      ...currentWindow.currentWindow.payload,
+      pane,
     });
   }
 
-  async function selectTracesTab(tab: string) {
-    const nextRoute = tab === "logs" ? "/dashboard/logs" : "/dashboard/traces";
-    await updateCurrentWindow({
-      route: nextRoute,
-      payload: {
-        ...currentWindow.currentWindow.payload,
-        tab,
-      },
+  function selectTracesTab(tab: string) {
+    const nextRoute = tab === "logs" ? DASHBOARD_ROUTE_PATHS.logs : DASHBOARD_ROUTE_PATHS.traces;
+    navigateCurrentRoute(nextRoute, {
+      ...currentWindow.currentWindow.payload,
+      tab,
     });
   }
 
   return (
     <div
-      className="min-h-screen bg-[linear-gradient(180deg,#e9edf2_0%,#e4e8ef_100%)] text-[#15181d]"
-      style={{
-        fontFamily:
-          "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif",
-      }}
+      data-mutx-desktop="operator-shell"
+      className="min-h-screen bg-[#090a08] font-[family:var(--font-site-body)] text-[#eee9dc]"
     >
       <CommandPalette
         open={paletteOpen}
@@ -675,10 +503,18 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
         actions={paletteActions}
       />
 
+      <a
+        href="#main-content"
+        className={cn("sr-only z-[140] rounded-[4px] bg-[#ff571c] px-3 py-2 text-xs font-semibold text-[#090a08] focus:not-sr-only focus:fixed focus:left-3 focus:top-3", DESKTOP_FOCUS_CLASS)}
+      >
+        Skip to desktop workspace
+      </a>
+
       <div className="min-h-screen w-full">
-        <div className="min-h-screen overflow-hidden bg-[#f5f7fb]">
+        <div className="min-h-screen overflow-hidden bg-[#090a08]">
           <div
-            className="grid h-[54px] grid-cols-[minmax(84px,1fr)_auto_minmax(260px,1fr)] items-center gap-3 border-b border-[#dce1e8] bg-[linear-gradient(180deg,#fbfcfe_0%,#f2f5f9_100%)] px-4"
+            data-desktop-region="native-titlebar"
+            className="grid min-h-[54px] grid-cols-[minmax(84px,1fr)_auto_minmax(240px,1fr)] items-center gap-3 border-b border-[#34342e] bg-[#0d0e0c] px-3 py-1.5"
             style={dragRegionStyle}
           >
             <div />
@@ -692,17 +528,19 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
               />
             </div>
 
-            <div className="flex items-center justify-self-end gap-2" style={noDragRegionStyle}>
+            <div className="flex items-center justify-self-end gap-1.5" style={noDragRegionStyle}>
               <button
                 type="button"
                 onClick={() => setPaletteOpen(true)}
-                className="inline-flex min-w-[170px] items-center justify-between gap-3 rounded-[12px] border border-[#d8dde5] bg-white/90 px-3.5 py-2 text-[12px] text-[#5d6672] shadow-[0_1px_2px_rgba(15,23,42,0.05)] backdrop-blur transition hover:bg-white"
+                aria-label="Open desktop command palette"
+                className={cn(DESKTOP_ACTION_CLASS, "inline-flex min-w-[164px] items-center justify-between gap-3 border-[#35352f] bg-[#11120f] px-3 text-[#aaa397] hover:border-[#56534b] hover:text-[#eee9dc]")}
               >
                 <span className="inline-flex items-center gap-2">
-                  <Search className="h-4 w-4" />
-                  Search panes and actions
+                  <Search className="h-4 w-4 text-[#ff7545]" aria-hidden="true" />
+                  <span className="hidden xl:inline">Search panes and actions</span>
+                  <span className="xl:hidden">Search</span>
                 </span>
-                <span className="rounded-[8px] border border-[#d8dde5] bg-[#f7f8fb] px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-[#7e8792]">
+                <span className="rounded-[4px] border border-[#3b3a33] bg-[#090a08] px-1.5 py-0.5 font-[family:var(--font-mono)] text-[9px] uppercase tracking-[0.12em] text-[#7f7a70]">
                   {isMac ? "⌘K" : "Ctrl+K"}
                 </span>
               </button>
@@ -710,27 +548,27 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
                 type="button"
                 onClick={() => void window.mutxDesktop?.bridge.runtime.openSurface("tui")}
                 disabled={!status.bridge?.ready}
-                className="inline-flex items-center gap-2 rounded-[12px] border border-[#d8dde5] bg-white/90 px-3.5 py-2 text-[12px] text-[#5d6672] shadow-[0_1px_2px_rgba(15,23,42,0.05)] backdrop-blur disabled:opacity-50"
+                className={cn(DESKTOP_ACTION_CLASS, "inline-flex items-center gap-2 border-[#35352f] bg-[#11120f] px-3 text-[#aaa397] hover:border-[#56534b] hover:text-[#eee9dc]")}
               >
-                <TerminalSquare className="h-4 w-4" />
+                <TerminalSquare className="h-4 w-4" aria-hidden="true" />
                 TUI
               </button>
               <button
                 type="button"
                 onClick={() => void openPreferences("account")}
-                className="inline-flex items-center gap-2 rounded-[12px] border border-[#d8dde5] bg-white/90 px-3.5 py-2 text-[12px] text-[#5d6672] shadow-[0_1px_2px_rgba(15,23,42,0.05)] backdrop-blur"
+                className={cn(DESKTOP_ACTION_CLASS, "inline-flex items-center gap-2 border-[#35352f] bg-[#11120f] px-3 text-[#aaa397] hover:border-[#56534b] hover:text-[#eee9dc]")}
               >
-                <Settings2 className="h-4 w-4" />
+                <Settings2 className="h-4 w-4" aria-hidden="true" />
                 Settings
               </button>
             </div>
           </div>
 
-          <div className="border-b border-[#dde2e9] bg-[#fbfcfe] px-4 py-3">
+          <div className="border-b border-[#2b2b26] bg-[#0c0d0b] px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-[#d8dde5] bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6f7782]">
+                  <span className="border-l-2 border-[#ff571c] pl-2 font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#ff8355]">
                     {role === "workspace"
                       ? "workspace"
                       : role === "sessions"
@@ -739,24 +577,24 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
                           ? "traces"
                           : "settings"}
                   </span>
-                  <p className="text-[1.02rem] font-semibold tracking-[-0.03em] text-[#171a1f]">
+                  <p className="font-[family:var(--font-site-display)] text-[1.02rem] font-medium tracking-[-0.035em] text-[#eee9dc]">
                     {shellTitle}
                   </p>
                 </div>
-                <p className="mt-1 text-[12.5px] leading-5 text-[#7c8593]">{shellSubtitle}</p>
+                <p className="mt-1 text-[12px] leading-5 text-[#999284]">{shellSubtitle}</p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-[#d8dde5] bg-white px-3 py-1.5 text-[11px] text-[#617080]">
+                <span className="max-w-[220px] truncate rounded-[4px] border border-[#34342e] bg-[#151612] px-2.5 py-1.5 font-[family:var(--font-mono)] text-[9px] uppercase tracking-[0.1em] text-[#c8c0b0]">
                   {status.user?.email || "desktop session"}
                 </span>
-                <span className="rounded-full border border-[#d8dde5] bg-white px-3 py-1.5 text-[11px] text-[#617080]">
+                <span className="rounded-[4px] border border-[#663619] bg-[#21150f] px-2.5 py-1.5 font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.1em] text-[#ff8355]">
                   {status.mode === "local" ? "local runtime" : status.mode || "runtime unknown"}
                 </span>
                 {lifecycleChips.map((chip) => (
                   <span
                     key={chip.label}
-                    className={`rounded-full border px-3 py-1.5 text-[11px] ${chip.tone}`}
+                    className={`rounded-full border px-2.5 py-1.5 font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.1em] ${chip.tone}`}
                   >
                     {chip.label}
                   </span>
@@ -770,8 +608,8 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
               className={cn(
                 "border-b px-5 py-3 text-sm",
                 shellDiagnostic.tone === "danger"
-                  ? "border-rose-200 bg-rose-50 text-rose-700"
-                  : "border-amber-200 bg-amber-50 text-amber-700",
+                  ? DESKTOP_SOURCE_TONE_CLASS.danger
+                  : DESKTOP_SOURCE_TONE_CLASS.warning,
               )}
             >
               <p className="font-medium">{shellDiagnostic.title}</p>
@@ -779,42 +617,42 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
             </div>
           ) : null}
 
-          <div className="flex min-h-[calc(100vh-7.25rem)] bg-[linear-gradient(180deg,#f5f7fb_0%,#edf1f6_100%)]">
+          <div className="flex min-h-[calc(100vh-7.25rem)] bg-[#090a08]">
             {role === "workspace" ? (
-              <aside className="w-[clamp(220px,13vw,280px)] shrink-0 border-r border-[#dde2e9] bg-[linear-gradient(180deg,#f9fbfe_0%,#f4f6fa_100%)] px-3 py-4">
+              <aside aria-label="Workspace routes" className="w-[clamp(210px,13vw,272px)] shrink-0 overflow-y-auto border-r border-[#292a25] bg-[#080907] px-2.5 py-4">
                 <div className="flex h-full flex-col gap-4">
                   <div className="space-y-4">
                     {primaryWorkspaceGroups.map((group) => (
                       <div key={group.title} className="space-y-1.5">
-                        <p className="px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8992a0]">
+                        <p className="border-b border-[#292a25] px-2 pb-2 font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">
                           {group.title}
                         </p>
                         {group.items.map((item) => {
-                          const active = item.pane === workspacePane || item.href === currentRoute;
+                          const active = isDesktopRoutePathActive(currentRoute, item.key);
                           return (
                             <button
                               key={item.pane}
                               type="button"
                               onClick={() => void selectWorkspacePane(item)}
                               className={cn(
-                                "w-full rounded-[14px] border px-3 py-3 text-left transition",
+                                `w-full min-h-11 rounded-[4px] border px-2.5 py-2 text-left transition-colors ${DESKTOP_FOCUS_CLASS}`,
                                 active
-                                  ? "border-[#cfd6e1] bg-white text-[#15181d] shadow-[0_1px_3px_rgba(15,23,42,0.08)]"
-                                  : "border-transparent text-[#65707e] hover:border-[#e0e5ec] hover:bg-white/80 hover:text-[#15181d]",
+                                  ? "border-[#34342e] bg-[#171813] text-[#f0ebdf] shadow-[inset_3px_0_0_#ff571c]"
+                                  : "border-transparent text-[#aaa397] hover:border-[#2b2b26] hover:bg-[#12130f] hover:text-[#eee9dc]",
                               )}
                             >
                               <div className="flex items-start gap-3">
                                 <span
                                   className={cn(
-                                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]",
-                                    active ? "bg-[#eef3fa] text-[#243447]" : "bg-[#eef1f5] text-[#758192]",
+                                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px] border",
+                                    active ? "border-[#663619] bg-[#21150f] text-[#ff8355]" : "border-[#34342e] bg-[#11120f] text-[#777268]",
                                   )}
                                 >
                                   <item.icon className="h-4 w-4" />
                                 </span>
                                 <div className="min-w-0">
-                                  <p className="text-[13px] font-medium">{item.label}</p>
-                                  <p className="mt-1 hidden text-[11.5px] leading-4 text-[#7d8795] 2xl:block">{item.description}</p>
+                                  <p className="text-[12px] font-medium">{item.label}</p>
+                                  <p className="mt-1 hidden text-[11px] leading-4 text-[#8d867a] 2xl:block">{item.description}</p>
                                 </div>
                               </div>
                             </button>
@@ -823,29 +661,23 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
                       </div>
                     ))}
                   </div>
-                  <div className="mt-auto rounded-[16px] border border-[#d7dde6] bg-white/82 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#88929f]">
+                  <div className="mt-auto rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] p-3">
+                    <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">
                       Keyboard
                     </p>
-                    <div className="mt-2 space-y-2 text-[11.5px] text-[#5f6975]">
-                      <div className="flex items-center justify-between gap-3">
-                        <span>Command palette</span>
-                        <span className="rounded-[8px] border border-[#dbe1e8] bg-[#f6f8fb] px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-[#7f8894]">
-                          {isMac ? "⌘K" : "Ctrl+K"}
-                        </span>
+                      <div className="mt-2 space-y-2 text-[11px] text-[#aaa397]">
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Command palette</span>
+                        <span className="rounded-[4px] border border-[#3b3a33] bg-[#090a08] px-2 py-0.5 font-[family:var(--font-mono)] text-[9px] uppercase tracking-[0.14em] text-[#7f7a70]">
+                            {isMac ? "⌘K" : "Ctrl+K"}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span>Move through panes</span>
-                        <span className="rounded-[8px] border border-[#dbe1e8] bg-[#f6f8fb] px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-[#7f8894]">
-                          ↑↓
-                        </span>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </aside>
             ) : role === "settings" ? (
-              <aside className="w-[clamp(220px,13vw,272px)] shrink-0 border-r border-[#dde2e9] bg-[linear-gradient(180deg,#f9fbfe_0%,#f4f6fa_100%)] px-3 py-4">
+              <aside aria-label="Settings panes" className="w-[clamp(210px,13vw,264px)] shrink-0 overflow-y-auto border-r border-[#292a25] bg-[#080907] px-2.5 py-4">
                 <div className="space-y-1.5">
                   {SETTINGS_PANES.map((item) => {
                     const active = item.pane === settingsPane;
@@ -855,24 +687,24 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
                         type="button"
                         onClick={() => void selectSettingsPane(item.pane)}
                         className={cn(
-                          "w-full rounded-[14px] border px-3 py-3 text-left transition",
+                          `w-full min-h-11 rounded-[4px] border px-2.5 py-2 text-left transition-colors ${DESKTOP_FOCUS_CLASS}`,
                           active
-                            ? "border-[#cfd6e1] bg-white text-[#15181d] shadow-[0_1px_3px_rgba(15,23,42,0.08)]"
-                            : "border-transparent text-[#65707e] hover:border-[#e0e5ec] hover:bg-white/80 hover:text-[#15181d]",
+                            ? "border-[#34342e] bg-[#171813] text-[#f0ebdf] shadow-[inset_3px_0_0_#ff571c]"
+                            : "border-transparent text-[#aaa397] hover:border-[#2b2b26] hover:bg-[#12130f] hover:text-[#eee9dc]",
                         )}
                       >
                         <div className="flex items-start gap-3">
                           <span
                             className={cn(
-                              "flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]",
-                              active ? "bg-[#eef3fa] text-[#243447]" : "bg-[#eef1f5] text-[#758192]",
+                              "flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px] border",
+                              active ? "border-[#663619] bg-[#21150f] text-[#ff8355]" : "border-[#34342e] bg-[#11120f] text-[#777268]",
                             )}
                           >
                             <item.icon className="h-4 w-4" />
                           </span>
                           <div className="min-w-0">
-                            <p className="text-[13px] font-medium">{item.label}</p>
-                            <p className="mt-1 hidden text-[11.5px] leading-4 text-[#7d8795] 2xl:block">{item.description}</p>
+                            <p className="text-[12px] font-medium">{item.label}</p>
+                            <p className="mt-1 hidden text-[11px] leading-4 text-[#8d867a] 2xl:block">{item.description}</p>
                           </div>
                         </div>
                       </button>
@@ -884,10 +716,15 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
 
             <div className="flex min-w-0 flex-1 flex-col">
               {(role === "sessions" || role === "traces") && (
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#dde2e9] bg-[#f7f9fc] px-5 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#2b2b26] bg-[#0c0d0b] px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     {role === "traces" ? (
-                      <div className="inline-flex items-center gap-1 rounded-[12px] border border-[#d6dbe3] bg-white p-1">
+                      <div
+                        role="tablist"
+                        aria-label="Trace views"
+                        onKeyDown={handleTraceTabKeyDown}
+                        className="inline-flex items-center gap-px rounded-[4px] border border-[#34342e] bg-[#090a08] p-1"
+                      >
                         {[
                           { label: "Timeline", tab: "timeline" },
                           { label: "Logs", tab: "logs" },
@@ -895,12 +732,14 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
                           <button
                             key={item.tab}
                             type="button"
+                            role="tab"
+                            aria-selected={tracesTab === item.tab}
                             onClick={() => void selectTracesTab(item.tab)}
                             className={cn(
-                              "rounded-[9px] px-3 py-1.5 text-[12px] transition",
+                              `rounded-[4px] px-3 py-1.5 text-[12px] transition-colors ${DESKTOP_FOCUS_CLASS}`,
                               tracesTab === item.tab
-                                ? "bg-[#f1f4f8] text-[#15181d]"
-                                : "text-[#6d7683] hover:bg-[#f7f8fb]",
+                                ? "bg-[#21150f] text-[#ff8355]"
+                                : "text-[#999284] hover:bg-[#151612] hover:text-[#eee9dc]",
                             )}
                           >
                             {item.label}
@@ -908,7 +747,7 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
                         ))}
                       </div>
                     ) : (
-                      <div className="rounded-[12px] border border-[#d8dde5] bg-white px-3 py-1.5 text-[12px] text-[#5d6672]">
+                      <div className="rounded-[4px] border border-[#34342e] bg-[#151612] px-3 py-1.5 text-[11px] text-[#aaa397]">
                         Dedicated conversation workspace
                       </div>
                     )}
@@ -923,24 +762,24 @@ export function DesktopWindowShell({ children }: { children: ReactNode }) {
                         )
                       }
                       disabled={!status.assistant?.workspace}
-                      className="inline-flex items-center gap-2 rounded-[11px] border border-[#d8dde5] bg-white px-3 py-1.5 text-[12px] text-[#5d6672] disabled:opacity-50"
+                      className={cn(DESKTOP_ACTION_CLASS, "inline-flex items-center gap-2 border-[#35352f] bg-[#11120f] px-3 text-[#aaa397] hover:border-[#56534b] hover:text-[#eee9dc]")}
                     >
-                      <FolderOpen className="h-4 w-4" />
-                      Workspace
+                      <FolderOpen className="h-4 w-4" aria-hidden="true" />
+                      Reveal Files
                     </button>
                     <button
                       type="button"
                       onClick={() => void openWindow("workspace", { pane: "overview" })}
-                      className="inline-flex items-center gap-2 rounded-[11px] border border-[#d8dde5] bg-white px-3 py-1.5 text-[12px] text-[#5d6672]"
+                      className={cn(DESKTOP_ACTION_CLASS, "inline-flex items-center gap-2 border-[#35352f] bg-[#11120f] px-3 text-[#aaa397] hover:border-[#56534b] hover:text-[#eee9dc]")}
                     >
-                      <LayoutPanelLeft className="h-4 w-4" />
-                      Workspace
+                      <LayoutPanelLeft className="h-4 w-4" aria-hidden="true" />
+                      Overview Window
                     </button>
                   </div>
                 </div>
               )}
 
-              <main id="main-content" className="min-w-0 flex-1 overflow-y-auto p-4 xl:p-4 2xl:p-5">{children}</main>
+              <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 overflow-y-auto bg-[#090a08] p-3 outline-none sm:p-4 2xl:p-5">{children}</main>
             </div>
           </div>
         </div>

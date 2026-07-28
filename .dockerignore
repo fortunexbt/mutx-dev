@@ -2,30 +2,87 @@
 node_modules
 .pnp
 .pnp.js
+.npm
+**/.npm
+
+# Version control and linked worktrees
+.git
+.github
+.gitmodules
+.worktrees
+**/.worktrees
+
+# Python environments and caches
+.venv
+venv
+env
+**/.venv
+**/venv
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
 
 # Testing
 coverage
+coverage_html
+htmlcov
+playwright-report
+test-results
+**/playwright-report
+**/test-results
 
 # Next.js
 .next
 out
 build
+.turbo
+**/.next
+**/.turbo
+
+# Build and package output
+dist
+*.egg-info
+**/*.egg-info
+
+# Infrastructure state is never a container build input
+infrastructure/terraform
+**/.terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
 
 # Misc
 .DS_Store
 *.log
+.cache
+**/.cache
+tmp
+temp
 
 # Debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Local env files
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# Local configuration, credentials, and secrets
+.env*
+!.env.example
+!.env.production.example
+.secrets
+secrets
+**/.secrets
+**/secrets
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
 
 # Vercel
 .vercel
@@ -37,3 +94,11 @@ next-env.d.ts
 # IDE
 .idea
 .vscode
+
+# Repository-only inputs that must not be traced into the runtime image
+.agents
+.codex
+/*.md
+!SUMMARY.md
+!security.md
+!support.md

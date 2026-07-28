@@ -12,7 +12,8 @@ export async function POST(
 ) {
   return withErrorHandling(async () => {
     const { agentId, skillId } = await params
-    return proxyJson(request, `${getApiBaseUrl()}/v1/assistant/${agentId}/skills/${skillId}`, {
+    const targetUrl = `${getApiBaseUrl()}/v1/assistant/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(skillId)}`
+    return proxyJson(request, targetUrl, {
       method: 'POST',
       fallbackMessage: 'Failed to install assistant skill',
     })
@@ -25,7 +26,8 @@ export async function DELETE(
 ) {
   return withErrorHandling(async () => {
     const { agentId, skillId } = await params
-    return proxyJson(request, `${getApiBaseUrl()}/v1/assistant/${agentId}/skills/${skillId}`, {
+    const targetUrl = `${getApiBaseUrl()}/v1/assistant/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(skillId)}`
+    return proxyJson(request, targetUrl, {
       method: 'DELETE',
       fallbackMessage: 'Failed to uninstall assistant skill',
     })

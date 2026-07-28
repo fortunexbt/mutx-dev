@@ -65,11 +65,11 @@ monitor-down:
 	docker compose --env-file $(MONITORING_ENV_FILE) -f $(MONITORING_COMPOSE_FILE) down
 
 monitor-validate:
-	docker run --rm --entrypoint promtool -v $(PWD)/monitoring/prometheus:/etc/prometheus prom/prometheus:v2.54.1 \
+	docker run --rm --entrypoint promtool -v $(CURDIR)/monitoring/prometheus:/etc/prometheus prom/prometheus:v2.54.1 \
 		check config /etc/prometheus/prometheus.yml && \
-	docker run --rm --entrypoint promtool -v $(PWD)/monitoring/prometheus:/etc/prometheus prom/prometheus:v2.54.1 \
+	docker run --rm --entrypoint promtool -v $(CURDIR)/monitoring/prometheus:/etc/prometheus prom/prometheus:v2.54.1 \
 		check rules /etc/prometheus/alerts.yml && \
-	docker run --rm --entrypoint amtool -v $(PWD)/monitoring/prometheus:/etc/alertmanager prom/alertmanager:v0.27.0 \
+	docker run --rm --entrypoint amtool -v $(CURDIR)/monitoring/prometheus:/etc/alertmanager prom/alertmanager:v0.27.0 \
 		check-config /etc/alertmanager/alertmanager.yml
 
 helm-lint:

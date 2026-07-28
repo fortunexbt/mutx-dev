@@ -163,14 +163,13 @@ export interface Deployment {
 }
 
 export interface Budget {
-  id: string
-  name: string
-  limit: number
-  spent: number
-  period: string
-  agent_id?: string
-  created_at: string
-  alert_threshold?: number
+  user_id: string
+  plan: string
+  credits_total: number
+  credits_used: number
+  credits_remaining: number
+  reset_date: string
+  usage_percentage: number
 }
 
 export interface MonitoringAlert {
@@ -270,6 +269,8 @@ export interface MissionControlState {
   deployments: Deployment[]
 
   // -- Budgets --
+  budget: Budget | null
+  /** @deprecated Use budget. Kept as a compatibility view for existing consumers. */
   budgets: Budget[]
 
   // -- Monitoring --
@@ -354,6 +355,7 @@ export interface MissionControlActions {
   setDeployments: (deployments: Deployment[]) => void
 
   // -- Budgets --
+  setBudget: (budget: Budget | null) => void
   setBudgets: (budgets: Budget[]) => void
 
   // -- Monitoring --
@@ -416,6 +418,110 @@ function saveToLocalStorage(key: string, value: unknown): void {
 }
 
 // ---------------------------------------------------------------------------
+// Dashboard response helpers
+// ---------------------------------------------------------------------------
+
+const EMPTY_RESPONSE = Symbol('empty dashboard response')
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function errorSuffix(error: unknown): string {
+  return error instanceof Error && error.message ? `: ${error.message}` : ''
+}
+
+async function fetchDashboardJson(
+  path: string,
+  options: { allowNoContent?: boolean } = {}
+): Promise<unknown | typeof EMPTY_RESPONSE> {
+  let response: Response
+
+  try {
+    response = await fetch(path)
+  } catch (error) {
+    throw new Error(`[MUTX Store] Request to ${path} failed${errorSuffix(error)}`, {
+      cause: error,
+    })
+  }
+
+  if (!response.ok) {
+    const statusText = response.statusText ? ` ${response.statusText}` : ''
+    throw new Error(`[MUTX Store] Request to ${path} failed with ${response.status}${statusText}`)
+  }
+
+  if (response.status === 204) {
+    if (options.allowNoContent) return EMPTY_RESPONSE
+    throw new Error(`[MUTX Store] Request to ${path} returned 204 without required JSON`)
+  }
+
+  try {
+    return await response.json()
+  } catch (error) {
+    throw new Error(
+      `[MUTX Store] Request to ${path} returned invalid JSON${errorSuffix(error)}`,
+      { cause: error }
+    )
+  }
+}
+
+function normalizeCollection<T>(
+  path: string,
+  payload: unknown | typeof EMPTY_RESPONSE,
+  envelopeKeys: readonly string[]
+): T[] {
+  if (payload === EMPTY_RESPONSE) return []
+  if (Array.isArray(payload)) return payload as T[]
+
+  if (isRecord(payload)) {
+    for (const key of ['items', ...envelopeKeys, 'data']) {
+      const candidate = payload[key]
+      if (Array.isArray(candidate)) return candidate as T[]
+    }
+  }
+
+  throw new Error(`[MUTX Store] Request to ${path} returned an invalid collection payload`)
+}
+
+function normalizeObject<T>(
+  path: string,
+  payload: unknown | typeof EMPTY_RESPONSE,
+  envelopeKeys: readonly string[] = []
+): T {
+  if (!isRecord(payload)) {
+    throw new Error(`[MUTX Store] Request to ${path} returned an invalid object payload`)
+  }
+
+  for (const key of envelopeKeys) {
+    const candidate = payload[key]
+    if (isRecord(candidate)) return candidate as T
+  }
+
+  return payload as T
+}
+
+function isBudget(value: unknown): value is Budget {
+  return (
+    isRecord(value) &&
+    typeof value.user_id === 'string' &&
+    typeof value.plan === 'string' &&
+    typeof value.credits_total === 'number' &&
+    typeof value.credits_used === 'number' &&
+    typeof value.credits_remaining === 'number' &&
+    typeof value.reset_date === 'string' &&
+    typeof value.usage_percentage === 'number'
+  )
+}
+
+function normalizeBudget(path: string, payload: unknown | typeof EMPTY_RESPONSE): Budget {
+  const budget = normalizeObject<unknown>(path, payload, ['budget', 'data'])
+  if (!isBudget(budget)) {
+    throw new Error(`[MUTX Store] Request to ${path} returned an invalid budget payload`)
+  }
+  return budget
+}
+
+// ---------------------------------------------------------------------------
 // Store definition
 // ---------------------------------------------------------------------------
 
@@ -473,6 +579,7 @@ export const useMissionControl = create<MissionControlStore>()(
     deployments: [],
 
     // Budgets
+    budget: null,
     budgets: [],
 
     // Monitoring
@@ -615,7 +722,8 @@ export const useMissionControl = create<MissionControlStore>()(
     setDeployments: (deployments) => set({ deployments }),
 
     // -- Budgets --
-    setBudgets: (budgets) => set({ budgets }),
+    setBudget: (budget) => set({ budget, budgets: budget ? [budget] : [] }),
+    setBudgets: (budgets) => set({ budgets, budget: budgets[0] ?? null }),
 
     // -- Monitoring --
     setMonitoringAlerts: (alerts) => set({ monitoringAlerts: alerts }),
@@ -674,93 +782,61 @@ export const useMissionControl = create<MissionControlStore>()(
     // These call the existing /api/dashboard/* proxy routes.
 
     fetchAgents: async () => {
-      try {
-        const res = await fetch('/api/dashboard/agents')
-        if (!res.ok) return
-        const data = await res.json()
-        set({ agents: Array.isArray(data) ? data : data.agents ?? data.data ?? [] })
-      } catch {
-        // Network error — silent degrade, components show stale data
-      }
+      const path = '/api/dashboard/agents'
+      const data = await fetchDashboardJson(path, { allowNoContent: true })
+      set({ agents: normalizeCollection<Agent>(path, data, ['agents']) })
     },
 
     fetchSessions: async () => {
-      try {
-        const res = await fetch('/api/dashboard/sessions')
-        if (!res.ok) return
-        const data = await res.json()
-        set({ sessions: Array.isArray(data) ? data : data.sessions ?? data.data ?? [] })
-      } catch {
-        // silent
-      }
+      const path = '/api/dashboard/sessions'
+      const data = await fetchDashboardJson(path, { allowNoContent: true })
+      set({ sessions: normalizeCollection<Session>(path, data, ['sessions']) })
     },
 
     fetchRuns: async () => {
-      try {
-        const res = await fetch('/api/dashboard/runs')
-        if (!res.ok) return
-        const data = await res.json()
-        set({ runs: Array.isArray(data) ? data : data.runs ?? data.data ?? [] })
-      } catch {
-        // silent
-      }
+      const path = '/api/dashboard/runs'
+      const data = await fetchDashboardJson(path, { allowNoContent: true })
+      set({ runs: normalizeCollection<Run>(path, data, ['runs']) })
     },
 
     fetchOverview: async () => {
-      try {
-        const res = await fetch('/api/dashboard/overview')
-        if (!res.ok) return
-        const data = await res.json()
-        set({ overview: data })
-      } catch {
-        // silent
-      }
+      const path = '/api/dashboard/overview'
+      const data = await fetchDashboardJson(path)
+      set({ overview: normalizeObject<OverviewData>(path, data, ['overview', 'data']) })
     },
 
     fetchAnalyticsSummary: async () => {
-      try {
-        const res = await fetch('/api/dashboard/analytics/summary')
-        if (!res.ok) return
-        const data = await res.json()
-        set({ analyticsSummary: data })
-      } catch {
-        // silent
-      }
+      const path = '/api/dashboard/analytics/summary'
+      const data = await fetchDashboardJson(path)
+      set({
+        analyticsSummary: normalizeObject<AnalyticsSummary>(path, data, [
+          'summary',
+          'data',
+        ]),
+      })
     },
 
     fetchMonitoringAlerts: async () => {
-      try {
-        const res = await fetch('/api/dashboard/monitoring/alerts')
-        if (!res.ok) return
-        const data = await res.json()
-        set({ monitoringAlerts: Array.isArray(data) ? data : data.alerts ?? data.data ?? [] })
-      } catch {
-        // silent
-      }
+      const path = '/api/dashboard/monitoring/alerts'
+      const data = await fetchDashboardJson(path, { allowNoContent: true })
+      set({
+        monitoringAlerts: normalizeCollection<MonitoringAlert>(path, data, ['alerts']),
+      })
     },
 
     fetchBudgets: async () => {
-      try {
-        const res = await fetch('/api/dashboard/budgets')
-        if (!res.ok) return
-        const data = await res.json()
-        set({ budgets: Array.isArray(data) ? data : data.budgets ?? data.data ?? [] })
-      } catch {
-        // silent
-      }
+      const path = '/api/dashboard/budgets'
+      const data = await fetchDashboardJson(path)
+      const budget = normalizeBudget(path, data)
+      set({ budget, budgets: [budget] })
     },
 
     fetchDeployments: async () => {
-      try {
-        const res = await fetch('/api/dashboard/deployments')
-        if (!res.ok) return
-        const data = await res.json()
-        set({
-          deployments: Array.isArray(data) ? data : data.deployments ?? data.data ?? [],
-        })
-      } catch {
-        // silent
-      }
+      const path = '/api/dashboard/deployments'
+      const data = await fetchDashboardJson(path, { allowNoContent: true })
+      set({
+        deployments: normalizeCollection<Deployment>(path, data, ['deployments']),
+      })
     },
 
     // ===== Boot sequence =====

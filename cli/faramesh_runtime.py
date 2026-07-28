@@ -9,7 +9,9 @@ import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
+from typing import Any, Callable
 
 FAREMESH_PROVIDER_ID = "faramesh"
 FAREMESH_DEFAULT_DAEMON_PORT = 7777
@@ -33,6 +35,44 @@ def _default_faramesh_socket_path() -> str:
 
 
 FAREMESH_SOCKET_PATH = _default_faramesh_socket_path()
+
+
+class GovernanceDecisionStatus(str, Enum):
+    """Stable fail-closed statuses returned by governance decision helpers."""
+
+    PERMITTED = "permitted"
+    DENIED = "denied"
+    APPROVAL_REQUIRED = "approval_required"
+    UNAVAILABLE = "unavailable"
+    NO_DECISION = "no_decision"
+    MALFORMED = "malformed"
+    TIMEOUT = "timeout"
+    POLICY_DISABLED = "policy_disabled"
+    ERROR = "error"
+
+
+class GovernanceEffect(str, Enum):
+    PERMIT = "PERMIT"
+    DENY = "DENY"
+    DEFER = "DEFER"
+
+
+class GateOutcome(str, Enum):
+    EXECUTE = "EXECUTE"
+    HALT = "HALT"
+    ABSTAIN = "ABSTAIN"
+
+
+class _GovernanceUnavailableError(ConnectionError):
+    pass
+
+
+class _GovernanceTimeoutError(TimeoutError):
+    pass
+
+
+class _GovernanceMalformedResponseError(ValueError):
+    pass
 
 
 def _ensure_socket_parent(socket_path: str) -> None:
@@ -106,12 +146,32 @@ def is_socket_reachable(socket_path: str = FAREMESH_SOCKET_PATH, timeout: float 
         return False
 
 
-def _send_socket_request(socket_path: str, request: dict, timeout: float = 5.0) -> list[dict]:
+def _send_socket_request(
+    socket_path: str,
+    request: dict,
+    timeout: float = 5.0,
+    *,
+    strict: bool = False,
+) -> list[dict]:
     try:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.settimeout(timeout)
         sock.connect(socket_path)
-    except (OSError, socket.error):
+    except socket.timeout as exc:
+        try:
+            sock.close()
+        except Exception:
+            pass
+        if strict:
+            raise _GovernanceTimeoutError("governance request timed out while connecting") from exc
+        return []
+    except (OSError, socket.error) as exc:
+        try:
+            sock.close()
+        except Exception:
+            pass
+        if strict:
+            raise _GovernanceUnavailableError("governance socket is unavailable") from exc
         return []
 
     try:
@@ -122,7 +182,11 @@ def _send_socket_request(socket_path: str, request: dict, timeout: float = 5.0) 
         while True:
             try:
                 chunk = sock.recv(4096)
-            except socket.timeout:
+            except socket.timeout as exc:
+                if strict:
+                    raise _GovernanceTimeoutError(
+                        "governance request timed out while awaiting a decision"
+                    ) from exc
                 break
             if not chunk:
                 break
@@ -131,15 +195,45 @@ def _send_socket_request(socket_path: str, request: dict, timeout: float = 5.0) 
         if not buf:
             return []
 
+        try:
+            response_text = buf.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            if strict:
+                raise _GovernanceMalformedResponseError(
+                    "governance response was not valid UTF-8"
+                ) from exc
+            return []
+
         results = []
-        for line in buf.decode("utf-8").splitlines():
+        for line in response_text.splitlines():
             line = line.strip()
             if line:
                 try:
-                    results.append(json.loads(line))
-                except json.JSONDecodeError:
+                    item = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    if strict:
+                        raise _GovernanceMalformedResponseError(
+                            "governance response was not valid JSON"
+                        ) from exc
                     continue
+                if not isinstance(item, dict):
+                    if strict:
+                        raise _GovernanceMalformedResponseError(
+                            "governance response must be a JSON object"
+                        )
+                    continue
+                results.append(item)
         return results
+    except _GovernanceTimeoutError:
+        raise
+    except socket.timeout as exc:
+        if strict:
+            raise _GovernanceTimeoutError("governance request timed out") from exc
+        return []
+    except OSError as exc:
+        if strict:
+            raise _GovernanceUnavailableError("governance socket is unavailable") from exc
+        return []
     finally:
         try:
             sock.close()
@@ -588,12 +682,28 @@ def generate_prometheus_metrics(snapshot: FarameshSnapshot) -> str:
 
 @dataclass
 class GateDecision:
-    outcome: str
-    effect: str
+    outcome: GateOutcome | str
+    effect: GovernanceEffect | str | None
     reason_code: str | None = None
     reason: str | None = None
     defer_token: str | None = None
     latency_ms: int | None = None
+    status: GovernanceDecisionStatus = GovernanceDecisionStatus.MALFORMED
+    authoritative: bool = False
+    action_id: str | None = None
+    receipt_id: str | None = None
+    receipt: dict[str, Any] | None = None
+    audit_context: dict[str, Any] | None = None
+    decision_payload: dict[str, Any] | None = None
+
+    @property
+    def is_authoritative_permit(self) -> bool:
+        return (
+            self.authoritative
+            and self.status == GovernanceDecisionStatus.PERMITTED
+            and self.outcome == GateOutcome.EXECUTE
+            and self.effect == GovernanceEffect.PERMIT
+        )
 
 
 @dataclass
@@ -603,6 +713,239 @@ class ActionResult:
     executed: bool = False
     payload: dict | None = None
     error: str | None = None
+    defer_token: str | None = None
+    governance_status: GovernanceDecisionStatus | None = None
+    effect: GovernanceEffect | str | None = None
+    reason_code: str | None = None
+    reason: str | None = None
+    authoritative: bool = False
+    receipt_id: str | None = None
+    receipt: dict[str, Any] | None = None
+    audit_context: dict[str, Any] | None = None
+    decision_payload: dict[str, Any] | None = None
+    gate_decision_payload: dict[str, Any] | None = None
+
+    @property
+    def is_authoritative_permit(self) -> bool:
+        return (
+            self.authoritative
+            and self.governance_status == GovernanceDecisionStatus.PERMITTED
+            and self.effect == GovernanceEffect.PERMIT
+        )
+
+
+def _response_context(
+    response: dict[str, Any],
+) -> tuple[str | None, str | None, dict[str, Any] | None, dict[str, Any] | None]:
+    receipt = response.get("receipt")
+    if not isinstance(receipt, dict):
+        receipt = response.get("authorization_receipt")
+    if not isinstance(receipt, dict):
+        receipt = None
+
+    receipt_id = response.get("receipt_id")
+    if receipt_id is None and receipt is not None:
+        receipt_id = receipt.get("receipt_id")
+
+    audit_context = response.get("audit_context")
+    if not isinstance(audit_context, dict):
+        audit_context = response.get("audit")
+    if not isinstance(audit_context, dict):
+        audit_context = None
+
+    action_id = response.get("action_id")
+    return (
+        str(action_id) if action_id is not None else None,
+        str(receipt_id) if receipt_id is not None else None,
+        receipt,
+        audit_context,
+    )
+
+
+def _failure_decision(
+    status: GovernanceDecisionStatus,
+    reason: str,
+    reason_code: str,
+    *,
+    decision_payload: dict[str, Any] | None = None,
+) -> GateDecision:
+    return GateDecision(
+        outcome=GateOutcome.HALT,
+        effect=None,
+        status=status,
+        reason=reason,
+        reason_code=reason_code,
+        authoritative=False,
+        decision_payload=decision_payload,
+    )
+
+
+def _policy_is_disabled(response: dict[str, Any]) -> bool:
+    response_status = str(response.get("status") or "").strip().lower()
+    effect = str(response.get("effect") or "").strip().upper()
+    return (
+        response.get("policy_enabled") is False
+        or response.get("policy_loaded") is False
+        or response_status in {"disabled", "policy_disabled", "policy_not_loaded", "no_policy"}
+        or effect in {"DISABLED", "POLICY_DISABLED"}
+    )
+
+
+def _parse_gate_response(response: Any) -> GateDecision:
+    if not isinstance(response, dict):
+        return _failure_decision(
+            GovernanceDecisionStatus.MALFORMED,
+            "governance response must be an object",
+            "governance_malformed_response",
+        )
+
+    decision_payload = dict(response)
+    action_id, receipt_id, receipt, audit_context = _response_context(response)
+
+    if _policy_is_disabled(response):
+        return GateDecision(
+            outcome=GateOutcome.HALT,
+            effect=None,
+            status=GovernanceDecisionStatus.POLICY_DISABLED,
+            reason_code=str(response.get("reason_code") or "governance_policy_disabled"),
+            reason=str(response.get("reason") or "governance policy is disabled"),
+            authoritative=False,
+            action_id=action_id,
+            receipt_id=receipt_id,
+            receipt=receipt,
+            audit_context=audit_context,
+            decision_payload=decision_payload,
+        )
+
+    if response.get("error"):
+        return GateDecision(
+            outcome=GateOutcome.HALT,
+            effect=None,
+            status=GovernanceDecisionStatus.ERROR,
+            reason_code=str(response.get("reason_code") or "governance_error"),
+            reason=str(response.get("reason") or response["error"]),
+            authoritative=False,
+            action_id=action_id,
+            receipt_id=receipt_id,
+            receipt=receipt,
+            audit_context=audit_context,
+            decision_payload=decision_payload,
+        )
+
+    if response.get("authoritative") is False:
+        return GateDecision(
+            outcome=GateOutcome.HALT,
+            effect=None,
+            status=GovernanceDecisionStatus.MALFORMED,
+            reason_code="governance_non_authoritative_response",
+            reason="governance response was explicitly non-authoritative",
+            authoritative=False,
+            action_id=action_id,
+            receipt_id=receipt_id,
+            receipt=receipt,
+            audit_context=audit_context,
+            decision_payload=decision_payload,
+        )
+
+    raw_effect = response.get("effect")
+    if not isinstance(raw_effect, str):
+        return GateDecision(
+            outcome=GateOutcome.HALT,
+            effect=None,
+            status=GovernanceDecisionStatus.MALFORMED,
+            reason_code="governance_malformed_response",
+            reason="governance response did not include a valid effect",
+            authoritative=False,
+            action_id=action_id,
+            receipt_id=receipt_id,
+            receipt=receipt,
+            audit_context=audit_context,
+            decision_payload=decision_payload,
+        )
+
+    try:
+        effect = GovernanceEffect(raw_effect.strip().upper())
+    except ValueError:
+        return GateDecision(
+            outcome=GateOutcome.HALT,
+            effect=None,
+            status=GovernanceDecisionStatus.MALFORMED,
+            reason_code="governance_unknown_effect",
+            reason=f"governance returned unsupported effect: {raw_effect}",
+            authoritative=False,
+            action_id=action_id,
+            receipt_id=receipt_id,
+            receipt=receipt,
+            audit_context=audit_context,
+            decision_payload=decision_payload,
+        )
+
+    common = {
+        "effect": effect,
+        "reason_code": response.get("reason_code"),
+        "reason": response.get("reason"),
+        "defer_token": response.get("defer_token"),
+        "latency_ms": response.get("latency_ms"),
+        "authoritative": True,
+        "action_id": action_id,
+        "receipt_id": receipt_id,
+        "receipt": receipt,
+        "audit_context": audit_context,
+        "decision_payload": decision_payload,
+    }
+    if effect == GovernanceEffect.PERMIT:
+        return GateDecision(
+            outcome=GateOutcome.EXECUTE,
+            status=GovernanceDecisionStatus.PERMITTED,
+            **common,
+        )
+    if effect == GovernanceEffect.DENY:
+        common["reason"] = common["reason"] or "denied by policy"
+        return GateDecision(
+            outcome=GateOutcome.HALT,
+            status=GovernanceDecisionStatus.DENIED,
+            **common,
+        )
+    common["reason"] = common["reason"] or "approval required"
+    return GateDecision(
+        outcome=GateOutcome.ABSTAIN,
+        status=GovernanceDecisionStatus.APPROVAL_REQUIRED,
+        **common,
+    )
+
+
+def _action_result_from_decision(
+    decision: GateDecision,
+    *,
+    denied_status: str = "denied",
+) -> ActionResult:
+    legacy_status = {
+        GovernanceDecisionStatus.PERMITTED: "executed",
+        GovernanceDecisionStatus.DENIED: denied_status,
+        GovernanceDecisionStatus.APPROVAL_REQUIRED: "pending_approval",
+        GovernanceDecisionStatus.UNAVAILABLE: "governance_unavailable",
+        GovernanceDecisionStatus.NO_DECISION: "no_response",
+        GovernanceDecisionStatus.MALFORMED: "malformed_response",
+        GovernanceDecisionStatus.TIMEOUT: "timeout",
+        GovernanceDecisionStatus.POLICY_DISABLED: "policy_disabled",
+        GovernanceDecisionStatus.ERROR: "error",
+    }
+    return ActionResult(
+        action_id=decision.action_id,
+        status=legacy_status[decision.status],
+        executed=decision.is_authoritative_permit,
+        error=None if decision.is_authoritative_permit else decision.reason,
+        defer_token=decision.defer_token,
+        governance_status=decision.status,
+        effect=decision.effect,
+        reason_code=decision.reason_code,
+        reason=decision.reason,
+        authoritative=decision.authoritative,
+        receipt_id=decision.receipt_id,
+        receipt=decision.receipt,
+        audit_context=decision.audit_context,
+        decision_payload=decision.decision_payload,
+    )
 
 
 def gate_decide(
@@ -612,51 +955,48 @@ def gate_decide(
     context: dict | None = None,
     socket_path: str = FAREMESH_SOCKET_PATH,
 ) -> GateDecision:
-    """Ask Faramesh if a tool call is permitted. Returns immediately (sync)."""
-    if not is_faramesh_available():
-        return GateDecision(outcome="ABSTAIN", effect="PERMIT", reason="governance unavailable")
-
-    request = {
-        "type": "gate_decide",
-        "agent_id": agent_id,
-        "tool_id": tool_id,
-        "params": params,
-        "context": context or {},
-    }
-
+    """Ask Faramesh for an authoritative decision, failing closed on indeterminate states."""
     try:
-        responses = _send_socket_request(socket_path, request, timeout=2.0)
+        request = {
+            "type": "gate_decide",
+            "agent_id": agent_id,
+            "tool_id": tool_id,
+            "params": params,
+            "context": context or {},
+        }
+        responses = _send_socket_request(socket_path, request, timeout=2.0, strict=True)
         if not responses:
-            return GateDecision(outcome="ABSTAIN", effect="PERMIT", reason="no governance response")
-
-        resp = responses[0]
-        effect = resp.get("effect", "PERMIT")
-
-        if effect == "PERMIT":
-            return GateDecision(
-                outcome="EXECUTE",
-                effect=effect,
-                reason_code=resp.get("reason_code"),
-                reason=resp.get("reason"),
-                latency_ms=resp.get("latency_ms"),
+            return _failure_decision(
+                GovernanceDecisionStatus.NO_DECISION,
+                "governance returned no decision",
+                "governance_no_decision",
             )
-        elif effect == "DENY":
-            return GateDecision(
-                outcome="HALT",
-                effect=effect,
-                reason_code=resp.get("reason_code"),
-                reason=resp.get("reason"),
-            )
-        else:  # DEFER
-            return GateDecision(
-                outcome="ABSTAIN",
-                effect=effect,
-                reason_code=resp.get("reason_code"),
-                reason=resp.get("reason"),
-                defer_token=resp.get("defer_token"),
-            )
-    except Exception:
-        return GateDecision(outcome="ABSTAIN", effect="PERMIT", reason="governance error")
+        return _parse_gate_response(responses[0])
+    except _GovernanceTimeoutError as exc:
+        return _failure_decision(
+            GovernanceDecisionStatus.TIMEOUT,
+            str(exc),
+            "governance_timeout",
+        )
+    except _GovernanceUnavailableError as exc:
+        return _failure_decision(
+            GovernanceDecisionStatus.UNAVAILABLE,
+            str(exc),
+            "governance_unavailable",
+        )
+    except _GovernanceMalformedResponseError as exc:
+        return _failure_decision(
+            GovernanceDecisionStatus.MALFORMED,
+            str(exc),
+            "governance_malformed_response",
+        )
+    except Exception as exc:
+        return _failure_decision(
+            GovernanceDecisionStatus.ERROR,
+            str(exc) or "governance error",
+            "governance_error",
+            decision_payload={"exception_type": type(exc).__name__},
+        )
 
 
 def submit_action(
@@ -666,49 +1006,55 @@ def submit_action(
     context: dict | None = None,
     socket_path: str = FAREMESH_SOCKET_PATH,
 ) -> ActionResult:
-    """Submit an action for governance review. Returns immediately with defer_token if DEFER."""
-    if not is_faramesh_available():
-        return ActionResult(status="governance_unavailable", executed=True)
-
-    request = {
-        "type": "action_submit",
-        "agent_id": agent_id,
-        "tool_id": tool_id,
-        "params": params,
-        "context": context or {},
-    }
-
+    """Submit an action for governance review without inferring permission from failures."""
     try:
-        responses = _send_socket_request(socket_path, request, timeout=5.0)
+        request = {
+            "type": "action_submit",
+            "agent_id": agent_id,
+            "tool_id": tool_id,
+            "params": params,
+            "context": context or {},
+        }
+        responses = _send_socket_request(socket_path, request, timeout=5.0, strict=True)
         if not responses:
-            return ActionResult(status="no_response")
-
-        resp = responses[0]
-        effect = resp.get("effect", "PERMIT")
-
-        if effect == "PERMIT":
-            return ActionResult(
-                action_id=resp.get("action_id"),
-                status="executed",
-                executed=True,
-                payload=resp.get("payload"),
+            return _action_result_from_decision(
+                _failure_decision(
+                    GovernanceDecisionStatus.NO_DECISION,
+                    "governance returned no decision",
+                    "governance_no_decision",
+                )
             )
-        elif effect == "DENY":
-            return ActionResult(
-                action_id=resp.get("action_id"),
-                status="denied",
-                executed=False,
-                error=resp.get("reason", "denied by policy"),
-            )
-        else:  # DEFER
-            return ActionResult(
-                action_id=resp.get("action_id"),
-                status="pending_approval",
-                executed=False,
-                defer_token=resp.get("defer_token"),
-            )
-    except Exception as e:
-        return ActionResult(status="error", error=str(e))
+        response = responses[0]
+        result = _action_result_from_decision(_parse_gate_response(response))
+        if result.is_authoritative_permit:
+            result.payload = response.get("payload")
+        return result
+    except _GovernanceTimeoutError as exc:
+        decision = _failure_decision(
+            GovernanceDecisionStatus.TIMEOUT,
+            str(exc),
+            "governance_timeout",
+        )
+    except _GovernanceUnavailableError as exc:
+        decision = _failure_decision(
+            GovernanceDecisionStatus.UNAVAILABLE,
+            str(exc),
+            "governance_unavailable",
+        )
+    except _GovernanceMalformedResponseError as exc:
+        decision = _failure_decision(
+            GovernanceDecisionStatus.MALFORMED,
+            str(exc),
+            "governance_malformed_response",
+        )
+    except Exception as exc:
+        decision = _failure_decision(
+            GovernanceDecisionStatus.ERROR,
+            str(exc) or "governance error",
+            "governance_error",
+            decision_payload={"exception_type": type(exc).__name__},
+        )
+    return _action_result_from_decision(decision)
 
 
 def wait_for_decision(
@@ -716,62 +1062,197 @@ def wait_for_decision(
     timeout: float = 300.0,
     socket_path: str = FAREMESH_SOCKET_PATH,
 ) -> ActionResult:
-    """Wait for a deferred action to be approved or denied."""
+    """Wait for a deferred action without treating disappearance as approval."""
     start = time.time()
     poll_interval = 1.0
 
-    while time.time() - start < timeout:
-        defers = get_pending_defers(socket_path)
-        defer_ids = [d.defer_token for d in defers]
-
-        if defer_token not in defer_ids:
-            for d in defers:
-                if d.defer_token == defer_token:
-                    return ActionResult(
-                        status=d.status,
-                        executed=d.status == "approved",
+    try:
+        while time.time() - start < timeout:
+            matching = next(
+                (
+                    item
+                    for item in get_pending_defers(socket_path)
+                    if item.defer_token == defer_token
+                ),
+                None,
+            )
+            if matching is None:
+                recent = next(
+                    (
+                        item
+                        for item in reversed(
+                            get_recent_decisions(socket_path=socket_path, limit=100)
+                        )
+                        if item.defer_token == defer_token
+                    ),
+                    None,
+                )
+                if recent is None:
+                    return _action_result_from_decision(
+                        _failure_decision(
+                            GovernanceDecisionStatus.NO_DECISION,
+                            "deferred decision resolved without an authoritative result",
+                            "governance_no_decision",
+                        )
                     )
-            return ActionResult(status="resolved")
 
-        time.sleep(poll_interval)
+                result = _action_result_from_decision(
+                    _parse_gate_response(
+                        {
+                            "effect": recent.effect,
+                            "reason_code": recent.reason_code,
+                            "defer_token": recent.defer_token,
+                            "latency_ms": recent.latency_ms,
+                        }
+                    ),
+                    denied_status="denied_by_approver",
+                )
+                if result.is_authoritative_permit:
+                    result.status = "approved"
+                return result
 
-    return ActionResult(status="timeout")
+            defer_status = str(matching.status or "pending").strip().lower()
+            if defer_status in {"denied", "rejected", "expired", "cancelled"}:
+                return _action_result_from_decision(
+                    GateDecision(
+                        outcome=GateOutcome.HALT,
+                        effect=GovernanceEffect.DENY,
+                        status=GovernanceDecisionStatus.DENIED,
+                        reason=matching.reason or "deferred action was not approved",
+                        reason_code=f"governance_{defer_status}",
+                        defer_token=defer_token,
+                        authoritative=True,
+                        decision_payload={
+                            "defer_token": defer_token,
+                            "status": matching.status,
+                            "reason": matching.reason,
+                        },
+                    ),
+                    denied_status="denied_by_approver",
+                )
+            if defer_status in {"approved", "permitted"}:
+                return _action_result_from_decision(
+                    _failure_decision(
+                        GovernanceDecisionStatus.MALFORMED,
+                        "approval did not include an authoritative PERMIT decision",
+                        "governance_approval_missing_permit",
+                        decision_payload={
+                            "defer_token": defer_token,
+                            "status": matching.status,
+                            "reason": matching.reason,
+                        },
+                    )
+                )
+            if defer_status not in {"pending", "deferred", "approval_required"}:
+                return _action_result_from_decision(
+                    _failure_decision(
+                        GovernanceDecisionStatus.MALFORMED,
+                        f"governance returned unsupported defer status: {matching.status}",
+                        "governance_unknown_defer_status",
+                    )
+                )
+
+            time.sleep(poll_interval)
+    except Exception as exc:
+        return _action_result_from_decision(
+            _failure_decision(
+                GovernanceDecisionStatus.ERROR,
+                str(exc) or "governance error while waiting for approval",
+                "governance_error",
+                decision_payload={"exception_type": type(exc).__name__},
+            )
+        )
+
+    return _action_result_from_decision(
+        _failure_decision(
+            GovernanceDecisionStatus.TIMEOUT,
+            "governance approval timed out",
+            "governance_timeout",
+            decision_payload={"defer_token": defer_token},
+        )
+    )
 
 
 def execute_if_allowed(
     agent_id: str,
     tool_id: str,
     params: dict,
-    executor: callable,
+    executor: Callable[[str, dict], dict | None],
     context: dict | None = None,
     socket_path: str = FAREMESH_SOCKET_PATH,
+    governance_enabled: bool = True,
 ) -> ActionResult:
-    """Execute tool if governance permits, using submit_action for DEFER handling."""
-    if not is_faramesh_available():
-        result = executor(tool_id, params)
-        return ActionResult(executed=True, payload=result if result else {})
-
-    decision = gate_decide(agent_id, tool_id, params, context, socket_path)
-
-    if decision.outcome == "HALT":
-        return ActionResult(
-            status="blocked",
-            executed=False,
-            error=f"Tool {tool_id} denied: {decision.reason_code}",
+    """Execute exactly once only after a valid authoritative PERMIT decision."""
+    if not governance_enabled:
+        return _action_result_from_decision(
+            _failure_decision(
+                GovernanceDecisionStatus.POLICY_DISABLED,
+                "governance policy is disabled",
+                "governance_policy_disabled",
+            )
         )
 
-    if decision.outcome == "ABSTAIN" and decision.effect == "DEFER":
+    try:
+        decision = gate_decide(agent_id, tool_id, params, context, socket_path)
+    except Exception as exc:
+        decision = _failure_decision(
+            GovernanceDecisionStatus.ERROR,
+            str(exc) or "governance decision failed",
+            "governance_error",
+            decision_payload={"exception_type": type(exc).__name__},
+        )
+
+    if not isinstance(decision, GateDecision):
+        decision = _failure_decision(
+            GovernanceDecisionStatus.MALFORMED,
+            "governance helper returned an invalid decision object",
+            "governance_malformed_decision",
+        )
+
+    if decision.status == GovernanceDecisionStatus.APPROVAL_REQUIRED:
         submit_result = submit_action(agent_id, tool_id, params, context, socket_path)
-
-        if submit_result.status == "pending_approval":
-            wait_result = wait_for_decision(submit_result.defer_token, socket_path=socket_path)
-            if wait_result.status == "approved":
-                result = executor(tool_id, params)
-                return ActionResult(executed=True, payload=result if result else {})
-            else:
-                return ActionResult(status="denied_by_approver", executed=False)
-
+        submit_result.gate_decision_payload = decision.decision_payload
+        if submit_result.receipt is None:
+            submit_result.receipt = decision.receipt
+            submit_result.receipt_id = decision.receipt_id
+        if submit_result.audit_context is None:
+            submit_result.audit_context = decision.audit_context
         return submit_result
 
+    if not decision.is_authoritative_permit:
+        if decision.status == GovernanceDecisionStatus.PERMITTED:
+            decision = GateDecision(
+                outcome=GateOutcome.HALT,
+                effect=None,
+                status=GovernanceDecisionStatus.MALFORMED,
+                reason="governance permit was not authoritative",
+                reason_code="governance_non_authoritative_permit",
+                authoritative=False,
+                action_id=decision.action_id,
+                receipt_id=decision.receipt_id,
+                receipt=decision.receipt,
+                audit_context=decision.audit_context,
+                decision_payload=decision.decision_payload,
+            )
+        blocked_result = _action_result_from_decision(decision, denied_status="blocked")
+        if decision.status == GovernanceDecisionStatus.DENIED:
+            blocked_result.error = f"Tool {tool_id} denied: {decision.reason_code}"
+        return blocked_result
+
     result = executor(tool_id, params)
-    return ActionResult(executed=True, payload=result if result else {})
+    return ActionResult(
+        action_id=decision.action_id,
+        status="executed",
+        executed=True,
+        payload=result if result else {},
+        governance_status=decision.status,
+        effect=decision.effect,
+        reason_code=decision.reason_code,
+        reason=decision.reason,
+        authoritative=decision.authoritative,
+        receipt_id=decision.receipt_id,
+        receipt=decision.receipt,
+        audit_context=decision.audit_context,
+        decision_payload=decision.decision_payload,
+        gate_decision_payload=decision.decision_payload,
+    )

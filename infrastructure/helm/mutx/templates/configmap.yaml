@@ -1,12 +1,31 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "mutx.fullname" . }}-env
+  name: {{ include "mutx.fullname" . }}-api-env
   labels:
     {{- include "mutx.labels" . | nindent 4 }}
-{{- if .Values.env }}
+    app.kubernetes.io/component: api
+{{- if .Values.api.env }}
 data:
-  {{- toYaml .Values.env | nindent 2 }}
+  {{- range $name, $value := .Values.api.env }}
+  {{ $name }}: {{ $value | toString | quote }}
+  {{- end }}
+{{- else }}
+data: {}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mutx.fullname" . }}-frontend-env
+  labels:
+    {{- include "mutx.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+{{- if .Values.frontend.env }}
+data:
+  {{- range $name, $value := .Values.frontend.env }}
+  {{ $name }}: {{ $value | toString | quote }}
+  {{- end }}
 {{- else }}
 data: {}
 {{- end }}

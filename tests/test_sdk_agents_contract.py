@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -19,6 +20,7 @@ from sdk.mutx.agents import (
     Deployment,
     DeploymentEvent,
 )
+from tests.sdk_contract_utils import assert_v1_request
 
 
 # ---------------------------------------------------------------------------
@@ -412,15 +414,13 @@ class TestAgentsCreate:
 
         assert isinstance(result, Agent)
         assert result.name == "my-agent"
-        mock_client.post.assert_called_once_with(
-            "/v1/agents",
-            json={
-                "name": "my-agent",
-                "description": "desc",
-                "type": "anthropic",
-                "config": {"model": "claude-3"},
-            },
-        )
+        request = assert_v1_request(mock_client.post, "POST", "/v1/agents")
+        assert json.loads(request.content) == {
+            "name": "my-agent",
+            "description": "desc",
+            "type": "anthropic",
+            "config": {"model": "claude-3"},
+        }
         mock_response.raise_for_status.assert_called_once()
 
     def test_create_minimal(self):
@@ -434,10 +434,13 @@ class TestAgentsCreate:
         result = agents.create(name="minimal-agent")
 
         assert isinstance(result, Agent)
-        mock_client.post.assert_called_once_with(
-            "/v1/agents",
-            json={"name": "minimal-agent", "description": None, "type": "openai", "config": None},
-        )
+        request = assert_v1_request(mock_client.post, "POST", "/v1/agents")
+        assert json.loads(request.content) == {
+            "name": "minimal-agent",
+            "description": None,
+            "type": "openai",
+            "config": None,
+        }
 
     def test_create_raises_for_status(self):
         mock_response = MagicMock()
@@ -473,7 +476,8 @@ class TestAgentsList:
 
         assert len(result) == 2
         assert all(isinstance(a, Agent) for a in result)
-        mock_client.get.assert_called_once_with("/v1/agents", params={"skip": 10, "limit": 25})
+        request = assert_v1_request(mock_client.get, "GET", "/v1/agents")
+        assert dict(request.url.params) == {"skip": "10", "limit": "25"}
         mock_response.raise_for_status.assert_called_once()
 
     def test_list_defaults(self):
@@ -485,7 +489,8 @@ class TestAgentsList:
 
         agents.list()
 
-        mock_client.get.assert_called_once_with("/v1/agents", params={"skip": 0, "limit": 50})
+        request = assert_v1_request(mock_client.get, "GET", "/v1/agents")
+        assert dict(request.url.params) == {"skip": "0", "limit": "50"}
 
     def test_list_raises_for_status(self):
         mock_response = MagicMock()
@@ -518,7 +523,11 @@ class TestAgentsGet:
 
         assert isinstance(result, AgentDetail)
         assert result.name == "test-agent"
-        mock_client.get.assert_called_once_with("/v1/agents/550e8400-e29b-41d4-a716-446655440000")
+        assert_v1_request(
+            mock_client.get,
+            "GET",
+            "/v1/agents/550e8400-e29b-41d4-a716-446655440000",
+        )
         mock_response.raise_for_status.assert_called_once()
 
     def test_get_uuid(self):
@@ -532,7 +541,7 @@ class TestAgentsGet:
 
         agents.get(agent_uuid)
 
-        mock_client.get.assert_called_once_with(f"/v1/agents/{agent_uuid}")
+        assert_v1_request(mock_client.get, "GET", f"/v1/agents/{agent_uuid}")
 
     def test_get_raises_for_status(self):
         mock_response = MagicMock()
@@ -561,8 +570,10 @@ class TestAgentsDelete:
 
         agents.delete("550e8400-e29b-41d4-a716-446655440000")
 
-        mock_client.delete.assert_called_once_with(
-            "/v1/agents/550e8400-e29b-41d4-a716-446655440000"
+        assert_v1_request(
+            mock_client.delete,
+            "DELETE",
+            "/v1/agents/550e8400-e29b-41d4-a716-446655440000",
         )
         mock_response.raise_for_status.assert_called_once()
 
@@ -596,8 +607,10 @@ class TestAgentsDeploy:
         result = agents.deploy("550e8400-e29b-41d4-a716-446655440000")
 
         assert result == returned
-        mock_client.post.assert_called_once_with(
-            "/v1/agents/550e8400-e29b-41d4-a716-446655440000/deploy"
+        assert_v1_request(
+            mock_client.post,
+            "POST",
+            "/v1/agents/550e8400-e29b-41d4-a716-446655440000/deploy",
         )
         mock_response.raise_for_status.assert_called_once()
 
@@ -631,8 +644,10 @@ class TestAgentsStop:
         result = agents.stop("550e8400-e29b-41d4-a716-446655440000")
 
         assert result == returned
-        mock_client.post.assert_called_once_with(
-            "/v1/agents/550e8400-e29b-41d4-a716-446655440000/stop"
+        assert_v1_request(
+            mock_client.post,
+            "POST",
+            "/v1/agents/550e8400-e29b-41d4-a716-446655440000/stop",
         )
         mock_response.raise_for_status.assert_called_once()
 
@@ -675,10 +690,12 @@ class TestAgentsLogs:
 
         assert len(result) == 2
         assert all(isinstance(log, AgentLog) for log in result)
-        mock_client.get.assert_called_once_with(
+        request = assert_v1_request(
+            mock_client.get,
+            "GET",
             "/v1/agents/550e8400-e29b-41d4-a716-446655440000/logs",
-            params={"skip": 5, "limit": 20, "level": "INFO"},
         )
+        assert dict(request.url.params) == {"skip": "5", "limit": "20", "level": "INFO"}
         mock_response.raise_for_status.assert_called_once()
 
     def test_logs_defaults(self):
@@ -695,10 +712,12 @@ class TestAgentsLogs:
 
         agents.logs("550e8400-e29b-41d4-a716-446655440000")
 
-        mock_client.get.assert_called_once_with(
+        request = assert_v1_request(
+            mock_client.get,
+            "GET",
             "/v1/agents/550e8400-e29b-41d4-a716-446655440000/logs",
-            params={"skip": 0, "limit": 100, "level": None},
         )
+        assert dict(request.url.params) == {"skip": "0", "limit": "100"}
 
     def test_logs_raises_for_status(self):
         mock_response = MagicMock()
@@ -739,10 +758,12 @@ class TestAgentsMetrics:
 
         assert len(result) == 2
         assert all(isinstance(m, AgentMetric) for m in result)
-        mock_client.get.assert_called_once_with(
+        request = assert_v1_request(
+            mock_client.get,
+            "GET",
             "/v1/agents/550e8400-e29b-41d4-a716-446655440000/metrics",
-            params={"skip": 0, "limit": 50},
         )
+        assert dict(request.url.params) == {"skip": "0", "limit": "50"}
         mock_response.raise_for_status.assert_called_once()
 
     def test_metrics_defaults(self):
@@ -759,10 +780,12 @@ class TestAgentsMetrics:
 
         agents.metrics("550e8400-e29b-41d4-a716-446655440000")
 
-        mock_client.get.assert_called_once_with(
+        request = assert_v1_request(
+            mock_client.get,
+            "GET",
             "/v1/agents/550e8400-e29b-41d4-a716-446655440000/metrics",
-            params={"skip": 0, "limit": 100},
         )
+        assert dict(request.url.params) == {"skip": "0", "limit": "100"}
 
     def test_metrics_raises_for_status(self):
         mock_response = MagicMock()
@@ -794,10 +817,12 @@ class TestAgentsUpdateConfig:
         result = agents.update_config("550e8400-e29b-41d4-a716-446655440000", {"model": "gpt-4o"})
 
         assert isinstance(result, AgentDetail)
-        mock_client.patch.assert_called_once()
-        call_args = mock_client.patch.call_args
-        assert "/v1/agents/550e8400-e29b-41d4-a716-446655440000/config" in call_args.args[0]
-        assert "config" in call_args.kwargs["json"]
+        request = assert_v1_request(
+            mock_client.patch,
+            "PATCH",
+            "/v1/agents/550e8400-e29b-41d4-a716-446655440000/config",
+        )
+        assert "config" in json.loads(request.content)
         mock_response.raise_for_status.assert_called_once()
 
     def test_update_config_string(self):
@@ -850,12 +875,13 @@ class TestAgentsStreamLogs:
         collected: list[AgentLog] = []
 
         for log in agents.stream_logs(
-            "550e8400-e29b-41d4-a716-446655440000", callback=lambda l: collected.append(l)
+            "550e8400-e29b-41d4-a716-446655440000",
+            callback=lambda agent_log: collected.append(agent_log),
         ):
             pass
 
         assert len(collected) == 2
-        assert all(isinstance(l, AgentLog) for l in collected)
+        assert all(isinstance(agent_log, AgentLog) for agent_log in collected)
 
     def test_stream_logs_calls_callback(self):
         returned = [
@@ -926,7 +952,8 @@ class TestAgentsAsyncMethods:
 
         assert len(result) == 1
         assert isinstance(result[0], Agent)
-        mock_client.get.assert_called_once_with("/v1/agents", params={"skip": 5, "limit": 10})
+        request = assert_v1_request(mock_client.get, "GET", "/v1/agents")
+        assert dict(request.url.params) == {"skip": "5", "limit": "10"}
 
     @pytest.mark.asyncio
     async def test_aget_success(self):
@@ -1068,5 +1095,5 @@ class TestAgentsAsyncMethods:
             collected.append(log)
 
         assert len(collected) == 2
-        assert all(isinstance(l, AgentLog) for l in collected)
+        assert all(isinstance(agent_log, AgentLog) for agent_log in collected)
         assert callback_count == 2

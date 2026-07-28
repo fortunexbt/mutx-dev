@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
+
+import { loadDocsSearchEntries, type DocsSearchEntry } from '@/lib/docs/search';
 
 const SEARCH_ATTR = 'data-docs-search-open';
 const SEARCH_LISTBOX_ID = 'docs-search-results';
@@ -14,28 +17,13 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
-interface SearchEntry {
-  id: string;
-  title: string;
-  section: string;
-  content: string;
-  href: string;
-}
-
-interface SearchDocument {
-  title: string;
-  href: string;
-  section: string;
-  entries: SearchEntry[];
-}
-
-type SearchIndex = SearchDocument[] | { documents: SearchDocument[] };
-
 export function DocsSearch() {
-  const [entries, setEntries] = useState<SearchEntry[]>([]);
+  const [entries, setEntries] = useState<DocsSearchEntry[]>([]);
+  const [searchStatus, setSearchStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -45,16 +33,21 @@ export function DocsSearch() {
 
   // Load search index
   useEffect(() => {
-    fetch('/docs-search-index.json')
-      .then((r) => r.json())
-      .then((data: SearchIndex) => {
-        const documents = Array.isArray(data) ? data : data.documents;
-        const flat = documents.flatMap((doc) =>
-          doc.entries.map((e) => ({ ...e, section: doc.section }))
-        );
-        setEntries(flat);
+    let active = true;
+    loadDocsSearchEntries()
+      .then((loadedEntries) => {
+        if (!active) return;
+        setEntries(loadedEntries);
+        setSearchStatus('ready');
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!active) return;
+        setEntries([]);
+        setSearchStatus('error');
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   // Watch attribute for open/close
@@ -95,6 +88,72 @@ export function DocsSearch() {
     const returnTarget = returnFocusRef.current;
     returnFocusRef.current = null;
     if (returnTarget?.isConnected) returnTarget.focus();
+  }, [isOpen]);
+
+  // Keep the page behind the modal inert and preserve its exact scroll position.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const previousBodyStyles = {
+      overflow: document.body.style.overflow,
+      overscrollBehavior: document.body.style.overscrollBehavior,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      width: document.body.style.width,
+    };
+    const previousRootOverflow = document.documentElement.style.overflow;
+    const backgroundElements = Array.from(document.body.children)
+      .filter((element): element is HTMLElement => (
+        element instanceof HTMLElement && element !== overlay
+      ))
+      .map((element) => ({
+        element,
+        inert: element.inert,
+        ariaHidden: element.getAttribute('aria-hidden'),
+      }));
+
+    function containFocus(event: FocusEvent) {
+      const target = event.target;
+      if (target instanceof Node && !dialogRef.current?.contains(target)) {
+        inputRef.current?.focus();
+      }
+    }
+
+    backgroundElements.forEach(({ element }) => {
+      element.inert = true;
+      element.setAttribute('aria-hidden', 'true');
+    });
+    document.body.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'contain';
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = '100%';
+    document.documentElement.style.overflow = 'hidden';
+    document.addEventListener('focusin', containFocus);
+
+    return () => {
+      document.removeEventListener('focusin', containFocus);
+      backgroundElements.forEach(({ element, inert, ariaHidden }) => {
+        element.inert = inert;
+        if (ariaHidden === null) {
+          element.removeAttribute('aria-hidden');
+        } else {
+          element.setAttribute('aria-hidden', ariaHidden);
+        }
+      });
+      document.body.style.overflow = previousBodyStyles.overflow;
+      document.body.style.overscrollBehavior = previousBodyStyles.overscrollBehavior;
+      document.body.style.position = previousBodyStyles.position;
+      document.body.style.top = previousBodyStyles.top;
+      document.body.style.width = previousBodyStyles.width;
+      document.documentElement.style.overflow = previousRootOverflow;
+      window.scrollTo(scrollX, scrollY);
+    };
   }, [isOpen]);
 
   // Cmd+K shortcut
@@ -185,9 +244,10 @@ export function DocsSearch() {
 
   if (!isOpen) return null;
 
-  return (
-    <div className="docs-search-overlay" onClick={close}>
+  return createPortal(
+    <div ref={overlayRef} className="docs-search-overlay" onClick={close}>
       <div
+        id="docs-search-dialog"
         ref={dialogRef}
         className="docs-search-modal"
         role="dialog"
@@ -223,9 +283,15 @@ export function DocsSearch() {
             <kbd aria-hidden="true">Esc</kbd>
           </button>
         </div>
-        {q && (
+        {(q || searchStatus === 'error') && (
           <div className="docs-search-body" ref={resultsRef}>
-            {results.length > 0 ? (
+            {searchStatus === 'loading' ? (
+              <div className="docs-search-empty" role="status">Loading documentation search&hellip;</div>
+            ) : searchStatus === 'error' ? (
+              <div className="docs-search-empty" role="alert">
+                Documentation search is unavailable. Refresh the page and try again.
+              </div>
+            ) : results.length > 0 ? (
               <ul id={SEARCH_LISTBOX_ID} className="docs-search-results" role="listbox" aria-label="Search results">
                 {results.map((r, i) => (
                   <li
@@ -263,7 +329,8 @@ export function DocsSearch() {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -271,7 +338,7 @@ function getOptionId(index: number): string {
   return `${SEARCH_LISTBOX_ID}-option-${index}`;
 }
 
-function scoreEntry(entry: SearchEntry, q: string): number {
+function scoreEntry(entry: DocsSearchEntry, q: string): number {
   const title = entry.title.toLowerCase();
   const section = entry.section.toLowerCase();
   const content = entry.content.toLowerCase();

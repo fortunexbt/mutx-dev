@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Optional
+from uuid import UUID
 
 import httpx
+
+from mutx._http import api_path
 
 
 class ActionEvaluateResponse:
@@ -17,6 +20,8 @@ class ActionEvaluateResponse:
         self.rule_name: Optional[str] = data.get("rule_name")
         self.reason: str = data["reason"]
         self.would_modify: bool = data.get("would_modify", False)
+        self.evaluation_id: str = data["evaluation_id"]
+        self.receipt_id: str = data["receipt_id"]
         self.action_id: str = data["action_id"]
         self.action_hash: str = data["action_hash"]
         self._data = data
@@ -27,7 +32,10 @@ class ApprovalRequest:
 
     def __init__(self, data: dict[str, Any]):
         self.request_id: str = data["request_id"]
-        self.token: str = data["token"]
+        self.owner_id: UUID = UUID(data["owner_id"])
+        reviewer_id = data["reviewer_id"]
+        self.reviewer_id: Optional[UUID] = UUID(reviewer_id) if reviewer_id else None
+        self.can_resolve: bool = data["can_resolve"]
         self.status: str = data["status"]
         self.tool_name: str = data["tool_name"]
         self.reason: str = data.get("reason", "")
@@ -81,7 +89,6 @@ class Security:
         tool_args: dict[str, Any],
         agent_id: str,
         session_id: str,
-        user_id: Optional[str] = None,
         trigger: str = "manual",
         runtime: str = "mutx",
     ) -> ActionEvaluateResponse:
@@ -92,19 +99,17 @@ class Security:
             tool_args: Tool arguments
             agent_id: Agent ID
             session_id: Session ID
-            user_id: Optional user ID
             trigger: What triggered this action
             runtime: Runtime identifier
         """
         self._require_sync_client()
         response = self._client.post(
-            "/security/actions/evaluate",
+            "security/actions/evaluate",
             json={
                 "tool_name": tool_name,
                 "tool_args": tool_args,
                 "agent_id": agent_id,
                 "session_id": session_id,
-                "user_id": user_id,
                 "trigger": trigger,
                 "runtime": runtime,
             },
@@ -118,20 +123,18 @@ class Security:
         tool_args: dict[str, Any],
         agent_id: str,
         session_id: str,
-        user_id: Optional[str] = None,
         trigger: str = "manual",
         runtime: str = "mutx",
     ) -> ActionEvaluateResponse:
         """Evaluate an action against policy (async)."""
         self._require_async_client()
         response = await self._client.post(
-            "/security/actions/evaluate",
+            "security/actions/evaluate",
             json={
                 "tool_name": tool_name,
                 "tool_args": tool_args,
                 "agent_id": agent_id,
                 "session_id": session_id,
-                "user_id": user_id,
                 "trigger": trigger,
                 "runtime": runtime,
             },
@@ -147,21 +150,23 @@ class Security:
         session_id: str,
         reason: str = "",
         timeout_minutes: int = 5,
-        user_id: Optional[str] = None,
+        reviewer_id: str | UUID | None = None,
     ) -> ApprovalRequest:
         """Request human approval for a deferred action."""
         self._require_sync_client()
+        payload = {
+            "tool_name": tool_name,
+            "tool_args": tool_args,
+            "agent_id": agent_id,
+            "session_id": session_id,
+            "reason": reason,
+            "timeout_minutes": timeout_minutes,
+        }
+        if reviewer_id is not None:
+            payload["reviewer_id"] = str(reviewer_id)
         response = self._client.post(
-            "/security/approvals/request",
-            json={
-                "tool_name": tool_name,
-                "tool_args": tool_args,
-                "agent_id": agent_id,
-                "session_id": session_id,
-                "user_id": user_id,
-                "reason": reason,
-                "timeout_minutes": timeout_minutes,
-            },
+            "security/approvals/request",
+            json=payload,
         )
         response.raise_for_status()
         return ApprovalRequest(response.json())
@@ -174,21 +179,23 @@ class Security:
         session_id: str,
         reason: str = "",
         timeout_minutes: int = 5,
-        user_id: Optional[str] = None,
+        reviewer_id: str | UUID | None = None,
     ) -> ApprovalRequest:
         """Request human approval (async)."""
         self._require_async_client()
+        payload = {
+            "tool_name": tool_name,
+            "tool_args": tool_args,
+            "agent_id": agent_id,
+            "session_id": session_id,
+            "reason": reason,
+            "timeout_minutes": timeout_minutes,
+        }
+        if reviewer_id is not None:
+            payload["reviewer_id"] = str(reviewer_id)
         response = await self._client.post(
-            "/security/approvals/request",
-            json={
-                "tool_name": tool_name,
-                "tool_args": tool_args,
-                "agent_id": agent_id,
-                "session_id": session_id,
-                "user_id": user_id,
-                "reason": reason,
-                "timeout_minutes": timeout_minutes,
-            },
+            "security/approvals/request",
+            json=payload,
         )
         response.raise_for_status()
         return ApprovalRequest(response.json())
@@ -199,7 +206,9 @@ class Security:
     ) -> ApprovalRequest:
         """Get the status of an approval request."""
         self._require_sync_client()
-        response = self._client.get(f"/security/approvals/{request_id}")
+        response = self._client.get(
+            api_path("security/approvals/{request_id}", request_id=request_id)
+        )
         response.raise_for_status()
         return ApprovalRequest(response.json())
 
@@ -209,80 +218,78 @@ class Security:
     ) -> ApprovalRequest:
         """Get the status of an approval request (async)."""
         self._require_async_client()
-        response = await self._client.get(f"/security/approvals/{request_id}")
+        response = await self._client.get(
+            api_path("security/approvals/{request_id}", request_id=request_id)
+        )
         response.raise_for_status()
         return ApprovalRequest(response.json())
 
     def list_pending_approvals(self) -> list[ApprovalRequest]:
         """List all pending approval requests."""
         self._require_sync_client()
-        response = self._client.get("/security/approvals")
+        response = self._client.get("security/approvals")
         response.raise_for_status()
         return [ApprovalRequest(d) for d in response.json()]
 
     async def alist_pending_approvals(self) -> list[ApprovalRequest]:
         """List all pending approval requests (async)."""
         self._require_async_client()
-        response = await self._client.get("/security/approvals")
+        response = await self._client.get("security/approvals")
         response.raise_for_status()
         return [ApprovalRequest(d) for d in response.json()]
 
     def approve(
         self,
-        token: str,
-        reviewer: str,
+        request_id: str,
         comment: str = "",
     ) -> dict[str, Any]:
         """Approve a pending request."""
         self._require_sync_client()
         response = self._client.post(
-            f"/security/approvals/{token}/approve",
-            json={"reviewer": reviewer, "comment": comment},
+            api_path("security/approvals/{request_id}/approve", request_id=request_id),
+            json={"comment": comment},
         )
         response.raise_for_status()
         return response.json()
 
     async def aapprove(
         self,
-        token: str,
-        reviewer: str,
+        request_id: str,
         comment: str = "",
     ) -> dict[str, Any]:
         """Approve a pending request (async)."""
         self._require_async_client()
         response = await self._client.post(
-            f"/security/approvals/{token}/approve",
-            json={"reviewer": reviewer, "comment": comment},
+            api_path("security/approvals/{request_id}/approve", request_id=request_id),
+            json={"comment": comment},
         )
         response.raise_for_status()
         return response.json()
 
     def deny(
         self,
-        token: str,
-        reviewer: str,
+        request_id: str,
         reason: str = "",
     ) -> dict[str, Any]:
         """Deny a pending request."""
         self._require_sync_client()
         response = self._client.post(
-            f"/security/approvals/{token}/deny",
-            json={"reviewer": reviewer, "comment": reason},
+            api_path("security/approvals/{request_id}/deny", request_id=request_id),
+            json={"comment": reason},
         )
         response.raise_for_status()
         return response.json()
 
     async def adeny(
         self,
-        token: str,
-        reviewer: str,
+        request_id: str,
         reason: str = "",
     ) -> dict[str, Any]:
         """Deny a pending request (async)."""
         self._require_async_client()
         response = await self._client.post(
-            f"/security/approvals/{token}/deny",
-            json={"reviewer": reviewer, "comment": reason},
+            api_path("security/approvals/{request_id}/deny", request_id=request_id),
+            json={"comment": reason},
         )
         response.raise_for_status()
         return response.json()
@@ -293,7 +300,9 @@ class Security:
     ) -> dict[str, Any]:
         """Get a receipt by ID."""
         self._require_sync_client()
-        response = self._client.get(f"/security/receipts/{receipt_id}")
+        response = self._client.get(
+            api_path("security/receipts/{receipt_id}", receipt_id=receipt_id)
+        )
         response.raise_for_status()
         return response.json()
 
@@ -303,7 +312,9 @@ class Security:
     ) -> dict[str, Any]:
         """Get a receipt by ID (async)."""
         self._require_async_client()
-        response = await self._client.get(f"/security/receipts/{receipt_id}")
+        response = await self._client.get(
+            api_path("security/receipts/{receipt_id}", receipt_id=receipt_id)
+        )
         response.raise_for_status()
         return response.json()
 
@@ -311,12 +322,13 @@ class Security:
         self,
         session_id: str,
         limit: int = 100,
+        offset: int = 0,
     ) -> dict[str, Any]:
         """Get receipts for a session."""
         self._require_sync_client()
         response = self._client.get(
-            f"/security/receipts/session/{session_id}",
-            params={"limit": limit},
+            api_path("security/receipts/session/{session_id}", session_id=session_id),
+            params={"limit": limit, "offset": offset},
         )
         response.raise_for_status()
         return response.json()
@@ -325,12 +337,13 @@ class Security:
         self,
         session_id: str,
         limit: int = 100,
+        offset: int = 0,
     ) -> dict[str, Any]:
         """Get receipts for a session (async)."""
         self._require_async_client()
         response = await self._client.get(
-            f"/security/receipts/session/{session_id}",
-            params={"limit": limit},
+            api_path("security/receipts/session/{session_id}", session_id=session_id),
+            params={"limit": limit, "offset": offset},
         )
         response.raise_for_status()
         return response.json()
@@ -338,42 +351,42 @@ class Security:
     def run_compliance_check(self) -> dict[str, Any]:
         """Run the local AARM-alignment gap check (not conformance)."""
         self._require_sync_client()
-        response = self._client.get("/security/compliance")
+        response = self._client.get("security/compliance")
         response.raise_for_status()
         return response.json()
 
     async def arun_compliance_check(self) -> dict[str, Any]:
         """Run the local AARM-alignment gap check asynchronously."""
         self._require_async_client()
-        response = await self._client.get("/security/compliance")
+        response = await self._client.get("security/compliance")
         response.raise_for_status()
         return response.json()
 
     def get_metrics(self) -> GovernanceMetrics:
         """Get governance metrics."""
         self._require_sync_client()
-        response = self._client.get("/security/metrics")
+        response = self._client.get("security/metrics")
         response.raise_for_status()
         return GovernanceMetrics(response.json())
 
     async def aget_metrics(self) -> GovernanceMetrics:
         """Get governance metrics (async)."""
         self._require_async_client()
-        response = await self._client.get("/security/metrics")
+        response = await self._client.get("security/metrics")
         response.raise_for_status()
         return GovernanceMetrics(response.json())
 
     def get_prometheus_metrics(self) -> str:
         """Get metrics in Prometheus format."""
         self._require_sync_client()
-        response = self._client.get("/security/metrics/prometheus")
+        response = self._client.get("security/metrics/prometheus")
         response.raise_for_status()
         return response.text
 
     async def aget_prometheus_metrics(self) -> str:
         """Get metrics in Prometheus format (async)."""
         self._require_async_client()
-        response = await self._client.get("/security/metrics/prometheus")
+        response = await self._client.get("security/metrics/prometheus")
         response.raise_for_status()
         return response.text
 
@@ -383,18 +396,16 @@ class Security:
         agent_id: str,
         original_request: str = "",
         stated_intent: str = "",
-        user_id: Optional[str] = None,
     ) -> dict[str, Any]:
         """Create a new session context for security tracking."""
         self._require_sync_client()
         response = self._client.post(
-            "/security/sessions",
+            "security/sessions",
             params={
                 "session_id": session_id,
                 "agent_id": agent_id,
                 "original_request": original_request,
                 "stated_intent": stated_intent,
-                "user_id": user_id,
             },
         )
         response.raise_for_status()
@@ -406,18 +417,16 @@ class Security:
         agent_id: str,
         original_request: str = "",
         stated_intent: str = "",
-        user_id: Optional[str] = None,
     ) -> dict[str, Any]:
         """Create a new session context (async)."""
         self._require_async_client()
         response = await self._client.post(
-            "/security/sessions",
+            "security/sessions",
             params={
                 "session_id": session_id,
                 "agent_id": agent_id,
                 "original_request": original_request,
                 "stated_intent": stated_intent,
-                "user_id": user_id,
             },
         )
         response.raise_for_status()
@@ -429,7 +438,9 @@ class Security:
     ) -> dict[str, Any]:
         """Get session context."""
         self._require_sync_client()
-        response = self._client.get(f"/security/sessions/{session_id}")
+        response = self._client.get(
+            api_path("security/sessions/{session_id}", session_id=session_id)
+        )
         response.raise_for_status()
         return response.json()
 
@@ -439,7 +450,9 @@ class Security:
     ) -> dict[str, Any]:
         """Get session context (async)."""
         self._require_async_client()
-        response = await self._client.get(f"/security/sessions/{session_id}")
+        response = await self._client.get(
+            api_path("security/sessions/{session_id}", session_id=session_id)
+        )
         response.raise_for_status()
         return response.json()
 
@@ -449,7 +462,9 @@ class Security:
     ) -> dict[str, Any]:
         """Close a session."""
         self._require_sync_client()
-        response = self._client.delete(f"/security/sessions/{session_id}")
+        response = self._client.delete(
+            api_path("security/sessions/{session_id}", session_id=session_id)
+        )
         response.raise_for_status()
         return response.json()
 
@@ -459,6 +474,8 @@ class Security:
     ) -> dict[str, Any]:
         """Close a session (async)."""
         self._require_async_client()
-        response = await self._client.delete(f"/security/sessions/{session_id}")
+        response = await self._client.delete(
+            api_path("security/sessions/{session_id}", session_id=session_id)
+        )
         response.raise_for_status()
         return response.json()

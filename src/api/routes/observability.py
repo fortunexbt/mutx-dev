@@ -34,7 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.api.database import get_db
-from src.api.auth.dependencies import get_current_user
+from src.api.auth.dependencies import require_roles
 from src.api.models import User, MutxRun, MutxStep, MutxCost, MutxProvenance, MutxEvalResult
 from src.api.models.observability import (
     MutxRunCreate,
@@ -43,9 +43,9 @@ from src.api.models.observability import (
     MutxRunHistoryResponse,
     MutxStepCreate,
     MutxStep as MutxStepSchema,
-    MutxCost as MutxCostSchema,
+    MutxCostResponse,
     MutxProvenance as MutxProvenanceSchema,
-    MutxEval as MutxEvalSchema,
+    MutxEvalResponse,
     MutxEvalCreate,
     MutxRunStatus,
     MutxStepType,
@@ -53,12 +53,13 @@ from src.api.models.observability import (
     generate_run_id,
     compute_run_hash,
 )
+from src.api.models.numeric import NonNegativeFiniteFloat, nullable_non_finite_numbers
 
 router = APIRouter(prefix="/observability", tags=["observability"])
 
 
 def _encode_json(value: dict[str, Any]) -> str:
-    return json.dumps(value)
+    return json.dumps(value, allow_nan=False)
 
 
 def _decode_json(value: Optional[str]) -> dict[str, Any]:
@@ -74,7 +75,7 @@ def _decode_json(value: Optional[str]) -> dict[str, Any]:
 
 
 def _encode_list(value: list) -> str:
-    return json.dumps(value)
+    return json.dumps(value, allow_nan=False)
 
 
 def _decode_list(value: Optional[str]) -> list:
@@ -89,17 +90,19 @@ def _decode_list(value: Optional[str]) -> list:
         return []
 
 
-def _serialize_cost(cost: Optional[MutxCost]) -> Optional[MutxCostSchema]:
+def _serialize_cost(cost: Optional[MutxCost]) -> Optional[MutxCostResponse]:
     if cost is None:
         return None
-    return MutxCostSchema(
+    cost_usd, degraded = nullable_non_finite_numbers(cost.cost_usd)
+    return MutxCostResponse(
         input_tokens=cost.input_tokens,
         output_tokens=cost.output_tokens,
         cache_read_tokens=cost.cache_read_tokens,
         cache_write_tokens=cost.cache_write_tokens,
         total_tokens=cost.total_tokens,
-        cost_usd=cost.cost_usd,
+        cost_usd=cost_usd,
         model=cost.model,
+        degraded=degraded,
     )
 
 
@@ -133,25 +136,31 @@ def _serialize_step(step: MutxStep) -> MutxStepSchema:
         ended_at=step.ended_at,
         duration_ms=step.duration_ms,
         tokens_used=step.tokens_used,
-        metadata=_decode_json(step.step_metadata),
+        step_metadata=_decode_json(step.step_metadata),
     )
 
 
-def _serialize_eval(eval_result: Optional[MutxEvalResult]) -> Optional[MutxEvalSchema]:
+def _serialize_eval(eval_result: Optional[MutxEvalResult]) -> Optional[MutxEvalResponse]:
     if eval_result is None:
         return None
-    metrics = _decode_json(eval_result.metrics) if eval_result.metrics else None
-    return MutxEvalSchema(
-        task_type=eval_result.task_type,
-        eval_layer=eval_result.eval_layer,
-        eval_pass=eval_result.eval_pass,
-        score=eval_result.score,
-        expected_outcome=eval_result.expected_outcome,
-        actual_outcome=eval_result.actual_outcome,
-        metrics=metrics,
-        regression_from=eval_result.regression_from,
-        detail=eval_result.detail,
-        benchmark_id=eval_result.benchmark_id,
+    metrics, metrics_degraded = nullable_non_finite_numbers(
+        _decode_json(eval_result.metrics) if eval_result.metrics else None
+    )
+    score, score_degraded = nullable_non_finite_numbers(eval_result.score)
+    return MutxEvalResponse.model_validate(
+        {
+            "task_type": eval_result.task_type,
+            "eval_layer": eval_result.eval_layer,
+            "pass": eval_result.eval_pass,
+            "score": score,
+            "expected_outcome": eval_result.expected_outcome,
+            "actual_outcome": eval_result.actual_outcome,
+            "metrics": metrics,
+            "regression_from": eval_result.regression_from,
+            "detail": eval_result.detail,
+            "benchmark_id": eval_result.benchmark_id,
+            "degraded": metrics_degraded or score_degraded,
+        }
     )
 
 
@@ -160,6 +169,8 @@ def _serialize_run(run: MutxRun, include_steps: bool = False) -> MutxRunResponse
     loaded_cost = run.__dict__.get("cost")
     loaded_provenance = run.__dict__.get("provenance")
     loaded_eval = run.__dict__.get("eval_result")
+    response_cost = _serialize_cost(loaded_cost)
+    response_eval = _serialize_eval(loaded_eval)
     response = MutxRunResponse(
         id=run.id,
         agent_id=run.agent_id,
@@ -178,15 +189,19 @@ def _serialize_run(run: MutxRun, include_steps: bool = False) -> MutxRunResponse
         duration_ms=run.duration_ms,
         step_count=len(loaded_steps) if loaded_steps is not None else 0,
         tools_available=_decode_list(run.tools_available),
-        cost=_serialize_cost(loaded_cost),
+        cost=response_cost,
         provenance=_serialize_provenance(loaded_provenance),
-        eval=_serialize_eval(loaded_eval),
+        eval=response_eval,
         error=run.error,
         git_branch=run.git_branch,
         git_commit=run.git_commit,
         workspace_id=run.workspace_id,
         tags=_decode_list(run.tags),
-        metadata=_decode_json(run.run_metadata),
+        run_metadata=_decode_json(run.run_metadata),
+        degraded=bool(
+            (response_cost is not None and response_cost.degraded)
+            or (response_eval is not None and response_eval.degraded)
+        ),
         created_at=run.created_at,
     )
     return response
@@ -202,13 +217,11 @@ async def _get_user_run(run_id: str, current_user: User, db: AsyncSession) -> Mu
             selectinload(MutxRun.provenance),
             selectinload(MutxRun.eval_result),
         )
-        .where(MutxRun.id == run_id)
+        .where(MutxRun.id == run_id, MutxRun.user_id == current_user.id)
     )
     run = result.scalar_one_or_none()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if run.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to access this run")
     await db.refresh(run, attribute_names=["steps", "cost", "provenance", "eval_result"])
     return run
 
@@ -217,7 +230,7 @@ async def _get_user_run(run_id: str, current_user: User, db: AsyncSession) -> Mu
 async def create_run(
     request: MutxRunCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     """
     Create or report a new MutxRun.
@@ -346,7 +359,7 @@ async def list_runs(
     runtime: Optional[str] = Query(None, description="Filter by runtime"),
     trigger: Optional[str] = Query(None, description="Filter by trigger"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     """List runs with optional filters."""
     run_filters = [MutxRun.user_id == current_user.id]
@@ -391,7 +404,7 @@ async def list_runs(
 async def get_run(
     run_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     """Get a run with full step details."""
     run = await _get_user_run(run_id, current_user, db)
@@ -412,7 +425,7 @@ async def add_steps(
     run_id: str,
     steps: list[MutxStepCreate],
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     """Add steps to an existing run."""
     await _get_user_run(run_id, current_user, db)
@@ -459,11 +472,11 @@ async def add_steps(
     )
 
 
-@router.get("/runs/{run_id}/eval", response_model=Optional[MutxEvalSchema])
+@router.get("/runs/{run_id}/eval", response_model=Optional[MutxEvalResponse])
 async def get_eval(
     run_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     """Get the evaluation for a run."""
     run = await _get_user_run(run_id, current_user, db)
@@ -473,13 +486,13 @@ async def get_eval(
 
 
 @router.post(
-    "/runs/{run_id}/eval", response_model=MutxEvalSchema, status_code=status.HTTP_201_CREATED
+    "/runs/{run_id}/eval", response_model=MutxEvalResponse, status_code=status.HTTP_201_CREATED
 )
 async def submit_eval(
     run_id: str,
     eval_data: MutxEvalCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     """Submit or update the evaluation for a run."""
     run = await _get_user_run(run_id, current_user, db)
@@ -524,7 +537,7 @@ async def submit_eval(
 async def get_provenance(
     run_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     """Get the provenance record for a run."""
     run = await _get_user_run(run_id, current_user, db)
@@ -544,7 +557,7 @@ class MutxRunStatusUpdate(BaseModel):
     input_tokens: Optional[int] = Field(default=None, ge=0)
     output_tokens: Optional[int] = Field(default=None, ge=0)
     total_tokens: Optional[int] = Field(default=None, ge=0)
-    cost_usd: Optional[float] = Field(default=None, ge=0.0)
+    cost_usd: Optional[NonNegativeFiniteFloat] = None
 
 
 @router.patch("/runs/{run_id}/status", response_model=MutxRunResponse)
@@ -552,7 +565,7 @@ async def update_run_status(
     run_id: str,
     status_update: MutxRunStatusUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     """Update the status of a run (e.g., mark as completed, failed)."""
     run = await _get_user_run(run_id, current_user, db)

@@ -15,7 +15,7 @@ export async function GET(
     const { agentId } = await context.params;
     return proxyJson(
       request,
-      `${getApiBaseUrl()}/v1/assistant/${agentId}/health`,
+      `${getApiBaseUrl()}/v1/assistant/${encodeURIComponent(agentId)}/health`,
       { fallbackMessage: "Failed to fetch assistant health" },
     );
   })(request);

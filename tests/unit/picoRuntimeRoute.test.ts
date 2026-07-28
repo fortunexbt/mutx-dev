@@ -63,6 +63,75 @@ describe('pico runtime route', () => {
     expect(authenticatedFetch).not.toHaveBeenCalled()
   })
 
+  it('preserves fetched runtime timestamps and explicit stale state', async () => {
+    authenticatedFetch.mockResolvedValue({
+      response: {
+        status: 200,
+        json: async () => ({
+          provider: 'openclaw',
+          label: 'OpenClaw',
+          status: 'healthy',
+          last_seen_at: '2026-07-28T08:00:00Z',
+          last_synced_at: '2026-07-28T08:01:00Z',
+          stale: true,
+          stale_after_seconds: 900,
+          binding_count: 1,
+        }),
+      },
+      tokenRefreshed: false,
+    })
+
+    const { GET } = await import('../../app/api/pico/runtime/[provider]/route')
+    const request = new NextRequest('https://pico.mutx.dev/api/pico/runtime/openclaw')
+    const response = await GET(request, {
+      params: Promise.resolve({ provider: 'openclaw' }),
+    })
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      status: 'healthy',
+      last_seen_at: '2026-07-28T08:00:00Z',
+      last_synced_at: '2026-07-28T08:01:00Z',
+      stale: true,
+      stale_after_seconds: 900,
+    })
+  })
+
+  it('preserves runtime provider failures instead of returning a healthy default', async () => {
+    authenticatedFetch.mockResolvedValue({
+      response: {
+        status: 503,
+        json: async () => ({ detail: 'Runtime snapshot store unavailable' }),
+      },
+      tokenRefreshed: false,
+    })
+
+    const { GET } = await import('../../app/api/pico/runtime/[provider]/route')
+    const request = new NextRequest('https://pico.mutx.dev/api/pico/runtime/openclaw')
+    const response = await GET(request, {
+      params: Promise.resolve({ provider: 'openclaw' }),
+    })
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toEqual({
+      detail: 'Runtime snapshot store unavailable',
+    })
+  })
+
+  it('rejects invalid provider path values before contacting the control plane', async () => {
+    const { GET } = await import('../../app/api/pico/runtime/[provider]/route')
+    const request = new NextRequest('https://pico.mutx.dev/api/pico/runtime/invalid')
+    const response = await GET(request, {
+      params: Promise.resolve({ provider: '../governance' }),
+    })
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'BAD_REQUEST', message: 'Invalid runtime provider' },
+    })
+    expect(authenticatedFetch).not.toHaveBeenCalled()
+  })
+
   it('returns 401 for runtime provider updates before parsing an invalid body', async () => {
     hasAuthSession.mockReturnValue(false)
 
@@ -84,6 +153,22 @@ describe('pico runtime route', () => {
     await expect(response.json()).resolves.toEqual({
       status: 'error',
       error: { code: 'UNAUTHORIZED', message: 'Unauthorized' },
+    })
+    expect(authenticatedFetch).not.toHaveBeenCalled()
+  })
+
+  it('returns 400 for malformed runtime JSON after authentication', async () => {
+    const { PUT } = await import('../../app/api/pico/runtime/[provider]/route')
+    const syntaxError = new SyntaxError('Unexpected end of JSON input')
+
+    const response = await PUT(
+      createJsonRequest({ jsonError: syntaxError }),
+      { params: Promise.resolve({ provider: 'openclaw' }) },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'BAD_REQUEST', message: 'Invalid JSON in request body' },
     })
     expect(authenticatedFetch).not.toHaveBeenCalled()
   })

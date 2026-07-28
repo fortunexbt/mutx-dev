@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from sdk.mutx.onboarding import Onboarding, OnboardingState, OnboardingStep
+from tests.sdk_contract_utils import assert_v1_request
 
 
 # ---------------------------------------------------------------------------
@@ -198,13 +199,15 @@ class TestGetStateSync:
     def test_get_state_calls_get_with_params(self, sync_mock_client: MagicMock) -> None:
         onboarding = Onboarding(sync_mock_client)
         result = onboarding.get_state(provider="openclaw")
-        sync_mock_client.get.assert_called_once_with("/onboarding", params={"provider": "openclaw"})
+        request = assert_v1_request(sync_mock_client.get, "GET", "/v1/onboarding")
+        assert dict(request.url.params) == {"provider": "openclaw"}
         assert isinstance(result, OnboardingState)
 
     def test_get_state_default_provider(self, sync_mock_client: MagicMock) -> None:
         onboarding = Onboarding(sync_mock_client)
         onboarding.get_state()
-        sync_mock_client.get.assert_called_once_with("/onboarding", params={"provider": "openclaw"})
+        request = assert_v1_request(sync_mock_client.get, "GET", "/v1/onboarding")
+        assert dict(request.url.params) == {"provider": "openclaw"}
 
 
 class TestUpdateSync:
@@ -246,18 +249,16 @@ class TestGetStateAsync:
     async def test_aget_state_calls_get_with_params(self, async_mock_client: MagicMock) -> None:
         onboarding = Onboarding(async_mock_client)
         result = await onboarding.aget_state(provider="openclaw")
-        async_mock_client.get.assert_called_once_with(
-            "/onboarding", params={"provider": "openclaw"}
-        )
+        request = assert_v1_request(async_mock_client.get, "GET", "/v1/onboarding")
+        assert dict(request.url.params) == {"provider": "openclaw"}
         assert isinstance(result, OnboardingState)
 
     @pytest.mark.asyncio
     async def test_aget_state_default_provider(self, async_mock_client: MagicMock) -> None:
         onboarding = Onboarding(async_mock_client)
         await onboarding.aget_state()
-        async_mock_client.get.assert_called_once_with(
-            "/onboarding", params={"provider": "openclaw"}
-        )
+        request = assert_v1_request(async_mock_client.get, "GET", "/v1/onboarding")
+        assert dict(request.url.params) == {"provider": "openclaw"}
 
 
 class TestUpdateAsync:

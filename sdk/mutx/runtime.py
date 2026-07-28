@@ -6,6 +6,8 @@ from typing import Any, Optional
 
 import httpx
 
+from mutx._http import api_path
+
 
 class RuntimeProviderSnapshot:
     """Represents a runtime provider snapshot."""
@@ -65,7 +67,7 @@ class Runtime:
     ) -> RuntimeProviderSnapshot:
         """Get runtime provider snapshot."""
         self._require_sync_client()
-        response = self._client.get(f"/runtime/providers/{provider}")
+        response = self._client.get(api_path("runtime/providers/{provider}", provider=provider))
         response.raise_for_status()
         return RuntimeProviderSnapshot(response.json())
 
@@ -75,7 +77,9 @@ class Runtime:
     ) -> RuntimeProviderSnapshot:
         """Get runtime provider snapshot (async)."""
         self._require_async_client()
-        response = await self._client.get(f"/runtime/providers/{provider}")
+        response = await self._client.get(
+            api_path("runtime/providers/{provider}", provider=provider)
+        )
         response.raise_for_status()
         return RuntimeProviderSnapshot(response.json())
 
@@ -93,7 +97,9 @@ class Runtime:
         if config:
             payload["config"] = config
 
-        response = self._client.put(f"/runtime/providers/{provider}", json=payload)
+        response = self._client.put(
+            api_path("runtime/providers/{provider}", provider=provider), json=payload
+        )
         response.raise_for_status()
         return RuntimeProviderSnapshot(response.json())
 
@@ -111,34 +117,36 @@ class Runtime:
         if config:
             payload["config"] = config
 
-        response = await self._client.put(f"/runtime/providers/{provider}", json=payload)
+        response = await self._client.put(
+            api_path("runtime/providers/{provider}", provider=provider), json=payload
+        )
         response.raise_for_status()
         return RuntimeProviderSnapshot(response.json())
 
     def get_governance_metrics(self) -> str:
         """Get governance metrics in Prometheus format."""
         self._require_sync_client()
-        response = self._client.get("/runtime/governance/metrics")
+        response = self._client.get("runtime/governance/metrics")
         response.raise_for_status()
         return response.text
 
     async def aget_governance_metrics(self) -> str:
         """Get governance metrics in Prometheus format (async)."""
         self._require_async_client()
-        response = await self._client.get("/runtime/governance/metrics")
+        response = await self._client.get("runtime/governance/metrics")
         response.raise_for_status()
         return response.text
 
     def get_governance_status(self) -> GovernanceStatus:
         """Get governance daemon health and status."""
         self._require_sync_client()
-        response = self._client.get("/runtime/governance/status")
+        response = self._client.get("runtime/governance/status")
         response.raise_for_status()
         return GovernanceStatus(response.json())
 
     async def aget_governance_status(self) -> GovernanceStatus:
         """Get governance daemon health and status (async)."""
         self._require_async_client()
-        response = await self._client.get("/runtime/governance/status")
+        response = await self._client.get("runtime/governance/status")
         response.raise_for_status()
         return GovernanceStatus(response.json())

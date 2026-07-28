@@ -62,4 +62,4 @@ npx playwright test --list
 
 ## Source
 
-See the full agent definition in `agents/qa-reliability-engineer/AGENT.md`.
+See the full [agent definition](https://github.com/mutx-dev/mutx-dev/blob/main/agents/qa-reliability-engineer/AGENT.md) in the source repository.

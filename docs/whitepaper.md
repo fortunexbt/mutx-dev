@@ -19,7 +19,7 @@ Operating autonomous agents in production fails in predictable ways:
 |---|---|---|
 | Unbounded tool execution | Agent calls destructive tools (shell, file delete, network) without constraint | Supported supervised paths can evaluate a NormalizedAction before execution; complete current AARM R1 coverage is not yet demonstrated |
 | Context-blind gating | Individual actions look safe but the sequence is dangerous (e.g., read-credit-cards → send-email) | ContextAccumulator stores session actions and data access (partial current R2/R3); IntentSignal is a heuristic, not current R7 semantic distance |
-| No human override | High-risk actions execute automatically with no approval path | ApprovalService provides a human decision lifecycle (partial current R4; STEP_UP and DEFER are not yet distinct) |
+| No human override | High-risk actions execute automatically with no approval path | Canonical durable approvals provide an authenticated human decision lifecycle; governed DEFER remains fail-closed until a durable resume binding exists |
 | No audit trail | After an incident, there is no record of what the agent did, why, or who approved it | ReceiptGenerator can create and sign ActionReceipts (partial current R5; full receipt evidence is not yet demonstrated) |
 | Credential sprawl | API keys and secrets embedded in agent configs or environment variables permanently | CredentialBroker retrieves on-demand with TTL, injects as ephemeral env vars |
 | Agent zombie processes | Agent crashes but its status remains "running" indefinitely | MonitorRuntimeState tracks heartbeats; SelfHealer recovers via RESTART/ROLLBACK |
@@ -49,11 +49,11 @@ Operating autonomous agents in production fails in predictable ways:
 │  CLI (Click)  │  TUI (Textual)  │  Next.js Dashboard  │  SDK    │
 ├─────────────────────────────────────────────────────────────────┤
 │                         Control Plane API                        │
-│  FastAPI + Uvicorn  │  32 Route Modules  │  Middleware Stack     │
+│  FastAPI + Uvicorn  │  33 Route Families │  Middleware Stack     │
 ├─────────────────────────────────────────────────────────────────┤
 │                      Governance Engine                           │
 │  ActionMediator → ContextAccumulator → PolicyEngine              │
-│  → ApprovalService │ ReceiptGenerator │ TelemetryExporter        │
+│  → Durable Approvals │ ReceiptGenerator │ TelemetryExporter      │
 ├─────────────────────────────────────────────────────────────────┤
 │                        Services                                  │
 │  FarameshSupervisor │ CredentialBroker │ SPIFFEIdentityProvider  │
@@ -73,52 +73,52 @@ Operating autonomous agents in production fails in predictable ways:
 ```
 src/api/                         # FastAPI control plane
   main.py                        # Application factory, lifespan, route registration
-  config.py                      # Pydantic Settings (404 lines)
-  database.py                    # Async engine, SSL negotiation, schema repair (387 lines)
+  config.py                      # Pydantic settings
+  database.py                    # Async engine, SSL negotiation, schema repair
   models/
-    models.py                    # 24 SQLAlchemy ORM models (633 lines)
-    schemas.py                   # Pydantic request/response schemas (865 lines)
-    migrations/versions/         # 17 Alembic migration files
+    models.py                    # SQLAlchemy ORM models
+    schemas.py                   # Pydantic request/response schemas
+    migrations/versions/         # Alembic migration history
   auth/
-    jwt.py                       # JWT + refresh token rotation (319 lines)
-    ownership.py                 # Resource ownership enforcement (65 lines)
+    jwt.py                       # JWT + refresh token rotation
+    ownership.py                 # Resource ownership enforcement
   middleware/
-    auth.py                      # Dual auth resolution (346 lines)
-    tracing.py                   # OTel context propagation (57 lines)
+    auth.py                      # Dual auth resolution
+    tracing.py                   # OTel context propagation
     rate_limit.py                # Rate limiting
     security.py                  # Security headers
-  routes/                        # 32 route modules
+  routes/                        # mounted route modules
   services/
-    self_healer.py               # Autonomous recovery (718 lines)
-    credential_broker.py         # 6-backend credential broker (863 lines)
-    faramesh_supervisor.py       # Process supervision (637 lines)
-    spiffe_identity.py           # SPIFFE/SPIRE identity (256 lines)
-    audit_log.py                 # aiosqlite audit store (464 lines)
-    policy_store.py              # In-memory policy CRUD + SSE (149 lines)
-    monitoring.py                # Health monitoring + webhooks (309 lines)
-    monitor.py                   # Background monitor daemon (201 lines)
-    operator_state.py            # Onboarding state machine (297 lines)
-  metrics.py                     # Prometheus metrics (141 lines)
-  logging_config.py              # JSON structured logging (149 lines)
-  exception_handlers.py          # Structured error responses (138 lines)
+    self_healer.py               # Autonomous recovery
+    credential_broker.py         # 6-backend credential broker
+    faramesh_supervisor.py       # Process supervision
+    spiffe_identity.py           # SPIFFE/SPIRE identity
+    audit_log.py                 # aiosqlite audit store
+    policy_store.py              # In-memory policy CRUD and versioning
+    monitoring.py                # Health monitoring + webhooks
+    monitor.py                   # Background monitor daemon
+    operator_state.py            # Onboarding state machine
+  metrics.py                     # Prometheus metrics
+  logging_config.py              # JSON structured logging
+  exception_handlers.py          # Structured error responses
 
 src/security/                    # Governance engine (framework-agnostic)
-  mediator.py                    # Action mediation (317 lines)
-  context.py                     # Context accumulation (388 lines)
-  policy.py                      # Policy engine (465 lines)
-  approvals.py                   # Approval service (395 lines)
-  receipts.py                    # Cryptographic receipts (407 lines)
+  mediator.py                    # Action mediation
+  context.py                     # Context accumulation
+  policy.py                      # Policy engine
+  approvals.py                   # Approval service
+  receipts.py                    # Cryptographic receipts
   compliance.py                  # Local AARM-alignment gap checker
   telemetry.py                   # Security telemetry exporter
 
 sdk/mutx/                        # Python SDK
-  agent_runtime.py               # Agent client (937 lines)
-  guardrails.py                  # Client-side guardrails (371 lines)
-  policy.py                      # Policy hot-reload client (207 lines)
+  agent_runtime.py               # Agent client
+  guardrails.py                  # Client-side guardrails
+  policy.py                      # Policy hot-reload client
   telemetry.py                   # SDK telemetry
 
 cli/                             # CLI and TUI
-  commands/                      # 23 Click command groups
+  commands/                      # Click command modules
   tui/                           # Textual cockpit
 
 infrastructure/                  # Deployment and configuration
@@ -138,7 +138,7 @@ infrastructure/                  # Deployment and configuration
 | TUI | `cli/commands/tui.py` | Terminal | Operational cockpit |
 | SDK | `sdk/mutx/agent_runtime.py` | Python library | Agent-side integration |
 | Prometheus | `/metrics` endpoint | HTTP/text | Metrics scraping |
-| SSE | `/v1/policies/stream` | Server-Sent Events | Policy hot-reload |
+| Policy reload | `/v1/policies/{name}/reload` | HTTP POST | Policy hot-reload |
 | Webhooks | User-registered URLs | HTTP POST | Event notifications |
 
 ## 5. Control Plane API
@@ -190,7 +190,7 @@ Key behaviors:
 
 ### Route Mounting
 
-Source: `src/api/main.py:323-346`
+Source: `src/api/main.py`
 
 Routes are organized into public and private registrations. Private routes receive `get_current_user` as a dependency:
 
@@ -209,9 +209,11 @@ def _register_application_routes(app: FastAPI) -> None:
         )
 ```
 
-32 routers are registered, each with `APIRouter(prefix=...)`:
+`src/api/main.py` currently registers 36 public routers and one private audit
+router. Duplicate agent-runtime and lead/contact routers collapse into 33
+top-level `/v1` route families in the generated contract:
 
-| Prefix | Route Module | Key Operations |
+| Router prefix (under `/v1`) | Route Module | Key Operations |
 |---|---|---|
 | `/agents` | `routes/agents.py` | CRUD, config management, metrics, logs |
 | `/deployments` | `routes/deployments.py` | CRUD, versioning, events |
@@ -219,7 +221,7 @@ def _register_application_routes(app: FastAPI) -> None:
 | `/api-keys` | `routes/api_keys.py` | API key lifecycle |
 | `/observability` | `routes/observability.py` | MutxRun, steps, costs, eval, provenance |
 | `/security` | `routes/security.py` | Security evaluation API |
-| `/policies` | `routes/policies.py` | Policy CRUD + SSE stream |
+| `/policies` | `routes/policies.py` | Policy CRUD, evaluation, and reload |
 | `/approvals` | `routes/approvals.py` | Approval workflow API |
 | `/audit` | `routes/audit.py` | Audit query API |
 | `/runtime/governance/supervised` | `routes/governance_supervision.py` | Supervised launch |
@@ -240,16 +242,22 @@ def _register_application_routes(app: FastAPI) -> None:
 | `/runtime` | `routes/runtime.py` | Runtime operations |
 | `/assistant` | `routes/assistant.py` | Assistant integration |
 | `/ingest` | `routes/ingest.py` | Data ingestion |
+| `/events` | `routes/events.py` | Generic event ingestion |
 | `/clawhub` | `routes/clawhub.py` | ClawHub integration |
-| `/newsletter` | `routes/newsletter.py` | Newsletter signup (UNMOUNTED — code exists but not served; `/v1/leads` is the active replacement) |
 | `/onboarding` | `routes/onboarding.py` | User onboarding |
 | `/leads` | `routes/leads.py` | Lead/contact management |
 | `/agents` (agent-runtime) | `routes/agent_runtime.py` | Agent-side heartbeat, commands |
-| `/contacts` | `routes/leads.py` (secondary router) | Contact management |
+| `/documents` | `routes/documents.py` | Document job workflows |
+| `/reasoning` | `routes/reasoning.py` | Reasoning job workflows |
+| `/payments` | `routes/payments.py` | Checkout, portal, subscription, webhook |
+| `/governance` | `routes/governance.py` | Trust, lifecycle, discovery, attestations |
+
+The newsletter module exists in source but is deliberately unmounted;
+`/v1/leads` and `/v1/leads/contacts` are the active capture routes.
 
 ### Request Lifecycle
 
-Source: `src/api/main.py:432-509`
+Source: `src/api/main.py`
 
 Middleware is registered in reverse execution order (Starlette convention). The actual execution order for each request is:
 
@@ -297,7 +305,7 @@ The `TraceContextTextMapPropagator` from the OpenTelemetry SDK handles W3C trace
 
 #### AuthenticationMiddleware
 
-Source: `src/api/middleware/auth.py` (346 lines)
+Source: `src/api/middleware/auth.py`
 
 The auth middleware resolves identity early in the request lifecycle so downstream middleware and route handlers can access it without performing their own auth resolution. It populates `request.state` with auth context.
 
@@ -389,7 +397,7 @@ Applied via `add_security_middleware(app, settings.cors_origins)`. Adds standard
 
 ### Exception Handling
 
-Source: `src/api/exception_handlers.py` (138 lines)
+Source: `src/api/exception_handlers.py`
 
 Three handlers are registered:
 
@@ -428,7 +436,7 @@ The `request_id` is extracted from `request.state.request_id` or generated as a 
 
 ### Prometheus Metrics
 
-Source: `src/api/metrics.py` (141 lines)
+Source: `src/api/metrics.py`
 
 Exposed at `GET /metrics` via the `prometheus_client` `generate_latest()` function.
 
@@ -540,7 +548,7 @@ async def track_request(request: Request, call_next):
 
 ### JSON Structured Logging
 
-Source: `src/api/logging_config.py` (149 lines)
+Source: `src/api/logging_config.py`
 
 ```python
 class StructuredJsonFormatter(jsonlogger.JsonFormatter):
@@ -591,7 +599,7 @@ def setup_json_logging(log_level="INFO", json_format=True, log_file=None):
 
 ### ORM Schema
 
-Source: `src/api/models/models.py` (633 lines)
+Source: `src/api/models/models.py`
 
 All 24 models inherit from `Base` (SQLAlchemy `DeclarativeBase` defined in `src/api/database.py`). They use the `Mapped[]` / `mapped_column()` pattern from SQLAlchemy 2.0.
 
@@ -736,7 +744,7 @@ The Docker Compose setup runs `alembic upgrade head` in a dedicated `migrate` se
 
 ### Database Engine Construction
 
-Source: `src/api/database.py` (387 lines)
+Source: `src/api/database.py`
 
 **SSL mode negotiation:**
 
@@ -836,7 +844,7 @@ async def get_db() -> AsyncSession:
 
 ### JWT Implementation
 
-Source: `src/api/auth/jwt.py` (319 lines)
+Source: `src/api/auth/jwt.py`
 
 **Token structure:**
 
@@ -929,7 +937,7 @@ Source: `src/api/routes/api_keys.py`, `src/api/services/user_service.py`
 
 ### Ownership Enforcement
 
-Source: `src/api/auth/ownership.py` (65 lines)
+Source: `src/api/auth/ownership.py`
 
 ```python
 async def get_owned_agent(
@@ -974,14 +982,14 @@ ContextAccumulator      ← Loads session state, detects intent drift
     ▼
 PolicyEngine            ← Evaluates against rules + context
     │
-    ├──→ ApprovalService      (if DEFER)
+    ├──→ Fail closed          (if DEFER; no durable resume binding)
     ├──→ ReceiptGenerator     (always)
     └──→ TelemetryExporter    (always)
 ```
 
 ### ActionMediator
 
-Source: `src/security/mediator.py` (317 lines)
+Source: `src/security/mediator.py`
 
 The entry point for all tool call interception. It normalizes heterogeneous framework tool calls into a canonical format.
 
@@ -1078,7 +1086,7 @@ class ActionMediator:
 
 ### ContextAccumulator
 
-Source: `src/security/context.py` (388 lines)
+Source: `src/security/context.py`
 
 Accumulates session state throughout an agent's execution to enable context-aware policy evaluation.
 
@@ -1183,7 +1191,7 @@ class ContextAccumulator:
 
 ### PolicyEngine
 
-Source: `src/security/policy.py` (465 lines)
+Source: `src/security/policy.py`
 
 Evaluates NormalizedAction against policy rules AND session context.
 
@@ -1310,98 +1318,33 @@ class PolicyEngine:
         return PolicyDecisionResult(decision=self._default_decision, reason="No matching rule")
 ```
 
-### ApprovalService
+### Durable approvals
 
-Source: `src/security/approvals.py` (395 lines)
+Sources: `src/api/models/approval.py`,
+`src/api/services/approval_persistence.py`, and
+`src/api/routes/approvals.py`.
 
-**ApprovalRequest lifecycle:**
+Approval state is stored in the `approval_requests` table with the owner,
+optional assigned reviewer, current status, action context, and resolution
+metadata. Public responses include `owner_id`, `reviewer_id`, and a
+caller-specific `can_resolve` capability. Creation is a paid owner capability;
+resolution uses the authenticated reviewer's persisted role and assignment and
+does not require that reviewer to have a paid plan.
 
-```python
-class ApprovalStatus(str, Enum):
-    PENDING = "pending"
-    APPROVED = "approved"
-    DENIED = "denied"
-    EXPIRED = "expired"
-    CANCELLED = "cancelled"
-```
+The compatibility `/v1/security/approvals/*` routes create and resolve the same
+canonical records by request ID. They neither issue nor accept a separate
+approval token. The retired process-local singleton is not part of the public
+workflow; the remaining service module contains neutral DTO and webhook
+transport code only.
 
-```python
-@dataclass
-class ApprovalRequest:
-    id: str                              # UUID
-    token: str                           # secrets.token_urlsafe(16) — one-time approval URL
-    action: Optional[NormalizedAction]
-    context: Optional[SessionContext]
-    status: ApprovalStatus = PENDING
-    created_at: datetime
-    expires_at: datetime                 # Default: now + 5 minutes
-    decided_at: Optional[datetime]
-    decided_by: Optional[str]
-    tool_name: str
-    tool_args: dict[str, Any]
-    agent_id: str
-    session_id: str
-    user_id: str
-    reason: str
-    reviewers: list[str]
-    reviewer_comments: list[str]
-    escalation_enabled: bool = True
-    escalation_timeout_minutes: int = 10
-    escalated_to: Optional[str]
-    metadata: dict[str, Any]
-
-    @property
-    def remaining_seconds(self) -> int:
-        delta = self.expires_at - datetime.now(timezone.utc)
-        return max(0, int(delta.total_seconds()))
-```
-
-**State transitions:**
-
-```
-PENDING ──── approve(reviewer, comment) ────→ APPROVED
-       ──── deny(reviewer, reason) ─────────→ DENIED
-       ──── cancel() ──────────────────────→ CANCELLED
-       ──── (timeout) check_expired() ─────→ EXPIRED
-```
-
-```python
-def approve(self, reviewer: str, comment: str = "") -> bool:
-    if not self.is_pending: return False
-    self.status = ApprovalStatus.APPROVED
-    self.decided_at = datetime.now(timezone.utc)
-    self.decided_by = reviewer
-    if comment:
-        self.reviewer_comments.append(f"[APPROVED by {reviewer}]: {comment}")
-    return True
-```
-
-**ApprovalService operations:**
-
-```python
-class ApprovalService:
-    def request_approval(
-        self, action, context=None, reason="",
-        reviewers=None, timeout_minutes=None, metadata=None,
-    ) -> ApprovalRequest:
-        """Create approval request. Default timeout: 5 minutes."""
-
-    def approve(self, token, reviewer, comment="") -> Optional[ApprovalRequest]:
-        """Approve by token. Returns None if token invalid or not pending."""
-
-    def deny(self, token, reviewer, reason="") -> Optional[ApprovalRequest]:
-        """Deny by token."""
-
-    def check_expired(self) -> list[ApprovalRequest]:
-        """Check all pending requests and mark expired ones."""
-
-    def get_pending_for_reviewer(self, reviewer_id) -> list[ApprovalRequest]:
-        """Get pending requests for a specific reviewer."""
-```
+A governed in-process `DEFER` currently fails closed before handler execution
+with `resumable: false`. MUTX does not emit an approval unless an application
+explicitly creates a canonical record and binds it to a safe durable,
+idempotent continuation.
 
 ### ReceiptGenerator
 
-Source: `src/security/receipts.py` (407 lines)
+Source: `src/security/receipts.py`
 
 **ActionReceipt:**
 
@@ -1529,7 +1472,7 @@ class AARMComplianceReport:
 
 ## 9. Faramesh Supervisor
 
-Source: `src/api/services/faramesh_supervisor.py` (637 lines)
+Source: `src/api/services/faramesh_supervisor.py`
 
 ### Process Lifecycle State Machine
 
@@ -1627,16 +1570,19 @@ Source: `src/api/routes/governance_supervision.py`
 
 ```
 POST /v1/runtime/governance/supervised/start   — Launch supervised agent
-POST /v1/runtime/governance/supervised/stop     — Stop supervised agent
-GET  /v1/runtime/governance/supervised/status   — Get supervision status
+POST /v1/runtime/governance/supervised/{agent_id}/stop    — Stop supervised agent
+POST /v1/runtime/governance/supervised/{agent_id}/restart — Restart supervised agent
+GET  /v1/runtime/governance/supervised/{agent_id}         — Get supervision status
+GET  /v1/runtime/governance/supervised/        — List supervised agents
 GET  /v1/runtime/governance/supervised/profiles — List available launch profiles
 ```
 
-All routes require `get_current_internal_user` — restricted to verified users on `settings.internal_user_email_domains` (default: `["mutx.dev"]`).
+All routes require persisted `ADMIN`, a verified email, and an email domain from
+`settings.internal_user_email_domains`.
 
 ## 10. Credential Broker
 
-Source: `src/api/services/credential_broker.py` (863 lines)
+Source: `src/api/services/credential_broker.py`
 
 ### Backend Implementations
 
@@ -1720,14 +1666,16 @@ Source: `src/api/routes/governance_credentials.py`
 
 ```
 GET  /v1/governance/credentials/backends       — List registered backends
-POST /v1/governance/credentials/retrieve        — Retrieve a credential
-POST /v1/governance/credentials/register        — Register a backend
+POST /v1/governance/credentials/backends        — Register a backend
+DELETE /v1/governance/credentials/backends/{backend_name} — Unregister a backend
+GET  /v1/governance/credentials/backends/{backend_name}/health — Backend health
+GET  /v1/governance/credentials/get/{full_path} — Retrieve credential metadata
 GET  /v1/governance/credentials/health          — Backend health status
 ```
 
 ## 11. SPIFFE Identity
 
-Source: `src/api/services/spiffe_identity.py` (256 lines)
+Source: `src/api/services/spiffe_identity.py`
 
 ### Identity Sources
 
@@ -1774,7 +1722,8 @@ Agent identities (X.509 SVIDs) are used to establish mutual TLS connections betw
 
 ## 12. Self-Healing
 
-Source: `src/api/services/self_healer.py` (718 lines), `src/api/services/monitor.py` (201 lines), `src/api/services/monitoring.py` (309 lines)
+Source: `src/api/services/self_healer.py`, `src/api/services/monitor.py`,
+`src/api/services/monitoring.py`
 
 ### RecoveryAction
 
@@ -1930,7 +1879,7 @@ The monitor checks agent health on a configurable interval:
 
 ### OpenTelemetry Integration
 
-Source: `src/api/main.py:469-480`
+Source: `src/api/main.py`
 
 ```python
 try:
@@ -1949,7 +1898,7 @@ Standard attributes: `agent.id`, `session.id`, `trace.id`.
 
 ### Audit Log Service
 
-Source: `src/api/services/audit_log.py` (464 lines)
+Source: `src/api/services/audit_log.py`
 
 **Storage:** aiosqlite-backed append-only store.
 
@@ -2014,7 +1963,7 @@ This is called when logging audit events to correlate them with distributed trac
 
 ### Observability API
 
-Source: `src/api/routes/observability.py` (580 lines)
+Source: `src/api/routes/observability.py`
 
 Based on a local adaptation of the agent-run observability schemas. The current
 upstream package is quarantined pending maintainer security review and is not a
@@ -2092,7 +2041,7 @@ Full metrics catalog at `/metrics`:
 
 ## 14. Policy Store
 
-Source: `src/api/services/policy_store.py` (149 lines)
+Source: `src/api/services/policy_store.py`
 
 ### In-Memory Repository
 
@@ -2171,7 +2120,8 @@ POST   /v1/policies          — Create a policy
 GET    /v1/policies/{name}   — Get a specific policy
 PUT    /v1/policies/{name}   — Update a policy
 DELETE /v1/policies/{name}   — Delete a policy
-GET    /v1/policies/stream   — SSE endpoint for hot-reload notifications
+POST   /v1/policies/evaluate — Evaluate enabled policies
+POST   /v1/policies/{name}/reload — Reload one policy
 ```
 
 ## 15. SDK Architecture
@@ -2182,7 +2132,7 @@ The top-level SDK client is httpx-based, exposing 26 resource modules that map t
 
 ### MutxAgentClient
 
-Source: `sdk/mutx/agent_runtime.py` (937 lines)
+Source: `sdk/mutx/agent_runtime.py`
 
 ```python
 class MutxAgentClient:
@@ -2216,7 +2166,7 @@ class MutxAgentClient:
 
 ### GuardrailMiddleware
 
-Source: `sdk/mutx/guardrails.py` (371 lines)
+Source: `sdk/mutx/guardrails.py`
 
 ```python
 @dataclass
@@ -2236,7 +2186,9 @@ class PIIBlocklistGuardrail:
     EMAIL_PATTERN = r"\b[\w.-]+@[\w.-]+\.\w+\b"
 ```
 
-**ToxicityGuardrail:** HTTP-based toxicity detection service.
+**ToxicityGuardrail:** HTTP-based toxicity detection with strict response validation. Service
+timeouts, errors, malformed responses, and missing configuration fail closed; fail-open behavior
+requires the explicit `fail_open_on_unavailable=True` option and returns a visible warning reason.
 
 **RegexGuardrail:** Custom pattern matching with user-defined regex patterns.
 
@@ -2261,7 +2213,7 @@ class GuardrailMiddleware:
 
 ### MutxPolicyClient
 
-Source: `sdk/mutx/policy.py` (207 lines)
+Source: `sdk/mutx/policy.py`
 
 ```python
 DEFAULT_GUARDRAIL_PROFILES = {
@@ -2308,35 +2260,19 @@ def trace_context() -> dict:
 
 ### CLI
 
-Source: `cli/commands/` (23 Click command groups)
+Source: `cli/commands/`
 
-23 command groups map 1:1 to API route families:
+The CLI currently exposes 28 top-level commands: 24 registered command modules plus the `login`,
+`logout`, `status`, and `whoami` commands defined in `cli/main.py`. Command names do not map 1:1 to
+API route families; some are local workflows and some API families are nested under broader groups.
 
-```
-mutx agents      → /v1/agents
-mutx deployments → /v1/deployments
-mutx auth        → /v1/auth
-mutx api-keys    → /v1/api-keys
-mutx config      → settings
-mutx security    → /v1/security
-mutx governance  → /v1/runtime/governance/*
-mutx observability → /v1/observability
-mutx policies    → /v1/policies
-mutx approvals   → /v1/approvals
-mutx audit       → /v1/audit
-mutx webhooks    → /v1/webhooks
-mutx runtime     → /v1/runtime
-mutx usage       → /v1/usage
-mutx budgets     → /v1/budgets
-mutx scheduler   → /v1/scheduler
-mutx agent       → single agent operations
-mutx deploy      → deployment shortcuts
-mutx assistant   → /v1/assistant
-mutx clawhub     → /v1/clawhub
-mutx onboard     → /v1/onboarding
-mutx setup       → initial configuration
-mutx update      → self-update
-mutx doctor      → diagnostic checks
+```text
+agent          agents         api-keys       assistant      auth
+budgets        clawhub        config         deploy         deployment
+doctor         documents      governance     login          logout
+observability  onboard        reasoning      runtime        scheduler
+security       setup          status         tui            update
+usage          webhooks       whoami
 ```
 
 ### TUI
@@ -2357,7 +2293,7 @@ Launched via `mutx tui`.
 
 ### Docker Compose
 
-Source: `infrastructure/docker/docker-compose.yml` (220 lines)
+Source: `infrastructure/docker/docker-compose.yml`
 
 9 services:
 
@@ -2381,45 +2317,66 @@ The API service depends on the `migrate` service completing successfully and bot
 
 Source: `infrastructure/helm/mutx/`
 
-Helm chart with 12 templates:
+Helm chart with 13 template files:
 
 ```
 templates/
   _helpers.tpl
+  NOTES.txt
+  serviceaccount.yaml
+  pvc.yaml
+  secret.yaml
+  configmap.yaml
   deployment.yaml
+  workers.yaml
   service.yaml
   ingress.yaml
-  configmap.yaml
   hpa.yaml
+  migration-job.yaml
   tests/test-connection.yaml
 ```
 
 **values.yaml defaults:**
 
 ```yaml
-replicaCount: 2
-service:
-  type: ClusterIP
+api:
+  replicaCount: 1
   port: 8000
+  image:
+    repository: mutx-api
+frontend:
+  replicaCount: 1
+  port: 3000
+  image:
+    repository: mutx-frontend
 ingress:
-  className: nginx
+  enabled: false
   tls:
+    enabled: false
+persistence:
+  enabled: false
+workers:
+  monitor:
     enabled: true
-autoscaling:
-  minReplicas: 2
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 75
-resources:
-  limits: { cpu: 1000m, memory: 1Gi }
-  requests: { cpu: 100m, memory: 256Mi }
+  document:
+    enabled: false
+  reasoning:
+    enabled: false
 ```
 
 **Environment overlays:**
 
 - `values.yaml` — Base defaults
-- `values.dev.yaml` — Development overrides
 - `values.staging.yaml` — Staging overrides
 - `values.prod.yaml` — Production overrides
+
+The chart routes `/` to the Next.js frontend and `/v1`, `/health`, `/ready`, and
+`/metrics` to FastAPI. It includes a singleton monitor process, optional standalone
+document/reasoning workers, an optional Alembic hook, a retained PVC option, and
+a CPU HPA for the stateless frontend only. Frontend autoscaling and persistence are
+disabled by default; the stateful API and workers remain single-replica. The chart
+creates an unprivileged ServiceAccount with token automounting disabled and grants no
+Kubernetes RBAC permissions.
 
 ### Ansible
 
@@ -2442,9 +2399,9 @@ Source: `infrastructure/monitoring/prometheus/`
 
 ## 18. What Ships Today
 
-- FastAPI control plane with 32 route modules (141 paths, 181 operations)
+- FastAPI control plane with 33 top-level `/v1` families (198 paths, 246 operations)
 - JWT + API key dual authentication with refresh token rotation
-- Governance engine: ActionMediator, ContextAccumulator, PolicyEngine, ApprovalService, ReceiptGenerator, AARMComplianceChecker
+- Governance engine: ActionMediator, ContextAccumulator, PolicyEngine, durable approval routes, ReceiptGenerator, AARMComplianceChecker
 - Faramesh supervisor with 13 framework auto-patches
 - Credential broker with 6 backends (Vault, AWS, GCP, Azure, 1Password, Infisical)
 - SPIFFE/SPIRE identity integration
@@ -2452,24 +2409,25 @@ Source: `infrastructure/monitoring/prometheus/`
 - Observability: OpenTelemetry traces, Prometheus metrics, aiosqlite audit log
 - Policy store with SSE hot-reload
 - Python SDK with guardrails, policy client, and telemetry
-- CLI with 23 command groups
+- CLI with 28 top-level commands, including local setup, diagnostics, and TUI workflows
 - Textual TUI cockpit
 - Docker Compose development stack (9 services)
-- Helm chart with dev/staging/prod overlays
-- 17 Alembic migrations
+- Helm chart with base/staging/production values
+- Alembic-managed migration history
 - Runtime schema repair for zero-downtime deployments
 - Structured JSON logging with request_id/trace_id correlation
 - Prometheus metrics with request/agent/deployment/database gauges and histograms
 
 ## 19. Build Roadmap
 
-1. OIDC/JWKS integration for enterprise SSO (Okta, Auth0, Azure AD, Keycloak)
+1. Expand mounted enterprise SSO and first-class external bearer-token integration beyond the
+   current Google, GitHub, and Okta account-linking flows
 2. WebSocket command streaming (replace polling in SDK)
 3. Distributed policy evaluation (multi-node PolicyEngine)
 4. Encrypted audit log storage (at-rest encryption for audit.db)
 5. Agent sandboxing (container-level isolation per agent)
 6. Multi-tenant workspace isolation
-7. RBAC with fine-grained permissions (beyond owner/admin)
+7. Tenant-scoped/custom role administration beyond the fixed persisted roles
 8. GraphQL API surface alongside REST
 9. Agent-to-agent communication governance
 10. Cost attribution and billing integration

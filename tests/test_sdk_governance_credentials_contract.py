@@ -62,12 +62,12 @@ def test_list_backends_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json=[_backend_payload()])
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     gc = GovernanceCredentials(client)
 
     result = gc.list_backends()
 
-    assert captured["path"] == "/governance/credentials/backends"
+    assert captured["path"] == "/v1/governance/credentials/backends"
     assert captured["method"] == "GET"
     assert len(result) == 1
     assert isinstance(result[0], CredentialBackend)
@@ -84,7 +84,7 @@ def test_register_backend_hits_contract_route_and_maps_payload() -> None:
         captured["json"] = json.loads(request.content.decode())
         return httpx.Response(200, json={"status": "registered"})
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     gc = GovernanceCredentials(client)
 
     result = gc.register_backend(
@@ -95,7 +95,7 @@ def test_register_backend_hits_contract_route_and_maps_payload() -> None:
         config={"access_token": "abc123"},
     )
 
-    assert captured["path"] == "/governance/credentials/backends"
+    assert captured["path"] == "/v1/governance/credentials/backends"
     assert captured["method"] == "POST"
     assert captured["json"]["name"] == "my-vault"
     assert captured["json"]["backend"] == "vault"
@@ -112,7 +112,7 @@ def test_register_backend_omits_optional_config() -> None:
         captured["json"] = json.loads(request.content.decode())
         return httpx.Response(200, json={"status": "registered"})
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     gc = GovernanceCredentials(client)
 
     gc.register_backend(name="simple", backend="vault", path="vault:/secret/simple")
@@ -129,12 +129,12 @@ def test_unregister_backend_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json={"status": "unregistered"})
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     gc = GovernanceCredentials(client)
 
     result = gc.unregister_backend(backend_name)
 
-    assert captured["path"] == f"/governance/credentials/backends/{backend_name}"
+    assert captured["path"] == f"/v1/governance/credentials/backends/{backend_name}"
     assert captured["method"] == "DELETE"
     assert isinstance(result, dict)
 
@@ -148,12 +148,12 @@ def test_check_backend_health_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json={"status": "healthy", "latency_ms": 5})
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     gc = GovernanceCredentials(client)
 
     result = gc.check_backend_health(backend_name)
 
-    assert captured["path"] == f"/governance/credentials/backends/{backend_name}/health"
+    assert captured["path"] == f"/v1/governance/credentials/backends/{backend_name}/health"
     assert captured["method"] == "GET"
     assert isinstance(result, dict)
 
@@ -166,12 +166,12 @@ def test_health_check_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json={"total": 2, "healthy": 1})
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     gc = GovernanceCredentials(client)
 
     result = gc.health_check()
 
-    assert captured["path"] == "/governance/credentials/health"
+    assert captured["path"] == "/v1/governance/credentials/health"
     assert captured["method"] == "GET"
     assert isinstance(result, dict)
 
@@ -185,12 +185,12 @@ def test_get_credential_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json=_credential_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     gc = GovernanceCredentials(client)
 
     result = gc.get_credential(full_path)
 
-    assert captured["path"] == f"/governance/credentials/get/{full_path}"
+    assert captured["path"] == f"/v1/governance/credentials/get/{full_path}"
     assert captured["method"] == "GET"
     assert isinstance(result, Credential)
     assert result.name == "api-key"
@@ -210,14 +210,16 @@ def test_alist_backends_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json=[_backend_payload()])
 
-    client = httpx.AsyncClient(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.AsyncClient(
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
+    )
     gc = GovernanceCredentials(client)
 
     import asyncio
 
     result = asyncio.run(gc.alist_backends())
 
-    assert captured["path"] == "/governance/credentials/backends"
+    assert captured["path"] == "/v1/governance/credentials/backends"
     assert captured["method"] == "GET"
     assert len(result) == 1
     assert isinstance(result[0], CredentialBackend)
@@ -231,7 +233,9 @@ def test_aregister_backend_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json={"status": "registered"})
 
-    client = httpx.AsyncClient(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.AsyncClient(
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
+    )
     gc = GovernanceCredentials(client)
 
     import asyncio
@@ -244,7 +248,7 @@ def test_aregister_backend_hits_contract_route() -> None:
         )
     )
 
-    assert captured["path"] == "/governance/credentials/backends"
+    assert captured["path"] == "/v1/governance/credentials/backends"
     assert captured["method"] == "POST"
     assert isinstance(result, dict)
 
@@ -258,14 +262,16 @@ def test_aunregister_backend_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json={"status": "unregistered"})
 
-    client = httpx.AsyncClient(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.AsyncClient(
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
+    )
     gc = GovernanceCredentials(client)
 
     import asyncio
 
     result = asyncio.run(gc.aunregister_backend(backend_name))
 
-    assert captured["path"] == f"/governance/credentials/backends/{backend_name}"
+    assert captured["path"] == f"/v1/governance/credentials/backends/{backend_name}"
     assert captured["method"] == "DELETE"
     assert isinstance(result, dict)
 
@@ -279,14 +285,16 @@ def test_acheck_backend_health_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json={"status": "healthy"})
 
-    client = httpx.AsyncClient(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.AsyncClient(
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
+    )
     gc = GovernanceCredentials(client)
 
     import asyncio
 
     result = asyncio.run(gc.acheck_backend_health(backend_name))
 
-    assert captured["path"] == f"/governance/credentials/backends/{backend_name}/health"
+    assert captured["path"] == f"/v1/governance/credentials/backends/{backend_name}/health"
     assert captured["method"] == "GET"
     assert isinstance(result, dict)
 
@@ -299,14 +307,16 @@ def test_ahealth_check_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json={"total": 1, "healthy": 1})
 
-    client = httpx.AsyncClient(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.AsyncClient(
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
+    )
     gc = GovernanceCredentials(client)
 
     import asyncio
 
     result = asyncio.run(gc.ahealth_check())
 
-    assert captured["path"] == "/governance/credentials/health"
+    assert captured["path"] == "/v1/governance/credentials/health"
     assert captured["method"] == "GET"
     assert isinstance(result, dict)
 
@@ -320,14 +330,16 @@ def test_aget_credential_hits_contract_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json=_credential_payload())
 
-    client = httpx.AsyncClient(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.AsyncClient(
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
+    )
     gc = GovernanceCredentials(client)
 
     import asyncio
 
     result = asyncio.run(gc.aget_credential(full_path))
 
-    assert captured["path"] == f"/governance/credentials/get/{full_path}"
+    assert captured["path"] == f"/v1/governance/credentials/get/{full_path}"
     assert captured["method"] == "GET"
     assert isinstance(result, Credential)
 
@@ -385,7 +397,7 @@ def test_credential_parses_empty_metadata() -> None:
 
 
 def test_list_backends_rejects_async_client() -> None:
-    client = httpx.AsyncClient(base_url="https://api.test")
+    client = httpx.AsyncClient(base_url="https://api.test/v1/")
     gc = GovernanceCredentials(client)
 
     with pytest.raises(RuntimeError, match="requires a sync httpx.Client"):
@@ -393,7 +405,7 @@ def test_list_backends_rejects_async_client() -> None:
 
 
 def test_register_backend_rejects_async_client() -> None:
-    client = httpx.AsyncClient(base_url="https://api.test")
+    client = httpx.AsyncClient(base_url="https://api.test/v1/")
     gc = GovernanceCredentials(client)
 
     with pytest.raises(RuntimeError, match="requires a sync httpx.Client"):
@@ -401,7 +413,7 @@ def test_register_backend_rejects_async_client() -> None:
 
 
 def test_unregister_backend_rejects_async_client() -> None:
-    client = httpx.AsyncClient(base_url="https://api.test")
+    client = httpx.AsyncClient(base_url="https://api.test/v1/")
     gc = GovernanceCredentials(client)
 
     with pytest.raises(RuntimeError, match="requires a sync httpx.Client"):
@@ -409,7 +421,7 @@ def test_unregister_backend_rejects_async_client() -> None:
 
 
 def test_check_backend_health_rejects_async_client() -> None:
-    client = httpx.AsyncClient(base_url="https://api.test")
+    client = httpx.AsyncClient(base_url="https://api.test/v1/")
     gc = GovernanceCredentials(client)
 
     with pytest.raises(RuntimeError, match="requires a sync httpx.Client"):
@@ -417,7 +429,7 @@ def test_check_backend_health_rejects_async_client() -> None:
 
 
 def test_health_check_rejects_async_client() -> None:
-    client = httpx.AsyncClient(base_url="https://api.test")
+    client = httpx.AsyncClient(base_url="https://api.test/v1/")
     gc = GovernanceCredentials(client)
 
     with pytest.raises(RuntimeError, match="requires a sync httpx.Client"):
@@ -425,7 +437,7 @@ def test_health_check_rejects_async_client() -> None:
 
 
 def test_get_credential_rejects_async_client() -> None:
-    client = httpx.AsyncClient(base_url="https://api.test")
+    client = httpx.AsyncClient(base_url="https://api.test/v1/")
     gc = GovernanceCredentials(client)
 
     with pytest.raises(RuntimeError, match="requires a sync httpx.Client"):
@@ -441,7 +453,7 @@ def test_list_backends_works_with_sync_client_and_empty_response() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=[])
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     gc = GovernanceCredentials(client)
 
     result = gc.list_backends()
@@ -452,7 +464,7 @@ def test_register_backend_works_with_sync_client() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"status": "registered"})
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     gc = GovernanceCredentials(client)
 
     result = gc.register_backend(name="x", backend="vault", path="vault:/x")
@@ -463,7 +475,7 @@ def test_get_credential_works_with_sync_client() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_credential_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     gc = GovernanceCredentials(client)
 
     result = gc.get_credential("vault:/secret/test/api-key")

@@ -6,6 +6,8 @@ from typing import Any, Optional
 
 import httpx
 
+from mutx._http import api_path
+
 
 class SupervisedAgent:
     """Represents a supervised agent."""
@@ -57,28 +59,28 @@ class GovernanceSupervision:
     def list_agents(self) -> list[SupervisedAgent]:
         """List all supervised agents. Requires internal user auth."""
         self._require_sync_client()
-        response = self._client.get("/runtime/governance/supervised/")
+        response = self._client.get("runtime/governance/supervised/")
         response.raise_for_status()
         return [SupervisedAgent(d) for d in response.json()]
 
     async def alist_agents(self) -> list[SupervisedAgent]:
         """List all supervised agents (async)."""
         self._require_async_client()
-        response = await self._client.get("/runtime/governance/supervised/")
+        response = await self._client.get("runtime/governance/supervised/")
         response.raise_for_status()
         return [SupervisedAgent(d) for d in response.json()]
 
     def list_profiles(self) -> list[LaunchProfile]:
         """List configured launch profiles for supervised agents."""
         self._require_sync_client()
-        response = self._client.get("/runtime/governance/supervised/profiles")
+        response = self._client.get("runtime/governance/supervised/profiles")
         response.raise_for_status()
         return [LaunchProfile(d) for d in response.json()]
 
     async def alist_profiles(self) -> list[LaunchProfile]:
         """List configured launch profiles (async)."""
         self._require_async_client()
-        response = await self._client.get("/runtime/governance/supervised/profiles")
+        response = await self._client.get("runtime/governance/supervised/profiles")
         response.raise_for_status()
         return [LaunchProfile(d) for d in response.json()]
 
@@ -88,7 +90,9 @@ class GovernanceSupervision:
     ) -> SupervisedAgent:
         """Get status of a supervised agent."""
         self._require_sync_client()
-        response = self._client.get(f"/runtime/governance/supervised/{agent_id}")
+        response = self._client.get(
+            api_path("runtime/governance/supervised/{agent_id}", agent_id=agent_id)
+        )
         response.raise_for_status()
         return SupervisedAgent(response.json())
 
@@ -98,7 +102,9 @@ class GovernanceSupervision:
     ) -> SupervisedAgent:
         """Get status of a supervised agent (async)."""
         self._require_async_client()
-        response = await self._client.get(f"/runtime/governance/supervised/{agent_id}")
+        response = await self._client.get(
+            api_path("runtime/governance/supervised/{agent_id}", agent_id=agent_id)
+        )
         response.raise_for_status()
         return SupervisedAgent(response.json())
 
@@ -123,7 +129,7 @@ class GovernanceSupervision:
         if faramesh_policy:
             payload["faramesh_policy"] = faramesh_policy
 
-        response = self._client.post("/runtime/governance/supervised/start", json=payload)
+        response = self._client.post("runtime/governance/supervised/start", json=payload)
         response.raise_for_status()
         return SupervisedAgent(response.json())
 
@@ -148,7 +154,7 @@ class GovernanceSupervision:
         if faramesh_policy:
             payload["faramesh_policy"] = faramesh_policy
 
-        response = await self._client.post("/runtime/governance/supervised/start", json=payload)
+        response = await self._client.post("runtime/governance/supervised/start", json=payload)
         response.raise_for_status()
         return SupervisedAgent(response.json())
 
@@ -160,7 +166,7 @@ class GovernanceSupervision:
         """Stop a supervised agent."""
         self._require_sync_client()
         response = self._client.post(
-            f"/runtime/governance/supervised/{agent_id}/stop",
+            api_path("runtime/governance/supervised/{agent_id}/stop", agent_id=agent_id),
             json={"timeout": timeout},
         )
         response.raise_for_status()
@@ -174,7 +180,7 @@ class GovernanceSupervision:
         """Stop a supervised agent (async)."""
         self._require_async_client()
         response = await self._client.post(
-            f"/runtime/governance/supervised/{agent_id}/stop",
+            api_path("runtime/governance/supervised/{agent_id}/stop", agent_id=agent_id),
             json={"timeout": timeout},
         )
         response.raise_for_status()
@@ -186,7 +192,9 @@ class GovernanceSupervision:
     ) -> SupervisedAgent:
         """Restart a supervised agent."""
         self._require_sync_client()
-        response = self._client.post(f"/runtime/governance/supervised/{agent_id}/restart")
+        response = self._client.post(
+            api_path("runtime/governance/supervised/{agent_id}/restart", agent_id=agent_id)
+        )
         response.raise_for_status()
         return SupervisedAgent(response.json())
 
@@ -196,6 +204,8 @@ class GovernanceSupervision:
     ) -> SupervisedAgent:
         """Restart a supervised agent (async)."""
         self._require_async_client()
-        response = await self._client.post(f"/runtime/governance/supervised/{agent_id}/restart")
+        response = await self._client.post(
+            api_path("runtime/governance/supervised/{agent_id}/restart", agent_id=agent_id)
+        )
         response.raise_for_status()
         return SupervisedAgent(response.json())

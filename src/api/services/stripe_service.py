@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.models.subscription import Subscription, Payment
-from src.api.models.models import User
+from src.api.models.models import User, UserSetting
 
 logger = logging.getLogger(__name__)
+STRIPE_TRIAL_CLAIM_KEY = "billing:stripe-trial:v1"
 
 
 class StripeUnavailableError(RuntimeError):
@@ -42,8 +45,6 @@ def _require_stripe() -> Any:
 
 
 def _configured_plan_prices() -> dict[str, str]:
-    import os
-
     plan_prices = {
         "starter": os.getenv("STRIPE_STARTER_PRICE_ID", "").strip(),
         "pro": os.getenv("STRIPE_PRO_PRICE_ID", "").strip(),
@@ -54,8 +55,6 @@ def _configured_plan_prices() -> dict[str, str]:
 
 # Lazy config — reads from env at call time so tests can monkeypatch
 def _get_secret_key() -> str:
-    import os
-
     key = os.getenv("STRIPE_SECRET_KEY", "")
     if not key:
         raise StripeUnavailableError("STRIPE_SECRET_KEY not configured")
@@ -63,12 +62,62 @@ def _get_secret_key() -> str:
 
 
 def _get_webhook_secret() -> str:
-    import os
-
     secret = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
     if not secret:
         raise StripeUnavailableError("STRIPE_WEBHOOK_SECRET not configured")
     return secret
+
+
+def _configured_trial_days() -> int:
+    """Return the server-controlled trial duration; zero disables paid-plan trials."""
+    raw_value = os.getenv("STRIPE_TRIAL_DAYS", "7").strip()
+    try:
+        trial_days = int(raw_value)
+    except ValueError as exc:
+        raise StripeUnavailableError("STRIPE_TRIAL_DAYS must be an integer from 0 to 30") from exc
+    if not 0 <= trial_days <= 30:
+        raise StripeUnavailableError("STRIPE_TRIAL_DAYS must be an integer from 0 to 30")
+    return trial_days
+
+
+async def _claim_checkout_trial(
+    db: AsyncSession,
+    *,
+    user: User,
+    plan_id: str,
+) -> bool:
+    """Atomically reserve the user's only paid-plan trial before contacting Stripe."""
+    prior_subscription = await db.scalar(
+        select(Subscription.id).where(Subscription.user_id == user.id).limit(1)
+    )
+    if prior_subscription is not None:
+        return False
+
+    prior_claim = await db.scalar(
+        select(UserSetting.id).where(
+            UserSetting.user_id == user.id,
+            UserSetting.key == STRIPE_TRIAL_CLAIM_KEY,
+        )
+    )
+    if prior_claim is not None:
+        return False
+
+    db.add(
+        UserSetting(
+            user_id=user.id,
+            key=STRIPE_TRIAL_CLAIM_KEY,
+            value={
+                "claimed_at": datetime.now(timezone.utc).isoformat(),
+                "plan_id": plan_id,
+            },
+        )
+    )
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        return False
+    return True
 
 
 # Map Stripe price IDs to internal plan names
@@ -211,7 +260,6 @@ async def create_checkout_session(
     price_id: str | None,
     success_url: str,
     cancel_url: str,
-    trial_days: int | None = None,
     plan_id: str | None = None,
 ) -> dict[str, str]:
     """Create a Stripe Checkout Session for subscription signup."""
@@ -219,6 +267,12 @@ async def create_checkout_session(
     resolved_plan_id, resolved_price_id = _resolve_checkout_plan_and_price(
         plan_id=plan_id,
         price_id=price_id,
+    )
+    trial_days = _configured_trial_days()
+    trial_claimed = trial_days > 0 and await _claim_checkout_trial(
+        db,
+        user=user,
+        plan_id=resolved_plan_id,
     )
     customer_id, _ = await _get_or_create_customer(db, user)
 
@@ -243,11 +297,8 @@ async def create_checkout_session(
             "price_id": resolved_price_id,
         }
     }
-    if trial_days and trial_days > 0:
-        from datetime import timedelta
-
-        trial_end = datetime.now(timezone.utc) + timedelta(days=trial_days)
-        subscription_data["trial_end"] = int(trial_end.timestamp())
+    if trial_claimed:
+        subscription_data["trial_period_days"] = trial_days
 
     params["subscription_data"] = subscription_data
 

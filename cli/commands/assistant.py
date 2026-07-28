@@ -60,7 +60,7 @@ def overview_command(agent_id: str | None, output: str):
 
 @assistant_group.group(name="skills")
 def assistant_skills_group():
-    """List and mutate assistant skills."""
+    """List and configure assistant skills."""
     pass
 
 
@@ -78,8 +78,7 @@ def list_skills_command(agent_id: str):
         return
 
     for skill in skills:
-        installed = "installed" if skill.installed else "available"
-        click.echo(f"{skill.id} | {skill.name} | {installed} | {skill.category}")
+        click.echo(f"{skill.id} | {skill.name} | {skill.status} | {skill.category}")
 
 
 @assistant_skills_group.command(name="install")
@@ -87,10 +86,16 @@ def list_skills_command(agent_id: str):
 @click.option("--skill-id", required=True, help="Skill id")
 def install_skill_command(agent_id: str, skill_id: str):
     try:
-        _service().install_skill(agent_id, skill_id)
-        click.echo(f"Installed skill {skill_id} on assistant {agent_id}.")
+        skills = _service().install_skill(agent_id, skill_id)
     except CLIServiceError as exc:
         _echo_service_error(exc)
+        return
+
+    skill = next((item for item in skills if item.id == skill_id), None)
+    status = skill.status if skill is not None else "configured"
+    click.echo(f"Configured skill {skill_id} on assistant {agent_id} (status: {status}).")
+    if skill is not None and skill.reconciliation_required:
+        click.echo("Runtime reconciliation is still required.")
 
 
 @assistant_skills_group.command(name="remove")
@@ -99,7 +104,7 @@ def install_skill_command(agent_id: str, skill_id: str):
 def remove_skill_command(agent_id: str, skill_id: str):
     try:
         _service().uninstall_skill(agent_id, skill_id)
-        click.echo(f"Removed skill {skill_id} from assistant {agent_id}.")
+        click.echo(f"Removed skill configuration {skill_id} from assistant {agent_id}.")
     except CLIServiceError as exc:
         _echo_service_error(exc)
 

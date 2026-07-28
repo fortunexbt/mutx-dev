@@ -47,4 +47,19 @@ describe('auth redirect helpers', () => {
       mergeRedirectPathWithSearch('/tutor?lesson=install-hermes-locally', 'lesson=other-lesson'),
     ).toBe('/tutor?lesson=install-hermes-locally')
   })
+
+  it.each([
+    'https://evil.example/steal',
+    '//evil.example/steal',
+    '/\\evil.example/steal',
+    '/%5cevil.example/steal',
+    '/%2f%2fevil.example/steal',
+    '/%255cevil.example/steal',
+    '/dashboard\u0000?next=/safe',
+    '/l%6fgin?next=/dashboard',
+    '/api/auth/%6fauth/github',
+    '/dashboard?filter=100%',
+  ])('rejects hostile or malformed redirect path %s', (nextPath) => {
+    expect(resolveRedirectPath(nextPath, '/safe')).toBe('/safe')
+  })
 })

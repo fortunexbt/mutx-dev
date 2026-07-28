@@ -1,8 +1,8 @@
 # Multi-stage build for MUTX Next.js application
-FROM node:24-alpine3.23 AS base
+FROM node:24-alpine3.23@sha256:595398b0081eacda8e1c4c5b97b76cd1020e4d58a8ebcb4843b9bca1e79e7436 AS base
 
 # Keep the container package manager aligned with packageManager and CI.
-RUN apk upgrade --no-cache && npm install -g npm@11.12.1
+RUN npm install -g npm@11.18.0
 
 # Dependencies stage
 FROM base AS deps

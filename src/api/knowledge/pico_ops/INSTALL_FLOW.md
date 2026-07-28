@@ -44,7 +44,7 @@ Use NanoClaw when the user wants a smaller, container-isolated stack. Validate:
 - Git / fork / clone path
 - Claude Code availability
 - Docker or container prereqs
-- whether `/setup` completed
+- whether the v2 `nanoclaw.sh` bootstrap completed
 - whether container services came up cleanly
 
 ### PicoClaw

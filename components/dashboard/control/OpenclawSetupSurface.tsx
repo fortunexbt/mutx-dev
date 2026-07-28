@@ -3,6 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, Copy, ExternalLink, RefreshCcw } from "lucide-react";
 
+import { ApiRequestError, extractApiErrorMessage } from "@/components/app/http";
+import {
+  dashboardRequestErrorMessage,
+  getDashboardRequestAccessFailure,
+} from "@/components/dashboard/dashboardRequestAccess";
+import { LiveAuthRequired, LiveForbidden } from "@/components/dashboard/livePrimitives";
 import { TopBar } from "@/components/dashboard/TopBar";
 import { dashboardTokens } from "@/components/dashboard/tokens";
 
@@ -112,6 +118,8 @@ export function OpenclawSetupSurface() {
   const [runtime, setRuntime] = useState<RuntimeSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
 
@@ -131,21 +139,34 @@ export function OpenclawSetupSurface() {
   const refresh = async () => {
     setLoading(true);
     setError(null);
+    setAuthRequired(false);
+    setPermissionDenied(false);
     try {
       const [onboardingResponse, runtimeResponse] = await Promise.all([
         fetch("/api/dashboard/onboarding?provider=openclaw", { cache: "no-store" }),
         fetch("/api/dashboard/runtime/providers/openclaw", { cache: "no-store" }),
       ]);
       if (!onboardingResponse.ok) {
-        throw new Error("Failed to load onboarding state.");
+        const payload = await onboardingResponse.json().catch(() => null);
+        throw new ApiRequestError(
+          extractApiErrorMessage(payload, "Failed to load onboarding state."),
+          onboardingResponse.status,
+        );
       }
       if (!runtimeResponse.ok) {
-        throw new Error("Failed to load runtime snapshot.");
+        const payload = await runtimeResponse.json().catch(() => null);
+        throw new ApiRequestError(
+          extractApiErrorMessage(payload, "Failed to load runtime snapshot."),
+          runtimeResponse.status,
+        );
       }
       setOnboarding((await onboardingResponse.json()) as OnboardingState);
       setRuntime((await runtimeResponse.json()) as RuntimeSnapshot);
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Failed to load setup state.");
+      const accessFailure = getDashboardRequestAccessFailure(fetchError);
+      if (accessFailure === "authentication") setAuthRequired(true);
+      else if (accessFailure === "permission") setPermissionDenied(true);
+      else setError(dashboardRequestErrorMessage(fetchError, "Failed to load setup state."));
     } finally {
       setLoading(false);
     }
@@ -176,6 +197,14 @@ export function OpenclawSetupSurface() {
     }
   };
 
+  if (authRequired) {
+    return <LiveAuthRequired title="Operator session required" message="Sign in to inspect OpenClaw setup and runtime state." />;
+  }
+
+  if (permissionDenied) {
+    return <LiveForbidden title="Setup permission required" message="Your account cannot inspect OpenClaw setup or runtime state. Refresh and copy controls are unavailable." />;
+  }
+
   return (
     <section
       className="overflow-hidden rounded-[28px] border"
@@ -194,9 +223,10 @@ export function OpenclawSetupSurface() {
         title="Setup"
         subtitle="MUTX owns the onboarding shell. OpenClaw is the first tracked runtime provider and the dashboard shows the last synced local truth."
         hint={{
-          tone: "beta",
+          tone: "boundary",
+          title: "Machine-host security boundary",
           detail:
-            "Setup on the web is still guided. The dashboard reflects synced state, but installation and machine-local runtime actions still complete in the CLI or TUI.",
+            "Web access is intentionally read-only. Installation and runtime control stay in the machine-host CLI or TUI so local keys and provider processes remain on the operator host.",
         }}
         actions={(
           <button
@@ -220,7 +250,7 @@ export function OpenclawSetupSurface() {
         <div className="space-y-6">
           <div className="grid gap-4 lg:grid-cols-3">
             {(onboarding?.providers ?? []).map((provider) => {
-              const active = provider.id === "openclaw";
+              const active = provider.id === "openclaw" && provider.enabled;
               return (
                 <article
                   key={provider.id}
@@ -237,7 +267,7 @@ export function OpenclawSetupSurface() {
                     <span
                       className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${toneStyles(active ? "good" : "info")}`}
                     >
-                      {provider.enabled ? (active ? "active" : "enabled") : "coming soon"}
+                      {provider.enabled ? (active ? "active" : "enabled") : "unavailable"}
                     </span>
                   </div>
                   <p className="mt-3 text-sm text-slate-400">{provider.summary}</p>
@@ -264,7 +294,7 @@ export function OpenclawSetupSurface() {
                 <p className="mt-1 text-sm text-slate-400">
                   {onboarding?.last_error
                     ? onboarding.last_error
-                    : "Checklist progress is synced from the operator host. Web stays read-only in this sprint."}
+                    : "Checklist progress is synced from the operator host. Web access is intentionally read-only at the machine-host security boundary."}
                 </p>
                 {onboarding?.action_type ? (
                   <p className="mt-2 text-xs uppercase tracking-[0.2em] text-orange-200/80">
@@ -322,7 +352,7 @@ export function OpenclawSetupSurface() {
                   🦞 Local Import
                 </p>
                 <h2 className="mt-2 text-xl font-semibold text-slate-100">
-                  {runtime?.binary_path ? "Existing OpenClaw detected" : "OpenClaw will be tracked locally"}
+                  {runtime?.binary_path ? "Existing OpenClaw detected" : "No local OpenClaw runtime reported"}
                 </h2>
                 <p className="mt-1 text-sm text-slate-300">
                   {runtime?.privacy_summary ??
@@ -337,11 +367,11 @@ export function OpenclawSetupSurface() {
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <div className="rounded-xl border px-4 py-3" style={{ borderColor: dashboardTokens.borderSubtle, backgroundColor: dashboardTokens.bgCanvas }}>
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Binary</p>
-                <p className="mt-2 font-mono text-xs text-slate-200">{runtime?.binary_path ?? "Will be resolved during setup"}</p>
+                <p data-technical-value className="mt-2 font-mono text-xs text-slate-200">{runtime?.binary_path ?? "Not reported by operator host"}</p>
               </div>
               <div className="rounded-xl border px-4 py-3" style={{ borderColor: dashboardTokens.borderSubtle, backgroundColor: dashboardTokens.bgCanvas }}>
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Tracking Mode</p>
-                <p className="mt-2 font-mono text-xs text-slate-200">
+                <p data-technical-value className="mt-2 font-mono text-xs text-slate-200">
                   {runtime?.tracking_mode ?? "import_existing_runtime"}
                   {runtime?.adopted_existing_runtime ? " · adopted" : ""}
                 </p>
@@ -415,7 +445,7 @@ export function OpenclawSetupSurface() {
                   onClick={() => void copyCommand(command)}
                 >
                   <code className="text-xs text-slate-200">{command}</code>
-                  <span className="ml-3 inline-flex items-center gap-2 text-xs text-slate-400">
+                  <span className="ms-3 inline-flex items-center gap-2 text-xs text-slate-400">
                     {copiedCommand === command ? (
                       <>
                         <span className="text-emerald-300">Copied</span>
@@ -429,7 +459,7 @@ export function OpenclawSetupSurface() {
               ))}
             </div>
             {copyError ? (
-              <p className="mt-3 text-xs text-rose-300">{copyError}</p>
+              <p role="alert" aria-live="assertive" className="mt-3 text-xs text-rose-300">{copyError}</p>
             ) : null}
           </section>
 
@@ -446,15 +476,15 @@ export function OpenclawSetupSurface() {
             <div className="mt-3 space-y-3 text-sm text-slate-400">
               <div>
                 <p className="text-xs text-slate-500">OpenClaw home</p>
-                <p className="mt-1 break-all text-slate-200">{runtime?.home_path ?? "n/a"}</p>
+                <p data-technical-value className="mt-1 break-all text-slate-200">{runtime?.home_path ?? "n/a"}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-500">Config</p>
-                <p className="mt-1 break-all text-slate-200">{runtime?.config_path ?? "n/a"}</p>
+                <p data-technical-value className="mt-1 break-all text-slate-200">{runtime?.config_path ?? "n/a"}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-500">Import source</p>
-                <p className="mt-1 break-all text-slate-200">
+                <p data-technical-value className="mt-1 break-all text-slate-200">
                   {runtime?.import_source?.binary_path ?? onboarding?.import_source?.binary_path ?? "n/a"}
                 </p>
               </div>
@@ -480,8 +510,6 @@ export function OpenclawSetupSurface() {
             </p>
             <a
               href="https://github.com/openclaw/openclaw"
-              target="_blank"
-              rel="noopener noreferrer"
               className="mt-4 inline-flex items-center gap-2 text-sm text-sky-300"
             >
               OpenClaw upstream
@@ -490,7 +518,7 @@ export function OpenclawSetupSurface() {
           </section>
 
           {error ? (
-            <div className={`rounded-2xl border p-4 text-sm ${toneStyles("bad")}`}>
+            <div role="alert" aria-live="assertive" className={`rounded-2xl border p-4 text-sm ${toneStyles("bad")}`}>
               {error}
             </div>
           ) : null}

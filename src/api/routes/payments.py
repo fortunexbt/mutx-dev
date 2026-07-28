@@ -47,7 +47,6 @@ async def checkout(
             price_id=payload.price_id,
             success_url=payload.success_url,
             cancel_url=payload.cancel_url,
-            trial_days=payload.trial_days,
         )
     except StripeUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

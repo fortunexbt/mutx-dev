@@ -13,7 +13,9 @@ export async function GET(
 ) {
   return withErrorHandling(async () => {
     const { runId } = await params;
-    const targetUrl = new URL(`${getApiBaseUrl()}/v1/runs/${runId}/traces`);
+    const targetUrl = new URL(
+      `${getApiBaseUrl()}/v1/runs/${encodeURIComponent(runId)}/traces`,
+    );
     request.nextUrl.searchParams.forEach((value, key) => {
       targetUrl.searchParams.set(key, value);
     });

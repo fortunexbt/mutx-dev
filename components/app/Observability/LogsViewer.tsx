@@ -158,7 +158,7 @@ export function LogsViewer({
                 : "bg-white/[0.03] text-slate-400 hover:text-white"
             }`}
           >
-            <RefreshCcw className={`h-3.5 w-3.5 ${autoRefresh ? "animate-spin" : ""}`} />
+            <RefreshCcw className={`h-3.5 w-3.5 ${autoRefresh ? "motion-safe:animate-spin motion-reduce:animate-none" : ""}`} />
             {autoRefresh ? "Live" : "Paused"}
           </button>
           <button
@@ -167,7 +167,7 @@ export function LogsViewer({
             className="inline-flex items-center gap-1.5 rounded-lg bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:text-white disabled:opacity-50"
           >
             <RefreshCcw
-              className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+              className={`h-3.5 w-3.5 ${loading ? "motion-safe:animate-spin motion-reduce:animate-none" : ""}`}
             />
           </button>
         </div>
@@ -223,7 +223,7 @@ export function LogsViewer({
       <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
         {loading && logs.length === 0 ? (
           <div className="flex items-center justify-center py-12 text-slate-500">
-            <RefreshCcw className="mr-2 h-4 w-4 animate-spin" />
+            <RefreshCcw className="mr-2 h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" />
             Loading logs...
           </div>
         ) : filteredLogs.length === 0 ? (

@@ -2,11 +2,13 @@ import click
 from typing import Optional
 
 from cli.config import current_config, get_client
+from cli.errors import CLIServiceError
 from cli.operator_readiness import (
     api_key_last_used,
     describe_api_key_lifecycle,
     describe_api_key_readiness,
 )
+from cli.services.base import APIService
 
 
 @click.group(name="api-keys")
@@ -15,26 +17,19 @@ def api_keys_group():
     pass
 
 
+def _service() -> APIService:
+    return APIService(config=current_config(), client_factory=get_client)
+
+
 @api_keys_group.command(name="list")
 def list_api_keys():
     """List all API keys"""
-    config = current_config()
-    if not config.is_authenticated():
-        click.echo("Error: Not authenticated. Run 'mutx login' first.", err=True)
-        return
-
-    client = get_client(config)
-    response = client.get("/v1/api-keys")
-
-    if response.status_code == 401:
-        click.echo("Error: Authentication expired. Run 'mutx login' again.", err=True)
-        return
-
-    if response.status_code != 200:
-        click.echo(f"Error: {response.text}", err=True)
-        return
-
-    payload = response.json()
+    try:
+        payload = _service().request_json(
+            "get", "/v1/api-keys", ok_statuses={200}, expected_type=(dict, list)
+        )
+    except CLIServiceError as exc:
+        raise click.ClickException(str(exc)) from exc
     keys = payload.get("items", payload) if isinstance(payload, dict) else payload
     if not keys:
         click.echo("No API keys found.")
@@ -56,31 +51,26 @@ def list_api_keys():
 @click.option("--expires-in-days", "-e", default=None, type=int, help="Expiration in days (1-365)")
 def create_api_key(name: str, expires_in_days: Optional[int]):
     """Create a new API key"""
-    config = current_config()
-    if not config.is_authenticated():
-        click.echo("Error: Not authenticated. Run 'mutx login' first.", err=True)
-        return
-
     payload = {"name": name}
     if expires_in_days is not None:
         payload["expires_in_days"] = expires_in_days
 
-    client = get_client(config)
-    response = client.post("/v1/api-keys", json=payload)
-
-    if response.status_code == 401:
-        click.echo("Error: Authentication expired. Run 'mutx login' again.", err=True)
-        return
-
-    if response.status_code == 201:
-        data = response.json()
-        click.echo(f"Created API key: {data['name']}")
-        click.echo(f"Key ID:  {data['id']}")
-        click.echo(f"Secret:  {data['key']}")
-        click.echo("")
-        click.echo("⚠  Save this secret now — it will not be shown again.")
-    else:
-        click.echo(f"Error: {response.text}", err=True)
+    try:
+        data = _service().request_json(
+            "post",
+            "/v1/api-keys",
+            ok_statuses={201},
+            expected_type=dict,
+            invalid_message="Unable to create API key",
+            json=payload,
+        )
+    except CLIServiceError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"Created API key: {data['name']}")
+    click.echo(f"Key ID:  {data['id']}")
+    click.echo(f"Secret:  {data['key']}")
+    click.echo("")
+    click.echo("⚠  Save this secret now — it will not be shown again.")
 
 
 @api_keys_group.command(name="revoke")
@@ -88,28 +78,20 @@ def create_api_key(name: str, expires_in_days: Optional[int]):
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation prompt")
 def revoke_api_key(key_id: str, force: bool):
     """Revoke (delete) an API key"""
-    config = current_config()
-    if not config.is_authenticated():
-        click.echo("Error: Not authenticated. Run 'mutx login' first.", err=True)
-        return
-
     if not force:
         if not click.confirm(f"Are you sure you want to revoke API key {key_id}?"):
             return
 
-    client = get_client(config)
-    response = client.delete(f"/v1/api-keys/{key_id}")
-
-    if response.status_code == 401:
-        click.echo("Error: Authentication expired. Run 'mutx login' again.", err=True)
-        return
-
-    if response.status_code == 204:
-        click.echo(f"Revoked API key: {key_id}")
-    elif response.status_code == 404:
-        click.echo("Error: API key not found", err=True)
-    else:
-        click.echo(f"Error: {response.text}", err=True)
+    try:
+        _service().request_empty(
+            "delete",
+            f"/v1/api-keys/{key_id}",
+            ok_statuses={204},
+            not_found_message="API key not found",
+        )
+    except CLIServiceError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"Revoked API key: {key_id}")
 
 
 @api_keys_group.command(name="rotate")
@@ -117,32 +99,24 @@ def revoke_api_key(key_id: str, force: bool):
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation prompt")
 def rotate_api_key(key_id: str, force: bool):
     """Rotate an API key (revoke old, create new)"""
-    config = current_config()
-    if not config.is_authenticated():
-        click.echo("Error: Not authenticated. Run 'mutx login' first.", err=True)
-        return
-
     if not force:
         if not click.confirm(
             f"Rotating will revoke the old key immediately. Continue for {key_id}?"
         ):
             return
 
-    client = get_client(config)
-    response = client.post(f"/v1/api-keys/{key_id}/rotate")
-
-    if response.status_code == 401:
-        click.echo("Error: Authentication expired. Run 'mutx login' again.", err=True)
-        return
-
-    if response.status_code == 200:
-        data = response.json()
-        click.echo(f"Rotated API key: {data['name']}")
-        click.echo(f"New Key ID:  {data['id']}")
-        click.echo(f"New Secret:  {data['key']}")
-        click.echo("")
-        click.echo("⚠  Save this secret now — it will not be shown again.")
-    elif response.status_code == 404:
-        click.echo("Error: API key not found", err=True)
-    else:
-        click.echo(f"Error: {response.text}", err=True)
+    try:
+        data = _service().request_json(
+            "post",
+            f"/v1/api-keys/{key_id}/rotate",
+            ok_statuses={200},
+            expected_type=dict,
+            not_found_message="API key not found",
+        )
+    except CLIServiceError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"Rotated API key: {data['name']}")
+    click.echo(f"New Key ID:  {data['id']}")
+    click.echo(f"New Secret:  {data['key']}")
+    click.echo("")
+    click.echo("⚠  Save this secret now — it will not be shown again.")

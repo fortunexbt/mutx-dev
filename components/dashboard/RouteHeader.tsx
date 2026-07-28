@@ -38,12 +38,13 @@ export function RouteHeader({
 }: RouteHeaderProps) {
   return (
     <header
+      data-dashboard-ui="route-header"
       className={cn(
-        "dashboard-entry relative grid gap-8 border-b border-[#34342e] pb-7 md:grid-cols-[minmax(0,1fr)_auto] md:items-end lg:pb-8",
+        "dashboard-entry relative grid min-w-0 gap-5 border-b border-[#34342e] pb-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end md:gap-6 lg:pb-6",
         className,
       )}
     >
-      <span className="absolute -bottom-px left-0 h-px w-20 bg-[#ff571c]" aria-hidden="true" />
+      <span className="absolute -bottom-px start-0 h-px w-20 bg-[#ff571c]" aria-hidden="true" />
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2.5">
           <span
@@ -51,35 +52,42 @@ export function RouteHeader({
           >
             <Icon className="h-3.5 w-3.5" aria-hidden="true" />
           </span>
-          <p className="font-[family:var(--font-mono)] text-[8px] font-semibold uppercase tracking-[0.2em] text-[#8d867a]">
+          <p className="font-[family:var(--font-mono)] text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">
             <span className="text-[#ff7545]">REC /</span> {badge || "Operator workspace"}
           </p>
-          {hint ? <FeatureHint {...hint} align="left" /> : null}
-          <span className="hidden font-[family:var(--font-mono)] text-[8px] uppercase tracking-[0.18em] text-[#5e5b54] sm:inline" aria-hidden="true">
+          {hint ? (
+            <FeatureHint
+              {...hint}
+              align="start"
+              className={cn(hint.className, "[&_summary]:text-[11px]")}
+            />
+          ) : null}
+          <span className="hidden font-[family:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-[#8d867a] sm:inline" aria-hidden="true">
             Frame 001
           </span>
         </div>
-        <h1 className="mt-5 max-w-[20ch] font-[family:var(--font-site-display)] text-[clamp(2.4rem,4.5vw,4.65rem)] font-medium leading-[0.9] tracking-[-0.065em] text-[#eee9dc]">
+        <h1 className="mt-3 max-w-[20ch] font-[family:var(--font-site-display)] text-[clamp(2rem,4vw,3.75rem)] font-medium leading-[0.95] tracking-[-0.055em] text-[#eee9dc]">
           {title}
         </h1>
-        <p className="mt-5 max-w-2xl text-[13px] leading-6 text-[#999284] sm:text-[14px]">
+        <p className="mt-3 max-w-2xl text-[13px] leading-6 text-[#999284] sm:text-[14px]">
           {description}
         </p>
       </div>
 
       {stats.length > 0 ? (
-        <dl className="grid min-w-[17rem] grid-cols-2 border-l border-[#34342e] pl-5 sm:gap-x-8">
+        <dl className="grid min-w-0 w-full grid-cols-1 gap-x-6 gap-y-3 border-t border-[#34342e] pt-4 min-[384px]:grid-cols-2 md:w-auto md:border-s md:border-t-0 md:ps-5 md:pt-0">
           {stats.map((stat, index) => (
             <div key={`${stat.label}-${stat.value}`} className="relative py-1">
-              <dt className="font-[family:var(--font-mono)] text-[8px] font-semibold uppercase tracking-[0.17em] text-[#716d64]">
-                <span className="mr-2 text-[#ff6a32]" aria-hidden="true">
+              <dt className="font-[family:var(--font-mono)] text-[11px] font-semibold uppercase leading-4 tracking-[0.14em] text-[#918b80]">
+                <span className="me-2 text-[#ff6a32]" aria-hidden="true">
                   {String(index + 1).padStart(2, "0")}
                 </span>
                 {stat.label}
               </dt>
               <dd
+                dir="auto"
                 className={cn(
-                  "mt-2 font-[family:var(--font-mono)] text-[12px] font-medium tabular-nums",
+                  "mt-1.5 break-words font-[family:var(--font-mono)] text-[12px] font-medium tabular-nums",
                   STAT_TONES[stat.tone || "neutral"],
                 )}
               >

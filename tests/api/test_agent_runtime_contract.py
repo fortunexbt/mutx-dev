@@ -2,7 +2,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def developer_principals(db_session, test_user, other_user):
+    test_user.roles = ["DEVELOPER"]
+    other_user.roles = ["DEVELOPER"]
+    await db_session.commit()
 
 
 @pytest.mark.asyncio
@@ -58,6 +66,30 @@ async def test_agent_status_requires_runtime_auth_not_just_agent_id(
 
 
 @pytest.mark.asyncio
+async def test_agent_commands_static_route_is_not_shadowed(client: AsyncClient):
+    register_response = await client.post(
+        "/v1/agents/register",
+        json={
+            "name": "commands-route-contract",
+            "description": "static route ordering coverage",
+            "metadata": {},
+            "capabilities": ["commands"],
+        },
+    )
+    assert register_response.status_code == 200
+    agent = register_response.json()
+
+    response = await client.get(
+        "/v1/agents/commands",
+        params={"agent_id": agent["agent_id"]},
+        headers={"Authorization": f"Bearer {agent['api_key']}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"commands": []}
+
+
+@pytest.mark.asyncio
 async def test_connected_agent_runtime_sdk_uses_status_auth_contract(client: AsyncClient):
     import importlib.util
 
@@ -86,7 +118,7 @@ async def test_connected_agent_runtime_sdk_uses_status_auth_contract(client: Asy
     transport = client._transport
     sdk_client._client = __import__("httpx").AsyncClient(
         transport=transport,
-        base_url="http://testserver",
+        base_url=sdk_client.api_base_url,
         timeout=sdk_client.timeout,
         headers={"Content-Type": "application/json"},
     )

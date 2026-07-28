@@ -1,58 +1,10 @@
-import type { Metadata } from 'next'
-import Link from 'next/link'
+import { headers } from 'next/headers'
+import { permanentRedirect } from 'next/navigation'
 
-import s from './page.module.css'
-import { PicoSignalDiagram } from '@/components/pico/PicoSignalDiagram'
-import { PicoWipReturn } from '@/components/pico/PicoWipReturn'
+import { isPicoHost } from '@/lib/auth/redirects'
 
-export const metadata: Metadata = {
-  title: 'PicoMUTX page is preparing',
-  description: 'The PicoMUTX academy and product pages are still being prepared.',
-  alternates: {
-    canonical: 'https://pico.mutx.dev',
-  },
-  robots: {
-    index: false,
-    follow: false,
-    nocache: true,
-  },
-}
+export default async function LegacyPicoBuildLedgerRedirect() {
+  const host = (await headers()).get('host')?.split(':')[0] ?? null
 
-export default function PicoWipPage() {
-  return (
-    <div className={s.root} data-testid="pico-host-guard">
-      <PicoWipReturn />
-      <div className={s.shell}>
-        <main id="main-content" className={s.hero}>
-          <div className={s.copy}>
-            <p className={s.kicker}>PicoMUTX page guard</p>
-            <h1 className={s.title}>This page is still being prepared.</h1>
-            <p className={s.subtitle}>
-              The academy, tutor, support, autopilot, pricing, login, and account paths are still
-              private while the public waitlist opens back up.
-            </p>
-            <div className={s.actions}>
-              <Link href="/" className={s.primaryLink}>
-                Back to waitlist
-              </Link>
-              <p className={s.notice}>Returning you in a moment.</p>
-            </div>
-          </div>
-
-          <div className={s.visual}>
-            <p className={s.routeNotice} data-testid="pico-wip-speech">
-              You&apos;re not supposed to be here!
-            </p>
-            <PicoSignalDiagram
-              index="WIP"
-              label="Route guard"
-              title="Return to the public path."
-              caption="This route is intentionally private while the waitlist is open."
-              className={s.diagram}
-            />
-          </div>
-        </main>
-      </div>
-    </div>
-  )
+  permanentRedirect(isPicoHost(host) ? '/build-ledger' : '/pico/build-ledger')
 }

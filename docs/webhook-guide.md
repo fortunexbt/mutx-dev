@@ -285,6 +285,6 @@ curl -X POST "https://api.mutx.dev/v1/webhooks/" \
 
 ## Next Steps
 
-- Read the [API Reference](contracts/api/webhooks.md) for complete endpoint documentation
+- Read the [API Reference](api/webhooks.md) for complete endpoint documentation
 - Explore the [CLI commands](cli.md#webhooks) for webhook management
 - Set up monitoring with the [OpenTelemetry guide](otel.md)

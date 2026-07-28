@@ -12,7 +12,7 @@ export async function GET(
 ) {
   return withErrorHandling(async () => {
     const { jobId } = await params
-    return proxyJson(request, `${getApiBaseUrl()}/v1/reasoning/jobs/${jobId}`, {
+    return proxyJson(request, `${getApiBaseUrl()}/v1/reasoning/jobs/${encodeURIComponent(jobId)}`, {
       method: 'GET',
       fallbackMessage: 'Failed to fetch reasoning job',
     })

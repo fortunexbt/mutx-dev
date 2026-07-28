@@ -5,9 +5,9 @@ import { PublicFooter } from "@/components/site/PublicFooter";
 import { PublicSurface } from "@/components/site/PublicSurface";
 import { DEFAULT_X_HANDLE, buildPageMetadata, getSiteUrl } from "@/lib/seo";
 
-const homeTitle = "MUTX | See every move. Hold the line.";
+const homeTitle = "MUTX | Governed Runtime Records for AI Agents";
 const homeDescription =
-  "MUTX shows what AI agents do, stops actions outside policy, and keeps a reviewable receipt of every run.";
+  "MUTX records submitted runtime evidence, evaluates registered tool calls before execution, and exposes operator workflows for approvals, audit, and control.";
 
 export const metadata: Metadata = {
   title: homeTitle,

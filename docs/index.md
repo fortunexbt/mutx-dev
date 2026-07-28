@@ -47,7 +47,7 @@ Setup, platform references, and operator docs — code-accurate view of the stac
 ## Platform surfaces
 
 - `mutx.dev` — public marketing site and product narrative
-- `mutx.dev/releases` — public release summary and signed desktop artifact handoff
+- `mutx.dev/releases` — public release summary and conditional desktop artifact handoff
 - `mutx.dev/docs` — canonical documentation and API truth surface
 - `app.mutx.dev/dashboard` — operator-facing dashboard surface
 - `app.mutx.dev/control/*` — operator demo surface

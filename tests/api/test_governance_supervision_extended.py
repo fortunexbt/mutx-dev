@@ -4,6 +4,11 @@ from httpx import AsyncClient
 from src.api.services.faramesh_supervisor import SupervisionValidationError
 
 
+@pytest.fixture(autouse=True)
+def administrator_principal(test_user):
+    test_user.roles = ["ADMIN"]
+
+
 class _MockPreparedLaunch:
     def __init__(self, agent_id: str):
         self.agent_id = agent_id

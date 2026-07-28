@@ -11,7 +11,7 @@ A Next.js marketing and app surface, a FastAPI backend, a Python CLI, a Python S
 
 ## Is PicoMUTX live?
 
-Yes. `pico.mutx.dev` ships the PicoMUTX landing page, onboarding-first workspace, academy, grounded tutor, support lane, and the current autopilot beta.
+Yes. `pico.mutx.dev` ships the PicoMUTX landing page, onboarding-first workspace, Academy, grounded Tutor, Support, and Autopilot routes.
 
 ## Is there a `/v1` API prefix?
 
@@ -19,7 +19,7 @@ Yes. The current FastAPI app mounts versioned routes such as `/v1/auth`, `/v1/ag
 
 ## Can I use the CLI for everything?
 
-Not yet. Core auth and deployment flows work well, but some commands still lag the current API surface.
+Use the CLI for the operator workflows it exposes and the SDK or direct API for the rest of the control-plane contract. The CLI is intentionally not a one-to-one command wrapper for every HTTP endpoint.
 
 Current examples:
 
@@ -29,11 +29,11 @@ Current examples:
 
 ## Is the SDK fully aligned with the API?
 
-Not completely. The SDK has useful wrappers, but some methods still assume older endpoints or broader coverage than the current FastAPI app exposes.
+The exported `MutxClient` is the supported general-purpose client and its resources use the canonical `/v1/*` base. Resource classes also expose `a*` methods when constructed with an async `httpx` client; the package does not export a separate general-purpose `MutxAsyncClient`.
 
 ## Does the contact form persist submissions?
 
-Not currently. The contact route validates input and logs the payload, but it does not persist or send submissions yet.
+Yes. Public contact and lead requests are validated, persisted before acknowledgement, and protected with idempotency keys. Follow-up notification is best-effort and is reported separately from durable acceptance.
 
 ## Do the Playwright tests run against localhost?
 

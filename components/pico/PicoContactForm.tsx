@@ -6,6 +6,8 @@ import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import * as Select from '@radix-ui/react-select'
 import { X, ArrowRight, Check, ChevronDown } from 'lucide-react'
 
+import { getPicoDirection } from '@/lib/pico/locale'
+
 import s from './PicoContactForm.module.css'
 import { buildPicoContactPayload } from './picoContactPayload'
 
@@ -55,6 +57,49 @@ type PicoContactFormProps = {
   interestOptions?: ReadonlyArray<PicoContactFormOption>
 }
 
+type ContactSubmissionResponse = {
+  success?: unknown
+  status?: unknown
+  persisted?: unknown
+  detail?: unknown
+  error?: {
+    message?: unknown
+  }
+}
+
+type PicoContactSubmissionAttempt = { content: string; key: string }
+
+export function resolvePicoContactSubmissionAttempt(
+  current: PicoContactSubmissionAttempt | null,
+  content: string,
+  createKey = () => window.crypto.randomUUID(),
+): PicoContactSubmissionAttempt {
+  return current?.content === content ? current : { content, key: createKey() }
+}
+
+function isContactSubmissionResponse(value: unknown): value is ContactSubmissionResponse {
+  return typeof value === 'object' && value !== null
+}
+
+export function getContactSubmissionError(value: unknown, fallback: string): string {
+  if (!isContactSubmissionResponse(value)) return fallback
+  if (typeof value.error?.message === 'string' && value.error.message.trim()) {
+    return value.error.message
+  }
+  return typeof value.detail === 'string' && value.detail.trim() ? value.detail : fallback
+}
+
+export function wasContactSubmissionAccepted(
+  value: unknown,
+): value is ContactSubmissionResponse {
+  return (
+    isContactSubmissionResponse(value) &&
+    value.success === true &&
+    value.status === 'accepted' &&
+    value.persisted === true
+  )
+}
+
 export function PicoContactForm({
   open,
   onClose,
@@ -76,6 +121,7 @@ export function PicoContactForm({
   const successTitleRef = useRef<HTMLHeadingElement>(null)
   const honeypotRef = useRef<HTMLInputElement>(null)
   const submissionIdRef = useRef(0)
+  const submissionAttemptRef = useRef<{ content: string; key: string } | null>(null)
   const titleId = useId()
   const interestLabelId = useId()
   const usesStructuredIntake =
@@ -147,25 +193,34 @@ export function PicoContactForm({
         locale,
         source,
         honeypot: honeypotRef.current?.value || '',
+        productUpdatesConsent: form.get('productUpdatesConsent') === 'on',
       })
+      const canonicalContent = JSON.stringify(payload)
+      submissionAttemptRef.current = resolvePicoContactSubmissionAttempt(
+        submissionAttemptRef.current,
+        canonicalContent,
+      )
 
       try {
         const res = await fetch('/api/contact', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': submissionAttemptRef.current.key,
+          },
+          body: canonicalContent,
         })
 
-        const data = await res.json()
+        const data: unknown = await res.json()
         if (submissionId !== submissionIdRef.current) return
 
-        if (!res.ok || data.status === 'error') {
-          const msg = data.error?.message || t('errorFallback')
-          setErrorMsg(msg)
+        if (!res.ok || !wasContactSubmissionAccepted(data)) {
+          setErrorMsg(getContactSubmissionError(data, t('errorFallback')))
           setState('error')
           return
         }
 
+        submissionAttemptRef.current = null
         setState('success')
         onSuccess?.()
       } catch {
@@ -299,7 +354,7 @@ export function PicoContactForm({
             transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
             role='dialog'
             aria-modal='true'
-            aria-label={t('dialogLabel')}
+            aria-labelledby={titleId}
             tabIndex={-1}
           >
             <button
@@ -312,7 +367,12 @@ export function PicoContactForm({
             </button>
 
             {state === 'success' ? (
-              <div className={s.successState} role='status' aria-live='polite'>
+              <div
+                className={s.successState}
+                role='status'
+                aria-live='polite'
+                aria-atomic='true'
+              >
                 <span className={s.successIcon}>
                   <Check className='h-6 w-6' aria-hidden='true' />
                 </span>
@@ -338,7 +398,11 @@ export function PicoContactForm({
                   <p className={s.subtitle}>{resolvedCopy.subtitle}</p>
                 </div>
 
-                <form className={s.form} onSubmit={handleSubmit}>
+                <form
+                  className={s.form}
+                  onSubmit={handleSubmit}
+                  aria-busy={state === 'submitting'}
+                >
                   <input
                     ref={honeypotRef}
                     name='website'
@@ -365,6 +429,7 @@ export function PicoContactForm({
                         spellCheck={false}
                         autoCapitalize='none'
                         autoCorrect='off'
+                        dir='ltr'
                       />
                     </label>
                   </div>
@@ -398,7 +463,11 @@ export function PicoContactForm({
                     <span id={interestLabelId} className={s.labelText}>
                       {resolvedCopy.interestLabel}
                     </span>
-                    <Select.Root value={interest} onValueChange={setInterest}>
+                    <Select.Root
+                      value={interest}
+                      onValueChange={setInterest}
+                      dir={getPicoDirection(locale)}
+                    >
                       <Select.Trigger
                         className={s.selectTrigger}
                         aria-labelledby={interestLabelId}
@@ -447,8 +516,21 @@ export function PicoContactForm({
                     />
                   </label>
 
+                  <label className={s.consent} htmlFor='pico-product-updates'>
+                    <input
+                      id='pico-product-updates'
+                      name='productUpdatesConsent'
+                      type='checkbox'
+                      className={s.checkbox}
+                    />
+                    <span className={s.consentCopy}>
+                      <span className={s.consentLabel}>{t('productUpdatesLabel')}</span>
+                      <span className={s.consentHint}>{t('productUpdatesHint')}</span>
+                    </span>
+                  </label>
+
                   {errorMsg && (
-                    <p className={s.error} role='status' aria-live='polite'>
+                    <p className={s.error} role='alert' aria-live='assertive' aria-atomic='true'>
                       {errorMsg}
                     </p>
                   )}
@@ -463,7 +545,7 @@ export function PicoContactForm({
                     ) : (
                       <>
                         {resolvedCopy.submit}
-                        <ArrowRight className='h-4 w-4' aria-hidden='true' />
+                        <ArrowRight className='rtl-directional-icon h-4 w-4' aria-hidden='true' />
                       </>
                     )}
                   </button>

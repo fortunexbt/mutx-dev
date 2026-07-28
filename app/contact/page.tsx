@@ -54,7 +54,7 @@ export default function ContactPage() {
       />
       <PublicNav />
 
-      <main id="main-content" className={styles.main}>
+      <main id="main-content" tabIndex={-1} className={styles.main}>
         <section className={styles.routeDarkSection} data-route-surface="dark">
           <div className={`${styles.shell} ${styles.routeHeroNarrow}`}>
             <div className={styles.contactHeroStage}>

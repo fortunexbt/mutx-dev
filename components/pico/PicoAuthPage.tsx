@@ -1,25 +1,34 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useLocale, useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
 
 import { extractApiErrorMessage } from '@/components/app/http'
-import { picoAuthCopy, picoAuthEyebrow, type PicoAuthMode } from '@/components/pico/picoAuthCopy'
 import { buildOAuthStartHref, oauthProviders } from '@/lib/auth/oauth'
 import { resolveRedirectPath } from '@/lib/auth/redirects'
+import { getPicoDirection } from '@/lib/pico/locale'
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
 
 type PicoAuthPageProps = {
-  mode: PicoAuthMode
+  mode: 'login' | 'register'
   nextPath?: string | null
   fallbackPath?: string
   initialError?: string | null
   initialEmail?: string | null
 }
+
+type PicoAuthErrorTarget =
+  | 'email'
+  | 'password'
+  | 'confirmPassword'
+  | 'credentials'
+  | 'form'
+  | null
 
 /* ---- Pico design tokens (hardcoded so this page works anywhere) ---- */
 
@@ -31,6 +40,8 @@ const c = {
   text: '#f3f0e8',
   text2: 'rgba(243,240,232,0.8)',
   muted: 'rgba(243,240,232,0.58)',
+  dividerText: '#a7a39b',
+  dividerLine: '#6d6a63',
   accent: '#ff4d00',
   accentRgb: '255,77,0',
   accentContrast: '#0a0a09',
@@ -101,8 +112,10 @@ export function PicoAuthPage({
   initialEmail,
 }: PicoAuthPageProps) {
   const router = useRouter()
-  const text = picoAuthCopy[mode]
+  const locale = useLocale()
+  const t = useTranslations('pico.auth')
   const isRegister = mode === 'register'
+  const modeKey = isRegister ? 'register' : 'login'
   const redirectPath = resolveRedirectPath(nextPath, fallbackPath)
 
   const [name, setName] = useState('')
@@ -110,27 +123,45 @@ export function PicoAuthPage({
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState(initialError ?? '')
+  const [errorTarget, setErrorTarget] = useState<PicoAuthErrorTarget>(
+    initialError ? 'form' : null,
+  )
   const [notice, setNotice] = useState('')
   const [loading, setLoading] = useState(false)
   const [resending, setResending] = useState(false)
+  const errorSummaryRef = useRef<HTMLDivElement>(null)
+  const errorSummaryId = `pico-${mode}-error-summary`
 
   const verificationError = /verification/i.test(error)
+
+  useEffect(() => {
+    if (error) {
+      errorSummaryRef.current?.focus()
+    }
+  }, [error])
+
+  function clearError() {
+    setError('')
+    setErrorTarget(null)
+  }
 
   /* ---- Submit ---- */
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (isRegister && password !== confirmPassword) {
-      setError('Passwords do not match')
+      setError(t('errors.passwordMismatch'))
+      setErrorTarget('confirmPassword')
       return
     }
     if (isRegister && password.length < 8) {
-      setError('Password must be at least 8 characters')
+      setError(t('errors.passwordTooShort'))
+      setErrorTarget('password')
       return
     }
 
     setLoading(true)
-    setError('')
+    clearError()
     setNotice('')
 
     try {
@@ -142,15 +173,16 @@ export function PicoAuthPage({
       })
 
       const data = await res.json().catch(() => ({
-        detail: mode === 'login' ? 'Failed to sign in' : 'Failed to create account',
+        detail: t(`errors.${mode === 'login' ? 'loginFailed' : 'registerFailed'}`),
       }))
 
       if (!res.ok) {
-        throw new Error(extractApiErrorMessage(data, mode === 'login' ? 'Failed to sign in' : 'Failed to create account'))
+        throw new Error(extractApiErrorMessage(data, t(`errors.${mode === 'login' ? 'loginFailed' : 'registerFailed'}`)))
       }
 
       if (isRegister && data.requires_email_verification) {
         const params = new URLSearchParams({ email, next: redirectPath })
+        if (data.verification_email_sent === false) params.set('delivery', 'failed')
         router.replace(`/verify-email?${params.toString()}`)
         router.refresh()
         return
@@ -159,7 +191,8 @@ export function PicoAuthPage({
       router.replace(redirectPath)
       router.refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : mode === 'login' ? 'Failed to sign in' : 'Failed to create account')
+      setErrorTarget(mode === 'login' ? 'credentials' : 'form')
+      setError(err instanceof Error ? err.message : t(`errors.${mode === 'login' ? 'loginFailed' : 'registerFailed'}`))
     } finally {
       setLoading(false)
     }
@@ -168,8 +201,13 @@ export function PicoAuthPage({
   /* ---- Resend ---- */
 
   async function handleResend() {
-    if (!email) { setError('Enter your email address first'); return }
+    if (!email) {
+      setErrorTarget('email')
+      setError(t('errors.emailRequired'))
+      return
+    }
     setResending(true)
+    clearError()
     setNotice('')
     try {
       const res = await fetch('/api/auth/resend-verification', {
@@ -177,11 +215,12 @@ export function PicoAuthPage({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       })
-      const data = await res.json().catch(() => ({ detail: 'Failed to resend' }))
-      if (!res.ok) throw new Error(extractApiErrorMessage(data, 'Failed to resend'))
-      setNotice(data.message || 'Verification email sent')
+      const data = await res.json().catch(() => ({ detail: t('errors.resendFailed') }))
+      if (!res.ok) throw new Error(extractApiErrorMessage(data, t('errors.resendFailed')))
+      setNotice(data.message || t('notice.verificationSent'))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to resend')
+      setErrorTarget('email')
+      setError(err instanceof Error ? err.message : t('errors.resendFailed'))
     } finally {
       setResending(false)
     }
@@ -216,7 +255,7 @@ export function PicoAuthPage({
   /* ---- Render ---- */
 
   return (
-    <div style={{
+    <div lang={locale} dir={getPicoDirection(locale)} style={{
       minHeight: '100vh',
       background: c.bgGrad,
       backgroundColor: c.bg,
@@ -259,7 +298,7 @@ export function PicoAuthPage({
                 marginBottom: '0.75rem',
               }}
             >
-              {picoAuthEyebrow}
+              {t('eyebrow')}
             </p>
             <h1
               style={{
@@ -271,10 +310,10 @@ export function PicoAuthPage({
                 marginBottom: '0.5rem',
               }}
             >
-              {text.title}
+              {t(`modes.${modeKey}.title`)}
             </h1>
             <p style={{ color: c.text2, fontSize: '0.9rem', lineHeight: 1.6 }}>
-              {text.subtitle}
+              {t(`modes.${modeKey}.subtitle`)}
             </p>
           </div>
 
@@ -328,31 +367,42 @@ export function PicoAuthPage({
             </div>
 
             {/* Divider */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '1.5rem 0' }}>
-              <span style={{ flex: 1, height: '1px', background: c.border }} />
+            <div
+              data-auth-divider="pico"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '1.5rem 0' }}
+            >
+              <span data-auth-divider-line style={{ flex: 1, height: '1px', background: c.dividerLine }} />
               <span style={{
                 fontFamily: c.fontMono,
                 fontSize: '0.6rem',
                 textTransform: 'uppercase',
                 letterSpacing: '0.18em',
-                color: c.muted,
+                color: c.dividerText,
               }}>
-                Or use email
+                {t('orUseEmail')}
               </span>
-              <span style={{ flex: 1, height: '1px', background: c.border }} />
+              <span data-auth-divider-line style={{ flex: 1, height: '1px', background: c.dividerLine }} />
             </div>
 
             {/* Form */}
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+            <form
+              onSubmit={handleSubmit}
+              aria-busy={loading || resending}
+              aria-describedby={error && errorTarget === 'form' ? errorSummaryId : undefined}
+              style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}
+            >
               {isRegister && (
                 <div>
-                  <label htmlFor="pico-name" style={labelStyle}>Name</label>
+                  <label htmlFor="pico-name" style={labelStyle}>{t('fields.name.label')}</label>
                   <input
                     id="pico-name"
                     type="text"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Your name"
+                    onChange={(e) => {
+                      setName(e.target.value)
+                      clearError()
+                    }}
+                    placeholder={t('fields.name.placeholder')}
                     required
                     autoComplete="name"
                     style={inputStyle}
@@ -363,15 +413,29 @@ export function PicoAuthPage({
               )}
 
               <div>
-                <label htmlFor="pico-email" style={labelStyle}>Email address</label>
+                <label htmlFor="pico-email" style={labelStyle}>{t('fields.email.label')}</label>
                 <input
                   id="pico-email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@company.com"
+                  onChange={(e) => {
+                    setEmail(e.target.value)
+                    clearError()
+                  }}
+                  placeholder={t('fields.email.placeholder')}
                   required
                   autoComplete="email"
+                  dir="ltr"
+                  aria-invalid={
+                    error && (errorTarget === 'email' || errorTarget === 'credentials')
+                      ? true
+                      : undefined
+                  }
+                  aria-describedby={
+                    error && (errorTarget === 'email' || errorTarget === 'credentials')
+                      ? errorSummaryId
+                      : undefined
+                  }
                   style={inputStyle}
                   onFocus={(e) => { e.target.style.borderColor = c.borderHover; e.target.style.boxShadow = `0 0 0 3px rgba(${c.accentRgb},0.12)` }}
                   onBlur={(e) => { e.target.style.borderColor = c.border; e.target.style.boxShadow = 'none' }}
@@ -379,15 +443,28 @@ export function PicoAuthPage({
               </div>
 
               <div>
-                <label htmlFor="pico-password" style={labelStyle}>Password</label>
+                <label htmlFor="pico-password" style={labelStyle}>{t('fields.password.label')}</label>
                 <input
                   id="pico-password"
                   type="password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter at least 8 characters"
+                  onChange={(e) => {
+                    setPassword(e.target.value)
+                    clearError()
+                  }}
+                  placeholder={t('fields.password.placeholder')}
                   required
                   autoComplete={isRegister ? 'new-password' : 'current-password'}
+                  aria-invalid={
+                    error && (errorTarget === 'password' || errorTarget === 'credentials')
+                      ? true
+                      : undefined
+                  }
+                  aria-describedby={
+                    error && (errorTarget === 'password' || errorTarget === 'credentials')
+                      ? errorSummaryId
+                      : undefined
+                  }
                   style={inputStyle}
                   onFocus={(e) => { e.target.style.borderColor = c.borderHover; e.target.style.boxShadow = `0 0 0 3px rgba(${c.accentRgb},0.12)` }}
                   onBlur={(e) => { e.target.style.borderColor = c.border; e.target.style.boxShadow = 'none' }}
@@ -396,15 +473,20 @@ export function PicoAuthPage({
 
               {isRegister && (
                 <div>
-                  <label htmlFor="pico-confirm" style={labelStyle}>Confirm password</label>
+                  <label htmlFor="pico-confirm" style={labelStyle}>{t('fields.confirmPassword.label')}</label>
                   <input
                     id="pico-confirm"
                     type="password"
                     value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Enter at least 8 characters"
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value)
+                      clearError()
+                    }}
+                    placeholder={t('fields.confirmPassword.placeholder')}
                     required
                     autoComplete="new-password"
+                    aria-invalid={error && errorTarget === 'confirmPassword' ? true : undefined}
+                    aria-describedby={error && errorTarget === 'confirmPassword' ? errorSummaryId : undefined}
                     style={inputStyle}
                     onFocus={(e) => { e.target.style.borderColor = c.borderHover; e.target.style.boxShadow = `0 0 0 3px rgba(${c.accentRgb},0.12)` }}
                     onBlur={(e) => { e.target.style.borderColor = c.border; e.target.style.boxShadow = 'none' }}
@@ -414,7 +496,7 @@ export function PicoAuthPage({
 
               {/* Notice */}
               {notice && (
-                <div style={{
+                <div role="status" aria-live="polite" aria-atomic="true" style={{
                   display: 'flex',
                   alignItems: 'flex-start',
                   gap: '0.5rem',
@@ -433,18 +515,26 @@ export function PicoAuthPage({
 
               {/* Error */}
               {error && (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '0.5rem',
-                  padding: '0.75rem 1rem',
-                  borderRadius: c.radiusSm,
-                  background: 'rgba(255,140,114,0.08)',
-                  border: '1px solid rgba(255,140,114,0.2)',
-                  color: c.text,
-                  fontSize: '0.85rem',
-                  lineHeight: 1.5,
-                }}>
+                <div
+                  ref={errorSummaryRef}
+                  id={errorSummaryId}
+                  role="alert"
+                  aria-live="assertive"
+                  aria-atomic="true"
+                  tabIndex={-1}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.5rem',
+                    padding: '0.75rem 1rem',
+                    borderRadius: c.radiusSm,
+                    background: 'rgba(255,140,114,0.08)',
+                    border: '1px solid rgba(255,140,114,0.2)',
+                    color: c.text,
+                    fontSize: '0.85rem',
+                    lineHeight: 1.5,
+                  }}
+                >
                   <span style={{ color: c.red, flexShrink: 0 }}>&#9888;</span>
                   {error}
                 </div>
@@ -473,7 +563,7 @@ export function PicoAuthPage({
                   boxShadow: `0 0 20px rgba(${c.accentRgb}, 0.2)`,
                 }}
               >
-                {loading ? text.loading : text.submit}
+                {loading ? t(`modes.${modeKey}.loading`) : t(`modes.${modeKey}.submit`)}
               </button>
             </form>
 
@@ -488,8 +578,8 @@ export function PicoAuthPage({
               color: c.muted,
             }}>
               {mode === 'login' && (
-                <Link href="/forgot-password" style={{ display: 'inline-flex', minHeight: '2.75rem', alignItems: 'center', color: c.muted, textDecoration: 'none', transition: 'color 0.2s' }}>
-                  Forgot password?
+                <Link href={`/forgot-password?next=${encodeURIComponent(redirectPath)}`} style={{ display: 'inline-flex', minHeight: '2.75rem', alignItems: 'center', color: c.muted, textDecoration: 'none', transition: 'color 0.2s' }}>
+                  {t('forgotPassword')}
                 </Link>
               )}
               {mode === 'login' && verificationError && (
@@ -499,16 +589,16 @@ export function PicoAuthPage({
                   disabled={resending}
                   style={{ minHeight: '2.75rem', background: 'none', border: 'none', color: c.muted, cursor: 'pointer', fontSize: '0.82rem', padding: '0 0.5rem', textDecoration: 'underline' }}
                 >
-                  {resending ? 'Sending\u2026' : 'Resend verification'}
+                  {resending ? t('notice.resending') : t('notice.resendVerification')}
                 </button>
               )}
               <p style={{ margin: 0 }}>
-                {text.toggleQ}{' '}
+                {t(`modes.${modeKey}.toggleQuestion`)}{' '}
                 <Link
-                  href={`/${text.toggleMode}?next=${encodeURIComponent(redirectPath)}`}
+                  href={`/${isRegister ? 'login' : 'register'}?next=${encodeURIComponent(redirectPath)}`}
                   style={{ display: 'inline-flex', minHeight: '2.75rem', alignItems: 'center', color: c.accent, textDecoration: 'none', fontWeight: 600 }}
                 >
-                  {text.toggleA}
+                  {t(`modes.${modeKey}.toggleAction`)}
                 </Link>
               </p>
             </div>

@@ -4,11 +4,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight } from "lucide-react";
 
-import { ApiRequestError, readJson } from "@/components/app/http";
+import { readJson } from "@/components/app/http";
+import {
+  dashboardRequestErrorMessage,
+  getDashboardRequestAccessFailure,
+} from "@/components/dashboard/dashboardRequestAccess";
 import {
   LiveAuthRequired,
   LiveEmptyState,
   LiveErrorState,
+  LiveForbidden,
   LiveKpiGrid,
   LiveLoading,
   LiveMiniStat,
@@ -20,42 +25,10 @@ import {
 } from "@/components/dashboard/livePrimitives";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 
-interface MutxCost {
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens?: number;
-  cost_usd?: number;
-  model?: string;
-}
+import type { components } from "@/app/types/api";
 
-interface MutxStep {
-  id: string;
-  type: string;
-  tool_name?: string;
-  success?: boolean;
-  duration_ms?: number;
-  started_at: string;
-  step_metadata?: Record<string, unknown>;
-}
-
-interface MutxRun {
-  id: string;
-  agent_id: string;
-  agent_name?: string;
-  model?: string;
-  provider?: string;
-  runtime?: string;
-  status: string;
-  outcome?: string;
-  started_at: string;
-  ended_at?: string;
-  duration_ms?: number;
-  tools_available?: string[];
-  cost?: MutxCost;
-  steps?: MutxStep[];
-  error?: string;
-  run_metadata?: Record<string, unknown>;
-}
+type MutxRun = components["schemas"]["MutxRunResponse"];
+type MutxRunDetail = components["schemas"]["MutxRunDetailResponse"];
 
 interface TelemetryConfig {
   otel_enabled?: boolean;
@@ -95,9 +68,13 @@ interface ObservabilityResponse {
 export function ObservabilityPageClient() {
   const [loading, setLoading] = useState(true);
   const [authRequired, setAuthRequired] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runs, setRuns] = useState<MutxRun[]>([]);
-  const [selectedRun, setSelectedRun] = useState<MutxRun | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [selectedRun, setSelectedRun] = useState<MutxRunDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [telemetry, setTelemetry] = useState<ObservabilityResponse["telemetry"]>(null);
   const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null);
   const [sessionSummaryError, setSessionSummaryError] = useState<string | null>(null);
@@ -109,6 +86,7 @@ export function ObservabilityPageClient() {
       setLoading(true);
       setError(null);
       setAuthRequired(false);
+      setPermissionDenied(false);
 
       try {
         const response = await readJson<ObservabilityResponse>("/api/dashboard/observability?limit=50");
@@ -117,20 +95,18 @@ export function ObservabilityPageClient() {
           setTelemetry(response.telemetry ?? null);
           setSessionSummary(response.sessionSummary ?? null);
           setSessionSummaryError(response.sessionSummaryError ?? null);
-          if (response.items?.length > 0 && !selectedRun) {
-            setSelectedRun(response.items[0]);
-          }
+          setSelectedRunId(response.items?.[0]?.id ?? null);
           setLoading(false);
         }
       } catch (loadError) {
         if (!cancelled) {
-          if (
-            loadError instanceof ApiRequestError &&
-            (loadError.status === 401 || loadError.status === 403)
-          ) {
+          const accessFailure = getDashboardRequestAccessFailure(loadError);
+          if (accessFailure === "authentication") {
             setAuthRequired(true);
+          } else if (accessFailure === "permission") {
+            setPermissionDenied(true);
           } else {
-            setError(loadError instanceof Error ? loadError.message : "Failed to load observability data");
+            setError(dashboardRequestErrorMessage(loadError, "Failed to load observability data"));
           }
           setLoading(false);
         }
@@ -142,6 +118,55 @@ export function ObservabilityPageClient() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const runId = selectedRunId;
+
+    if (!runId) {
+      setSelectedRun(null);
+      setDetailLoading(false);
+      setDetailError(null);
+      return;
+    }
+    const activeRunId: string = runId;
+
+    let cancelled = false;
+
+    async function loadRunDetail() {
+      setSelectedRun(null);
+      setDetailLoading(true);
+      setDetailError(null);
+
+      try {
+        const response = await readJson<MutxRunDetail>(
+          `/api/dashboard/observability/runs/${encodeURIComponent(activeRunId)}`,
+        );
+        if (!cancelled) {
+          setSelectedRun(response);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          const accessFailure = getDashboardRequestAccessFailure(loadError);
+          if (accessFailure === "authentication") {
+            setAuthRequired(true);
+          } else if (accessFailure === "permission") {
+            setPermissionDenied(true);
+          } else {
+            setDetailError(dashboardRequestErrorMessage(loadError, "Failed to load run detail"));
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          setDetailLoading(false);
+        }
+      }
+    }
+
+    void loadRunDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRunId]);
 
   const totals = useMemo(() => {
     const completed = runs.filter((run) => run.status === "completed").length;
@@ -177,6 +202,9 @@ export function ObservabilityPageClient() {
         message="Sign in to inspect agent run observability data."
       />
     );
+  }
+  if (permissionDenied) {
+    return <LiveForbidden title="Observability permission required" message="Your account cannot inspect observability runs or detail. Selection controls are unavailable." />;
   }
   if (error) return <LiveErrorState title="Observability unavailable" message={error} />;
 
@@ -269,7 +297,11 @@ export function ObservabilityPageClient() {
             </LiveMiniStatGrid>
 
             {telemetry?.errors ? (
-              <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100">
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100"
+              >
                 {Object.entries(telemetry.errors).map(([scope, message]) => (
                   <div key={scope}>
                     <span className="font-medium capitalize">{scope}</span>
@@ -281,7 +313,11 @@ export function ObservabilityPageClient() {
             ) : null}
 
             {sessionSummaryError ? (
-              <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100">
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100"
+              >
                 <span className="font-medium">Sessions</span>{" "}
                 {sessionSummaryError}
               </div>
@@ -335,9 +371,11 @@ export function ObservabilityPageClient() {
                 {runs.map((run) => (
                   <button
                     key={run.id}
-                    onClick={() => setSelectedRun(run)}
+                    type="button"
+                    onClick={() => setSelectedRunId(run.id)}
+                    aria-pressed={selectedRunId === run.id}
                     className={`w-full rounded-lg border p-3 text-left transition-colors ${
-                      selectedRun?.id === run.id
+                      selectedRunId === run.id
                         ? "border-cyan-500/50 bg-cyan-500/10"
                         : "border-white/10 bg-white/[0.02] hover:bg-white/[0.05]"
                     }`}
@@ -352,19 +390,31 @@ export function ObservabilityPageClient() {
                     <div className="mt-1 text-xs text-slate-400">
                       {run.agent_id.slice(0, 12)} · {run.model || "no model"}
                     </div>
-                    {run.cost && (
+                    <div className="mt-1 text-xs text-slate-500">
+                      {run.step_count} {run.step_count === 1 ? "step" : "steps"}
+                    </div>
+                    {run.cost ? (
                       <div className="mt-1 text-xs text-slate-500">
-                        ${run.cost.cost_usd?.toFixed(4)} · {run.cost.input_tokens + run.cost.output_tokens} tokens
+                        {run.cost.cost_usd != null
+                          ? `$${run.cost.cost_usd.toFixed(4)}`
+                          : "Cost unavailable"}
+                        {" · "}
+                        {(run.cost.total_tokens ??
+                          run.cost.input_tokens + run.cost.output_tokens).toLocaleString()} tokens
                       </div>
-                    )}
+                    ) : null}
                   </button>
                 ))}
               </div>
             )}
           </LivePanel>
 
-          <LivePanel title="Run Detail" meta={selectedRun ? selectedRun.id.slice(0, 16) : "-"}>
-            {selectedRun ? (
+          <LivePanel title="Run Detail" meta={selectedRunId ? selectedRunId.slice(0, 16) : "-"}>
+            {detailLoading ? (
+              <LiveLoading title="Run detail" />
+            ) : detailError ? (
+              <LiveErrorState title="Run detail unavailable" message={detailError} />
+            ) : selectedRun ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -386,12 +436,14 @@ export function ObservabilityPageClient() {
                   <div>
                     <div className="text-xs text-slate-500">Duration</div>
                     <div className="text-sm text-white">
-                      {selectedRun.duration_ms ? `${(selectedRun.duration_ms / 1000).toFixed(2)}s` : "-"}
+                      {selectedRun.duration_ms != null
+                        ? `${(selectedRun.duration_ms / 1000).toFixed(2)}s`
+                        : "-"}
                     </div>
                   </div>
                   <div>
                     <div className="text-xs text-slate-500">Steps</div>
-                    <div className="text-sm text-white">{selectedRun.steps?.length || 0}</div>
+                    <div className="text-sm text-white">{selectedRun.steps.length}</div>
                   </div>
                 </div>
 
@@ -409,7 +461,11 @@ export function ObservabilityPageClient() {
                           <div className="text-xs text-slate-500">Output</div>
                         </div>
                         <div>
-                          <div className="text-lg text-cyan-400">${selectedRun.cost.cost_usd?.toFixed(4) || "0"}</div>
+                          <div className="text-lg text-cyan-400">
+                            {selectedRun.cost.cost_usd != null
+                              ? `$${selectedRun.cost.cost_usd.toFixed(4)}`
+                              : "N/A"}
+                          </div>
                           <div className="text-xs text-slate-500">Cost</div>
                         </div>
                       </div>
@@ -417,11 +473,11 @@ export function ObservabilityPageClient() {
                   </div>
                 )}
 
-                {selectedRun.steps && selectedRun.steps.length > 0 && (
+                {selectedRun.steps.length > 0 ? (
                   <div>
                     <div className="mb-2 text-xs text-slate-500">Steps ({selectedRun.steps.length})</div>
                     <div className="max-h-64 space-y-1 overflow-y-auto">
-                      {selectedRun.steps.slice(0, 20).map((step, i) => (
+                      {selectedRun.steps.map((step, i) => (
                         <div
                           key={step.id}
                           className="flex items-center gap-2 rounded border border-white/5 bg-white/[0.02] p-2 text-xs"
@@ -438,17 +494,26 @@ export function ObservabilityPageClient() {
                           >
                             {step.type}
                           </span>
-                          <span className="flex-1 truncate text-slate-300">{step.tool_name || "-"}</span>
-                          {step.success !== undefined && (
+                          <span className="flex-1 truncate text-slate-300">
+                            {step.tool_name || step.input_preview || step.output_preview || "No step details recorded"}
+                          </span>
+                          {step.success != null ? (
                             <span className={step.success ? "text-green-400" : "text-red-400"}>
                               {step.success ? "✓" : "✗"}
                             </span>
-                          )}
-                          {step.duration_ms && <span className="text-slate-500">{step.duration_ms}ms</span>}
+                          ) : null}
+                          {step.duration_ms != null ? (
+                            <span className="text-slate-500">{step.duration_ms}ms</span>
+                          ) : null}
                         </div>
                       ))}
                     </div>
                   </div>
+                ) : (
+                  <LiveEmptyState
+                    title="No steps recorded"
+                    message="The run detail loaded successfully, but it does not contain execution steps."
+                  />
                 )}
 
                 {selectedRun.error && (
@@ -460,6 +525,11 @@ export function ObservabilityPageClient() {
                   </div>
                 )}
               </div>
+            ) : selectedRunId ? (
+              <LiveEmptyState
+                title="Run detail not returned"
+                message="The selected run did not return a detail record."
+              />
             ) : (
               <LiveEmptyState title="No run selected" message="Select a run from the list to view details." />
             )}

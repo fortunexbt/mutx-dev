@@ -16,7 +16,7 @@ export async function GET(request: NextRequest, context: Params) {
     const { provider } = await context.params;
     return proxyJson(
       request,
-      `${getApiBaseUrl()}/v1/runtime/providers/${provider}`,
+      `${getApiBaseUrl()}/v1/runtime/providers/${encodeURIComponent(provider)}`,
       { fallbackMessage: "Failed to fetch provider runtime" },
     );
   })(request);

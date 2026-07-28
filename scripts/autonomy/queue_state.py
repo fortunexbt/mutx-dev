@@ -136,7 +136,9 @@ def recover_stale_running_items(
     for item in queue.get("items", []):
         if str(item.get("status") or "") not in STALE_RUNNING_STATUSES:
             continue
-        timestamp = parse_iso_timestamp(str(item.get("updated_at") or item.get("claimed_at") or item.get("started_at") or ""))
+        timestamp = parse_iso_timestamp(
+            str(item.get("updated_at") or item.get("claimed_at") or item.get("started_at") or "")
+        )
         if timestamp is None:
             timestamp = 0.0
         if stale_after_seconds > 0 and (current_ts - timestamp) < stale_after_seconds:

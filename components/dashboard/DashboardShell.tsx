@@ -13,7 +13,10 @@ import {
   useNavigateToPanel,
   usePrefetchPanel,
 } from "@/lib/navigation";
+import { useMissionControl } from "@/lib/store";
 import { cn } from "@/lib/utils";
+
+import visualContract from "./dashboardVisualContract.module.css";
 
 import {
   ALL_DASHBOARD_NAV_ITEMS,
@@ -119,7 +122,7 @@ function DashboardNav({
     <nav className="space-y-6" aria-label="Dashboard navigation">
       {DASHBOARD_NAV_GROUPS.map((group, groupIndex) => (
         <div key={group.key}>
-          <p className="mb-2 flex items-center gap-2 border-b border-[#292a25] px-2 pb-2 font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.19em] text-[#8d867a]">
+          <p className="mb-2 flex items-center gap-2 border-b border-[#292a25] px-2 pb-2 font-[family:var(--font-mono)] text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">
             <span className="text-[#ff6a32]" aria-hidden="true">
               {String(groupIndex + 1).padStart(2, "0")}
             </span>
@@ -134,6 +137,49 @@ function DashboardNav({
                 ? panelHref(panel)
                 : getDashboardNavHref(pathname, item);
               const ItemIcon = item.icon;
+              const itemClassName = cn(
+                "group relative flex min-h-11 items-center gap-2.5 rounded-[4px] border px-2.5 py-2 text-[12px] transition-[background-color,border-color,color] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847]",
+                active
+                  ? "dashboard-active-rail border-[#34342e] bg-[#171813] font-medium text-[#f0ebdf]"
+                  : "border-transparent text-[#aaa397] hover:border-[#2b2b26] hover:bg-[#12130f] hover:text-[#eee9dc]",
+              );
+              const itemContent = (
+                <>
+                  <span
+                    className={cn(
+                      "w-5 shrink-0 font-[family:var(--font-mono)] text-[11px] tabular-nums tracking-[0.06em]",
+                      active ? "text-[#ff8355]" : "text-[#8d867a] group-hover:text-[#aaa397]",
+                    )}
+                    aria-hidden="true"
+                  >
+                    {String(recordIndex).padStart(2, "0")}
+                  </span>
+                  <ItemIcon
+                    className={cn(
+                      "h-3.5 w-3.5 shrink-0",
+                      active ? "text-[#ff6a32]" : "text-[#737067] group-hover:text-[#b6afa2]",
+                    )}
+                    aria-hidden="true"
+                  />
+                  <span className="truncate">{item.title}</span>
+                  {active ? (
+                    <ChevronRight className="rtl-directional-icon ms-auto h-3.5 w-3.5 text-[#58aaff]" aria-hidden="true" />
+                  ) : null}
+                </>
+              );
+
+              if (!href) {
+                return (
+                  <span
+                    key={item.key}
+                    aria-disabled="true"
+                    title={`${item.description} Browser route unavailable.`}
+                    className={cn(itemClassName, "cursor-not-allowed opacity-55")}
+                  >
+                    {itemContent}
+                  </span>
+                );
+              }
 
               return (
                 <Link
@@ -150,33 +196,9 @@ function DashboardNav({
                     }
                     onNavigate?.();
                   }}
-                  className={cn(
-                    "group relative flex min-h-10 items-center gap-2.5 rounded-[4px] border px-2.5 py-2 text-[12px] transition-[background-color,border-color,color] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847]",
-                    active
-                      ? "border-[#34342e] bg-[#171813] font-medium text-[#f0ebdf] shadow-[inset_3px_0_0_#ff571c]"
-                      : "border-transparent text-[#aaa397] hover:border-[#2b2b26] hover:bg-[#12130f] hover:text-[#eee9dc]",
-                  )}
+                  className={itemClassName}
                 >
-                  <span
-                    className={cn(
-                      "w-5 shrink-0 font-[family:var(--font-mono)] text-[8px] tabular-nums tracking-[0.08em]",
-                      active ? "text-[#ff8355]" : "text-[#8d867a] group-hover:text-[#aaa397]",
-                    )}
-                    aria-hidden="true"
-                  >
-                    {String(recordIndex).padStart(2, "0")}
-                  </span>
-                  <ItemIcon
-                    className={cn(
-                      "h-3.5 w-3.5 shrink-0",
-                      active ? "text-[#ff6a32]" : "text-[#737067] group-hover:text-[#b6afa2]",
-                    )}
-                    aria-hidden="true"
-                  />
-                  <span className="truncate">{item.title}</span>
-                  {active ? (
-                    <ChevronRight className="ml-auto h-3.5 w-3.5 text-[#58aaff]" aria-hidden="true" />
-                  ) : null}
+                  {itemContent}
                 </Link>
               );
             })}
@@ -191,7 +213,7 @@ function MutxBrand() {
   return (
     <Link
       href="/dashboard"
-      className="flex items-center gap-3 rounded-[4px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#ff7847]"
+      className="flex min-h-11 items-center gap-3 rounded-[4px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#ff7847]"
       aria-label="MUTX dashboard home"
     >
       <span className="relative grid h-8 w-8 grid-cols-[5px_1fr] overflow-hidden rounded-[3px] border border-[#48463e] bg-[#11120f]" aria-hidden="true">
@@ -207,7 +229,7 @@ function MutxBrand() {
         <span className="block font-[family:var(--font-site-body)] text-[16px] font-semibold leading-none tracking-[-0.045em] text-[#eee9dc]">
           MUTX
         </span>
-        <span className="mt-1 block font-[family:var(--font-mono)] text-[7px] uppercase tracking-[0.2em] text-[#827d72]">
+        <span className="mt-1 block font-[family:var(--font-mono)] text-[11px] uppercase leading-none tracking-[0.14em] text-[#827d72]">
           Flight recorder
         </span>
       </span>
@@ -220,6 +242,7 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
   const navigateToPanel = useNavigateToPanel();
   const prefetchPanel = usePrefetchPanel();
   const { status, isDesktop, platformReady } = useDesktopStatus();
+  const webCurrentUser = useMissionControl((state) => state.currentUser);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [timecode, setTimecode] = useState("TC --:--:--Z");
@@ -309,7 +332,10 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
 
   return (
     <div
-      className="dashboard-app min-h-screen bg-[#090a08] text-[#eee9dc]"
+      className={cn(
+        "dashboard-app min-h-screen bg-[#090a08] text-[#eee9dc]",
+        visualContract.visualContract,
+      )}
       data-dashboard-theme="flight-recorder"
     >
       {mobileOpen ? (
@@ -327,7 +353,7 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
             role="dialog"
             aria-modal="true"
             aria-label="Dashboard navigation"
-            className="relative flex h-full w-[min(88vw,18rem)] flex-col border-r border-[#383730] bg-[#080907] shadow-[24px_0_64px_rgba(0,0,0,0.55)]"
+            className="dashboard-mobile-drawer relative flex h-full w-[min(88vw,18rem)] flex-col bg-[#080907]"
           >
             <div className="flex h-16 items-center justify-between border-b border-[#292a25] px-4">
               <MutxBrand />
@@ -363,7 +389,7 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
         ref={appContentRef}
         className="min-h-screen lg:grid lg:grid-cols-[16.75rem_minmax(0,1fr)]"
       >
-        <aside className="hidden h-screen flex-col border-r border-[#292a25] bg-[#080907] lg:sticky lg:top-0 lg:flex">
+        <aside className="hidden h-screen flex-col border-e border-[#292a25] bg-[#080907] lg:sticky lg:top-0 lg:flex">
           <div className="flex h-16 items-center border-b border-[#292a25] px-5">
             <MutxBrand />
           </div>
@@ -375,7 +401,7 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
             />
           </div>
           <div className="border-t border-[#292a25] px-5 py-4">
-            <div className="mb-3 flex items-center justify-between font-[family:var(--font-mono)] text-[8px] uppercase tracking-[0.16em] text-[#8d867a]">
+            <div className="mb-3 flex items-center justify-between font-[family:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-[#8d867a]">
               <span>Channel / 01</span>
               <span>Secure</span>
             </div>
@@ -389,8 +415,8 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
               />
               <span>{controlPlaneReady ? "Control plane connected" : "Browser workspace"}</span>
             </div>
-            <p className="mt-2 truncate font-[family:var(--font-mono)] text-[9px] text-[#8d867a]">
-              {status.user?.email || "Sign in to load workspace data"}
+            <p dir="auto" className="mt-2 truncate font-[family:var(--font-mono)] text-[11px] text-[#8d867a]">
+              {(isDesktop ? status.user?.email : webCurrentUser?.email) || "Operator identity unavailable"}
             </p>
           </div>
         </aside>
@@ -401,7 +427,7 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
               ref={mobileTriggerRef}
               type="button"
               onClick={() => setMobileOpen(true)}
-              className="mr-3 flex h-11 w-11 items-center justify-center rounded-[4px] border border-[#393830] bg-[#131410] text-[#d6d0c3] transition hover:border-[#5c584f] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847] lg:hidden"
+              className="me-3 flex h-11 w-11 items-center justify-center rounded-[4px] border border-[#393830] bg-[#131410] text-[#d6d0c3] transition hover:border-[#5c584f] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847] lg:hidden"
               aria-label="Open dashboard sidebar"
               aria-controls="dashboard-mobile-navigation"
               aria-expanded={mobileOpen}
@@ -409,9 +435,9 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
               <Menu className="h-4 w-4" aria-hidden="true" />
             </button>
 
-            <div className="min-w-0 border-l border-[#36362f] pl-3">
-              <p className="flex items-center gap-2 font-[family:var(--font-mono)] text-[8px] font-semibold uppercase tracking-[0.18em] text-[#767168]">
-                <span className="text-[#ff6a32]">REC {String(activeRecord).padStart(2, "0")}</span>
+            <div className="min-w-0 border-s border-[#36362f] ps-3">
+              <p className="flex items-center gap-2 truncate font-[family:var(--font-mono)] text-[11px] font-semibold uppercase tracking-[0.14em] text-[#918b80]">
+                <span className="text-[#ff6a32]">SYS {String(activeRecord).padStart(2, "0")}</span>
                 <span aria-hidden="true">/</span>
                 <span>{activeGroup}</span>
               </p>
@@ -420,37 +446,38 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
               </p>
             </div>
 
-            <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-              <span className="mr-1 hidden border-r border-[#34342e] pr-4 font-[family:var(--font-mono)] text-[9px] tabular-nums tracking-[0.1em] text-[#8d867a] xl:inline">
+            <div className="ms-auto flex items-center gap-1.5 sm:gap-2">
+              <span dir="ltr" className="me-1 hidden border-e border-[#34342e] pe-4 font-[family:var(--font-mono)] text-[11px] tabular-nums tracking-[0.08em] text-[#8d867a] xl:inline">
                 {timecode}
               </span>
               <button
                 type="button"
                 onClick={() => setPaletteOpen(true)}
                 disabled={!platformReady}
-                className="hidden min-h-10 items-center gap-2 rounded-[4px] border border-[#35352f] bg-[#11120f] px-3 text-[11px] text-[#aaa397] transition hover:border-[#56534b] hover:text-[#eee9dc] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847] disabled:cursor-wait disabled:opacity-50 md:inline-flex"
+                className="hidden min-h-11 min-w-11 items-center gap-2 rounded-[4px] border border-[#35352f] bg-[#11120f] px-3 text-[11px] text-[#aaa397] transition hover:border-[#56534b] hover:text-[#eee9dc] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847] disabled:cursor-wait disabled:opacity-50 md:inline-flex"
                 aria-label="Open command palette"
                 aria-keyshortcuts="Meta+K Control+K"
               >
                 <Search className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>Find a surface</span>
-                <kbd className="ml-2 rounded-[3px] border border-[#3b3a33] bg-[#090a08] px-1.5 py-0.5 font-[family:var(--font-mono)] text-[8px] text-[#7f7a70]">
+                <kbd className="ms-2 rounded-[3px] border border-[#3b3a33] bg-[#090a08] px-1.5 py-0.5 font-[family:var(--font-mono)] text-[11px] text-[#7f7a70]">
                   &#8984;K
                 </kbd>
               </button>
               <Link
                 href="/docs"
-                className="hidden min-h-10 items-center gap-2 rounded-[4px] border border-transparent px-3 text-[11px] text-[#918b80] transition hover:border-[#34342e] hover:bg-[#11120f] hover:text-[#eee9dc] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847] sm:inline-flex"
+                className="hidden min-h-11 min-w-11 items-center gap-2 rounded-[4px] border border-transparent px-3 text-[11px] text-[#918b80] transition hover:border-[#34342e] hover:bg-[#11120f] hover:text-[#eee9dc] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847] sm:inline-flex"
               >
                 <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
                 Docs
               </Link>
               <Link
                 href="/dashboard/control"
-                className="inline-flex min-h-10 items-center gap-2 rounded-[4px] border border-[#ff6a32] bg-[#ff571c] px-3.5 text-[11px] font-semibold text-[#090a08] transition hover:border-[#ff8b61] hover:bg-[#ff7545] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff9a72]"
+                aria-label="Open settings"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-[4px] border border-[#ff6a32] bg-[#ff571c] px-3.5 text-[11px] font-semibold text-[#090a08] transition hover:border-[#ff8b61] hover:bg-[#ff7545] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff9a72]"
               >
                 <Settings2 className="h-3.5 w-3.5" aria-hidden="true" />
-                <span className="hidden sm:inline">Setup</span>
+                <span className="hidden sm:inline">Settings</span>
               </Link>
             </div>
           </header>

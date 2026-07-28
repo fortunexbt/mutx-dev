@@ -7,6 +7,20 @@ export type AuthTokens = {
   expires_in: number
 }
 
+type AuthRequestContext = {
+  accessToken: string | null
+  refreshToken: string | null
+  refreshAttempted: boolean
+  refreshPromise: Promise<AuthTokens | null> | null
+  refreshedTokens?: AuthTokens
+}
+
+// A late 401 from an overlapping dashboard request must reuse the rotation result,
+// not submit the now-spent refresh token and trigger family-reuse revocation.
+const REFRESH_FLIGHT_GRACE_MS = 5000
+const authRequestContexts = new WeakMap<NextRequest, AuthRequestContext>()
+const refreshFlights = new Map<string, Promise<AuthTokens | null>>()
+
 function normalizeBaseUrl(value?: string | null) {
   if (!value) return null
   if (value.startsWith('http://') || value.startsWith('https://')) return value
@@ -51,7 +65,7 @@ export function getCookieDomain(request: NextRequest) {
   return undefined
 }
 
-export async function getAuthToken(request: NextRequest): Promise<string | null> {
+function readAuthToken(request: NextRequest): string | null {
   const token = request.cookies.get('access_token')?.value
   if (token) return token
 
@@ -63,12 +77,32 @@ export async function getAuthToken(request: NextRequest): Promise<string | null>
   return null
 }
 
+export async function getAuthToken(request: NextRequest): Promise<string | null> {
+  return readAuthToken(request)
+}
+
 export function getRefreshToken(request: NextRequest): string | null {
   return request.cookies.get('refresh_token')?.value ?? null
 }
 
 export function hasAuthSession(request: NextRequest): boolean {
   return Boolean(request.cookies.get('access_token')?.value || getRefreshToken(request) || request.headers.get('authorization'))
+}
+
+function getAuthRequestContext(request: NextRequest): AuthRequestContext {
+  const existingContext = authRequestContexts.get(request)
+  if (existingContext) {
+    return existingContext
+  }
+
+  const context: AuthRequestContext = {
+    accessToken: readAuthToken(request),
+    refreshToken: getRefreshToken(request),
+    refreshAttempted: false,
+    refreshPromise: null,
+  }
+  authRequestContexts.set(request, context)
+  return context
 }
 
 export function applyAuthCookies(
@@ -127,6 +161,7 @@ export async function refreshAuthToken(
   refreshToken: string
 ): Promise<AuthTokens | null> {
   const apiBaseUrl = getApiBaseUrl()
+  void request
 
   try {
     const response = await fetch(`${apiBaseUrl}/v1/auth/refresh`, {
@@ -140,52 +175,143 @@ export async function refreshAuthToken(
       return null
     }
 
-    return await response.json()
+    const payload: unknown = await response.json()
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return null
+    }
+
+    const tokens = payload as Partial<AuthTokens>
+    if (
+      typeof tokens.access_token !== 'string' ||
+      tokens.access_token.length === 0 ||
+      typeof tokens.refresh_token !== 'string' ||
+      tokens.refresh_token.length === 0 ||
+      typeof tokens.expires_in !== 'number' ||
+      !Number.isFinite(tokens.expires_in) ||
+      tokens.expires_in <= 0
+    ) {
+      return null
+    }
+
+    return {
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_in: tokens.expires_in,
+    }
   } catch {
     return null
   }
 }
 
+function refreshOnce(request: NextRequest, refreshToken: string): Promise<AuthTokens | null> {
+  const existingFlight = refreshFlights.get(refreshToken)
+  if (existingFlight) {
+    return existingFlight
+  }
+
+  const refreshPromise = refreshAuthToken(request, refreshToken)
+  refreshFlights.set(refreshToken, refreshPromise)
+  const scheduleCleanup = () => {
+    const cleanupTimer = setTimeout(() => {
+      if (refreshFlights.get(refreshToken) === refreshPromise) {
+        refreshFlights.delete(refreshToken)
+      }
+    }, REFRESH_FLIGHT_GRACE_MS)
+    cleanupTimer.unref()
+  }
+  void refreshPromise.then(scheduleCleanup, scheduleCleanup)
+
+  return refreshPromise
+}
+
+function useRefreshedTokens(
+  context: AuthRequestContext,
+  tokens: AuthTokens | null
+): string | null {
+  if (!tokens) {
+    return null
+  }
+
+  context.accessToken = tokens.access_token
+  context.refreshToken = tokens.refresh_token ?? null
+  context.refreshedTokens = tokens
+  return tokens.access_token
+}
+
+async function getRetryToken(
+  request: NextRequest,
+  context: AuthRequestContext,
+  rejectedToken: string | null
+): Promise<string | null> {
+  if (context.accessToken && context.accessToken !== rejectedToken) {
+    return context.accessToken
+  }
+
+  if (context.refreshPromise) {
+    const tokens = await context.refreshPromise
+    context.refreshPromise = null
+    return useRefreshedTokens(context, tokens)
+  }
+
+  if (context.refreshAttempted || !context.refreshToken) {
+    return null
+  }
+
+  const refreshToken = context.refreshToken
+  context.refreshAttempted = true
+  context.refreshToken = null
+  context.refreshPromise = refreshOnce(request, refreshToken)
+
+  const tokens = await context.refreshPromise
+  context.refreshPromise = null
+
+  if (!tokens) {
+    return null
+  }
+
+  return useRefreshedTokens(context, tokens)
+}
+
+function fetchWithAccessToken(url: string, options: RequestInit, token: string | null) {
+  const headers = new Headers(options.headers)
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  return fetch(url, {
+    ...options,
+    headers,
+    credentials: 'include',
+  })
+}
+
 /**
  * Authenticated fetch with automatic token refresh on 401.
- * Returns the response and a NextResponse with updated cookies if token was refreshed.
+ * Returns the upstream response and any rotated tokens that the caller must set as cookies.
  */
 export async function authenticatedFetch(
   request: NextRequest,
   url: string,
   options: RequestInit = {}
 ): Promise<{ response: Response; tokenRefreshed: boolean; refreshedTokens?: AuthTokens }> {
-  let token = await getAuthToken(request)
-  const refreshToken = getRefreshToken(request)
+  const context = getAuthRequestContext(request)
+  let token = context.accessToken
 
   // Initial fetch with current token
-  let response = await fetch(url, {
-    ...options,
-    headers: {
-      ...(options.headers ?? {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    credentials: 'include',
-  })
+  let response = await fetchWithAccessToken(url, options, token)
 
   // If unauthorized, try to refresh the token
-  if (response.status === 401 && refreshToken) {
-    const newTokens = await refreshAuthToken(request, refreshToken)
-    if (newTokens) {
-      // Retry with new token
-      token = newTokens.access_token
-      response = await fetch(url, {
-        ...options,
-        headers: {
-          ...(options.headers ?? {}),
-          Authorization: `Bearer ${token}`,
-        },
-        credentials: 'include',
-      })
-
-      return { response, tokenRefreshed: true, refreshedTokens: newTokens }
+  if (response.status === 401) {
+    const retryToken = await getRetryToken(request, context, token)
+    if (retryToken) {
+      token = retryToken
+      response = await fetchWithAccessToken(url, options, token)
     }
   }
 
-  return { response, tokenRefreshed: false }
+  return {
+    response,
+    tokenRefreshed: Boolean(context.refreshedTokens),
+    refreshedTokens: context.refreshedTokens,
+  }
 }

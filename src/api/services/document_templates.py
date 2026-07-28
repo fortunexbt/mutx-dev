@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from src.api.config import get_settings
 from src.api.models.schemas import (
     DocumentTemplateFieldResponse,
     DocumentTemplateOutputResponse,
@@ -44,6 +45,7 @@ class DocumentTemplateDefinition:
             description=self.description,
             supports_managed=self.supports_managed,
             supports_local=self.supports_local,
+            max_upload_bytes=get_settings().document_max_upload_mb * 1024 * 1024,
             inputs=[
                 DocumentTemplateFieldResponse(
                     name=item.name,

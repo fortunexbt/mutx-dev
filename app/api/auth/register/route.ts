@@ -13,12 +13,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return validation.response;
     }
 
-    const { email, password, name } = validation.data;
+    const { email, password, name, return_path } = validation.data;
     const body = {
       email,
       password,
       name,
       verification_origin: request.nextUrl.origin,
+      return_path,
     };
 
     const response = await fetch(`${getApiBaseUrl()}/v1/auth/register`, {

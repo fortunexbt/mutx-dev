@@ -125,18 +125,6 @@ def test_build_prompt_raises_for_missing_agent() -> None:
     assert "AGENT.md" in str(exc_info.value)
 
 
-def test_build_prompt_raises_for_missing_agent() -> None:
-    """Verify build_prompt fails loudly when agent definition is absent."""
-    with pytest.raises(FileNotFoundError) as exc_info:
-        MODULE.build_prompt(
-            agent="nonexistent-agent",
-            brief_text="test brief",
-            work_order={"files": []},
-        )
-    assert "nonexistent-agent" in str(exc_info.value)
-    assert "AGENT.md" in str(exc_info.value)
-
-
 def test_initialize_run_artifact_creates_schema_bundle(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

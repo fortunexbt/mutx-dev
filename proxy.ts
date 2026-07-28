@@ -23,13 +23,29 @@ type RateLimitState = {
 
 const SAFE_HTTP_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE'])
 const CSRF_FAILURE_DETAIL = 'CSRF validation failed: origin is not allowed'
-const PICO_AUTH_PRIVATE_DETAIL = 'Pico account access is not open yet'
 const APP_HOST = 'app.mutx.dev'
 const PICO_HOST = 'pico.mutx.dev'
 const APP_HOSTS = new Set([APP_HOST, 'app.localhost'])
 const MARKETING_HOSTS = new Set(['mutx.dev', 'www.mutx.dev'])
 const PICO_HOSTS = new Set([PICO_HOST, 'pico.localhost'])
-const PICO_WIP_PATH = '/pico/wip'
+const PICO_AUTH_PAGE_PATHS = new Set([
+  '/login',
+  '/register',
+  '/verify-email',
+  '/forgot-password',
+  '/reset-password',
+])
+const PICO_PRODUCT_PATHS = new Set([
+  '/onboarding',
+  '/academy',
+  '/tutor',
+  '/support',
+  '/autopilot',
+  '/pricing',
+  '/build-ledger',
+  // Compatibility-only alias; the route permanently redirects to /build-ledger.
+  '/wip',
+])
 const PICO_LOCALE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
 const PICO_LOCALE_BY_COUNTRY: Partial<Record<string, PicoLocale>> = {
   JP: 'ja',
@@ -71,6 +87,7 @@ const APP_PUBLIC_PATHS = new Set([
   '/access',
   '/connectors',
   '/audit',
+  '/approvals',
   '/usage',
   '/settings',
 ])
@@ -190,9 +207,9 @@ function mapLegacyAppPathToDashboard(pathname: string): string {
     '/app/deployments': '/dashboard/deployments',
     '/app/api-keys': '/dashboard/api-keys',
     '/app/webhooks': '/dashboard/webhooks',
-    '/app/logs': '/dashboard/monitoring',
-    '/app/history': '/dashboard/monitoring',
-    '/app/activity': '/dashboard/observability',
+    '/app/logs': '/dashboard/logs',
+    '/app/history': '/dashboard/history',
+    '/app/activity': '/dashboard/history',
     '/app/budgets': '/dashboard/budgets',
     '/app/traces': '/dashboard/traces',
     '/app/runs': '/dashboard/runs',
@@ -201,7 +218,7 @@ function mapLegacyAppPathToDashboard(pathname: string): string {
     '/app/control': '/dashboard/control',
     '/app/settings': '/dashboard/control',
     '/app/orchestration': '/dashboard/orchestration',
-    '/app/cron': '/dashboard/orchestration',
+    '/app/cron': '/dashboard/autonomy',
     '/app/health': '/dashboard/monitoring',
     '/app/observability': '/dashboard/observability',
   }
@@ -231,18 +248,18 @@ function mapAppHostPicoPathToCanonicalPicoPath(pathname: string): string | null 
   return null
 }
 
-function internalDashboardPathToPublicPath(pathname: string): string {
+function mapCanonicalPicoPathToInternalPath(pathname: string): string | null {
   const normalized = normalizePathname(pathname)
 
-  if (normalized === '/dashboard') {
-    return '/'
+  if (normalized === '/') {
+    return '/pico'
   }
 
-  if (normalized.startsWith('/dashboard/')) {
-    return normalized.slice('/dashboard'.length) || '/'
+  if (PICO_PRODUCT_PATHS.has(normalized) || normalized.startsWith('/academy/')) {
+    return `/pico${normalized}`
   }
 
-  return normalized
+  return null
 }
 
 function appHostPathToInternalDashboardPath(pathname: string): string {
@@ -257,9 +274,10 @@ function appHostPathToInternalDashboardPath(pathname: string): string {
     '/environments': '/dashboard/monitoring',
     '/access': '/dashboard/security',
     '/connectors': '/dashboard/webhooks',
-    '/audit': '/dashboard/logs',
+    '/audit': '/dashboard/audit',
+    '/approvals': '/dashboard/approvals',
     '/usage': '/dashboard/budgets',
-    '/settings': '/dashboard/orchestration',
+    '/settings': '/dashboard/control',
   }
 
   if (directMap[normalized]) {
@@ -456,48 +474,52 @@ export function proxy(request: NextRequest) {
     )
   }
 
-  if (PICO_HOSTS.has(host) && normalizedPath.startsWith('/api/auth/oauth/')) {
-    return finalizeResponse(redirectWithinHost(request, '/wip'), host, normalizedPath)
-  }
-
-  if (PICO_HOSTS.has(host) && normalizedPath.startsWith('/api/auth/')) {
-    return finalizeResponse(
-      NextResponse.json({ detail: PICO_AUTH_PRIVATE_DETAIL }, { status: 403 }),
-      host,
-      normalizedPath,
-    )
-  }
-
   if (PICO_HOSTS.has(host) && !normalizedPath.startsWith('/api')) {
     const locale = getLocaleFromRequest(request)
     const picoRequestHeaders = buildPicoRequestHeaders(request, locale)
 
-    if (normalizedPath === '/pico') {
+    if (normalizedPath === '/pico' || normalizedPath.startsWith('/pico/')) {
+      const canonicalPath = normalizedPath === '/pico' ? '/' : normalizedPath.slice('/pico'.length)
       return finalizeResponse(
-        applyPicoLocale(redirectWithinHost(request, '/'), locale),
+        applyPicoLocale(redirectWithinHost(request, canonicalPath), locale),
         host,
         normalizedPath,
       )
     }
 
-    if (normalizedPath === '/') {
+    if (normalizedPath === '/start') {
       return finalizeResponse(
-        applyPicoLocale(rewriteWithinHost(request, '/pico', picoRequestHeaders), locale),
+        applyPicoLocale(redirectWithinHost(request, '/onboarding'), locale),
         host,
         normalizedPath,
       )
     }
 
-    if (normalizedPath === '/wip' || normalizedPath === PICO_WIP_PATH) {
+    const internalPicoPath = mapCanonicalPicoPathToInternalPath(normalizedPath)
+    if (internalPicoPath) {
       return finalizeResponse(
-        applyPicoLocale(rewriteWithinHost(request, PICO_WIP_PATH, picoRequestHeaders), locale),
+        applyPicoLocale(rewriteWithinHost(request, internalPicoPath, picoRequestHeaders), locale),
+        host,
+        normalizedPath,
+      )
+    }
+
+    if (PICO_AUTH_PAGE_PATHS.has(normalizedPath)) {
+      return finalizeResponse(
+        applyPicoLocale(
+          NextResponse.next({ request: { headers: picoRequestHeaders } }),
+          locale,
+        ),
         host,
         normalizedPath,
       )
     }
 
     return finalizeResponse(
-      applyPicoLocale(rewriteWithinHost(request, PICO_WIP_PATH, picoRequestHeaders), locale),
+      applyPicoLocale(
+        rewriteWithinHost(request, '/pico/__not-found', picoRequestHeaders),
+        locale,
+      ),
       host,
       normalizedPath,
     )
@@ -508,15 +530,6 @@ export function proxy(request: NextRequest) {
     if (normalizedPath.startsWith('/pico')) {
       return finalizeResponse(
         redirectWithinHost(request, '/'),
-        host,
-        normalizedPath,
-      )
-    }
-
-    const publicDashboardPath = internalDashboardPathToPublicPath(normalizedPath)
-    if (publicDashboardPath !== normalizedPath) {
-      return finalizeResponse(
-        redirectToHost(request, APP_HOST, publicDashboardPath),
         host,
         normalizedPath,
       )

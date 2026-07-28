@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      fallbackMessage: 'Failed to install skill bundle',
+      fallbackMessage: 'Failed to configure skill bundle',
     })
   })(request)
 }

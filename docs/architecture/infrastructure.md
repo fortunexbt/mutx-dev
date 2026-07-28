@@ -5,7 +5,12 @@ icon: server
 
 # Infrastructure
 
-This document describes the infrastructure design for mutx.dev, including VPC architecture, bare-metal provisioning, network topology, and security zones.
+This document describes the checked-in infrastructure templates and their
+target topology. Railway is the current production deployment path. The
+DigitalOcean Terraform configuration is an alternate path whose scheduled drift
+workflow remains disabled until cloud and remote-state credentials are supplied.
+The diagrams below are design views; they do not prove that those resources or
+controls are active in a deployed environment.
 
 ***
 
@@ -13,7 +18,10 @@ This document describes the infrastructure design for mutx.dev, including VPC ar
 
 ### Overview
 
-mutx.dev uses a **multi-tenant VPC architecture** where each customer receives a dedicated Virtual Private Cloud. This ensures complete isolation and eliminates "noisy neighbor" problems.
+The Terraform template declares one DigitalOcean VPC, project, droplet, data
+volume, and firewall for each item in the `customers` input. Supplying unique
+CIDRs gives each declared customer a separate VPC in this alternate deployment
+path.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -47,23 +55,26 @@ mutx.dev uses a **multi-tenant VPC architecture** where each customer receives a
 
 ### VPC Specification
 
-Each tenant VPC is provisioned on DigitalOcean with the following configuration:
+The template exposes the following configuration:
 
 | Parameter            | Value                                   |
 | -------------------- | --------------------------------------- |
-| **Region**           | Customer-selected (NYC, SFO, AMS, etc.) |
-| **VPC CIDR**         | /24 (256 addresses)                     |
-| **Subnets**          | 1x /24 (agent tier)                     |
-| **Internet Gateway** | Egress only (no inbound)                |
-| **DHCP**             | Managed (10.0.x.0/24 range)             |
+| **Region** | Shared `region` variable (`nyc1` by default) |
+| **VPC CIDR** | Valid CIDR supplied per customer |
+| **Compute** | One public/private-addressed droplet per customer |
+| **Inbound firewall** | SSH from explicit `admin_cidr`, HTTP/HTTPS publicly, agent port from the customer VPC CIDR |
+| **Outbound firewall** | TCP 443 and DNS TCP 53 |
+| **Storage** | One attached volume, 100 GB by default and at least 10 GB |
 
 ***
 
-## Bare-Metal Provisioning
+## Alternate DigitalOcean Provisioning
 
 ### Provisioning Pipeline
 
-The provisioning pipeline follows a two-stage approach:
+The repository's operator-driven flow is Terraform apply, Terraform-output
+inventory generation, then Ansible provisioning/deployment. The FastAPI source
+does not automatically launch this pipeline from an API request.
 
 ```
 ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
@@ -81,37 +92,35 @@ The provisioning pipeline follows a two-stage approach:
 
 ### Terraform Configuration
 
-The Terraform provisioning (`infrastructure/ansible/playbooks/provision.yml`) creates:
+The root configuration in `infrastructure/terraform/` creates:
 
-1. **Droplet** (Compute)
-   * Size: Customer-selected (starting 4GB RAM)
-   * Image: Ubuntu 22.04 LTS
-   * VPC: Tenant VPC
-2. **Networking**
-   * Private networking enabled
-   * Floating IP (optional, for management)
-3. **Storage**
-   * Volume for data (optional)
-   * Snapshots enabled
+1. **Networking**: one DigitalOcean VPC and project per configured customer.
+2. **Compute**: one droplet with Ubuntu 22.04 by default, public/private
+   addresses, customer and optional administrator SSH keys, and cloud-init.
+3. **Firewall**: the explicit inbound and outbound rules summarized above.
+4. **Storage**: one attached data volume per customer.
+
+The `modules/vault` block is currently a placeholder and does not provision a
+Vault server or KV engine. Other module directories are not instantiated by the
+root configuration unless explicitly added.
 
 ### Ansible Configuration
 
 After Terraform provisions the compute, Ansible configures:
 
-| Role           | Purpose                          |
-| -------------- | -------------------------------- |
-| **docker**     | Install Docker, configure daemon |
-| **postgresql** | PostgreSQL 15 with pgvector      |
-| **redis**      | Redis with password auth         |
-| **tailscale**  | Zero-trust VPN mesh              |
-| **ufw**        | Firewall rules                   |
-| **fail2ban**   | Intrusion prevention             |
-| **agent**      | Deploy agent containers          |
+| Playbook area | Current behavior |
+| --- | --- |
+| **docker role** | Installs Docker and configures its daemon |
+| **PostgreSQL tasks** | Install PostgreSQL 15 and create `agent_db`/`agent_user` on agent hosts |
+| **Redis tasks** | Install Redis, bind it to all interfaces, and require the configured password on agent hosts |
+| **Tailscale tasks** | Run only when `TAILSCALE_AUTH_KEY` is non-empty |
+| **UFW/fail2ban tasks** | Apply host rules and install the fail2ban template |
+| **agent role** | Used by the separate deployment playbook |
 
 ### Inventory Structure
 
 ```ini
-# infrastructure/ansible/inventory.ini
+# infrastructure/ansible/inventory.ini (static example)
 [agents]
 agent-01 ansible_host=10.0.1.10 ansible_user=ubuntu
 agent-02 ansible_host=10.0.1.11 ansible_user=ubuntu
@@ -125,11 +134,15 @@ ansible_python_interpreter=/usr/bin/python3
 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 ```
 
+The Make targets call `scripts/generate-inventory.sh`, which writes
+`inventory.generated.ini` from applied Terraform outputs, uses each droplet's
+public address with the `root` user, and sets `StrictHostKeyChecking=accept-new`.
+
 ***
 
 ## Network Topology
 
-### Network Diagram
+### Target Network Diagram
 
 ```
                               ┌─────────────────────────────────────┐
@@ -204,7 +217,10 @@ ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### IP Address Allocation
+### Illustrative IP Address Allocation
+
+These ranges are not created by the current Terraform modules; customer CIDRs
+come from input and the template creates no component-level subnets.
 
 | Range         | Purpose       | Hosts                        |
 | ------------- | ------------- | ---------------------------- |
@@ -217,7 +233,7 @@ ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 
 ***
 
-## Security Zones
+## Security Zones (Target State)
 
 ### Zone Architecture
 
@@ -267,7 +283,7 @@ ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Firewall Rules (UFW)
+### Host Firewall Rules (UFW)
 
 From `infrastructure/ansible/playbooks/provision.yml`:
 
@@ -275,19 +291,30 @@ From `infrastructure/ansible/playbooks/provision.yml`:
 ufw_rules:
   - rule: allow
     port: "22"
-    comment: "SSH (restricted via key)"
+    src: "{{ admin_cidr }}"
+    comment: "SSH"
   - rule: allow
     port: "5432"
-    comment: "PostgreSQL (local only)"
+    src: "{{ private_cidr }}"
+    comment: "PostgreSQL"
   - rule: allow
     port: "6379"
-    comment: "Redis (local only)"
+    src: "{{ private_cidr }}"
+    comment: "Redis"
   - rule: allow
     port: "8080"
-    comment: "Agent API (Tailscale only)"
+    src: "{{ private_cidr }}"
+    comment: "Agent API"
 ```
 
-### Network Segmentation
+`ADMIN_CIDR` defaults to `0.0.0.0/0` in the Ansible playbook, so operators must
+set it explicitly before treating SSH as restricted. `PRIVATE_CIDR` defaults to
+`10.0.0.0/8`; these rules do not depend on Tailscale being enabled.
+
+### Proposed Network Segmentation
+
+The component mapping below belongs to the target topology. In particular,
+there is no current EvalView service or Terraform-created DMZ/data subnet.
 
 | Component            | Zone | Access               | Notes                   |
 | -------------------- | ---- | -------------------- | ----------------------- |
@@ -301,15 +328,19 @@ ufw_rules:
 
 ## Service Communication
 
-### Internal Communication
+### Internal Communication Target
 
-All inter-service communication within a tenant VPC uses:
+The target topology calls for:
 
 1. **Private Networking**: 10.0.x.x addresses
 2. **Service Mesh**: Tailscale for encryption
 3. **Authentication**: Service-specific tokens
 
-### External Communication
+### External Communication Target
+
+These are intended communication patterns, not guarantees enforced across every
+current deployment. Credential location depends on the broker backend selected
+by the operator.
 
 | Direction                | Method      | Security           |
 | ------------------------ | ----------- | ------------------ |

@@ -6,20 +6,13 @@ interface DocsRendererClientProps {
   html: string;
 }
 
-const CALLOUT_TYPE_MAP: Record<string, string> = {
-  NOTE: "note",
-  TIP: "tip",
-  WARNING: "warning",
-  CAUTION: "warning",
-  DANGER: "danger",
-  INFO: "note",
-};
-
 function createCalloutIcon(type: string): SVGElement {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "docs-callout-icon");
   svg.setAttribute("viewBox", "0 0 16 16");
   svg.setAttribute("fill", "none");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
 
   const addPath = (d: string, extra: Record<string, string> = {}) => {
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -66,15 +59,14 @@ function createCalloutIcon(type: string): SVGElement {
   return svg;
 }
 
-function isSafeHref(value: string | null): value is string {
+export function isSafeRenderedHref(value: string | null): value is string {
   if (!value) return false;
   const trimmed = value.trim();
   if (!trimmed) return false;
-  const lower = trimmed.toLowerCase();
-  if (lower.startsWith("javascript:") || lower.startsWith("data:") || lower.startsWith("vbscript:")) {
-    return false;
-  }
-  return true;
+  const firstCodePoint = trimmed.charCodeAt(0);
+  if (firstCodePoint <= 31 || firstCodePoint === 127 || trimmed.includes("\\")) return false;
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return true;
+  return /^https?:\/\//i.test(trimmed);
 }
 
 export function DocsRendererClient({ html }: DocsRendererClientProps) {
@@ -84,63 +76,46 @@ export function DocsRendererClient({ html }: DocsRendererClientProps) {
     const el = ref.current;
     if (!el) return;
 
-    const blockquotes = el.querySelectorAll<HTMLElement>("blockquote");
+    const blockquotes = el.querySelectorAll<HTMLElement>("blockquote.docs-callout[data-type]");
     blockquotes.forEach((bq) => {
-      const text = bq.textContent?.trim() ?? "";
-      const calloutMatch = text.match(/^\[!([A-Z]+)(?::\s*([^\]]*))?\]\s*/i);
-      if (!calloutMatch) return;
-
-      const rawType = calloutMatch[1].toUpperCase();
-      const title = calloutMatch[2] || "";
-      const mappedType = CALLOUT_TYPE_MAP[rawType] ?? "note";
-      const contentText = text.slice(calloutMatch[0].length).trim();
-
-      bq.setAttribute("class", "docs-callout");
-      bq.setAttribute("data-type", mappedType);
-      bq.replaceChildren();
-      bq.appendChild(createCalloutIcon(mappedType));
-
-      if (title) {
-        const strong = document.createElement("strong");
-        strong.textContent = title;
-        bq.appendChild(strong);
-        if (contentText) {
-          bq.appendChild(document.createTextNode(` ${contentText}`));
-        }
-      } else if (contentText) {
-        bq.appendChild(document.createTextNode(contentText));
-      }
+      if (bq.querySelector(":scope > .docs-callout-icon")) return;
+      const mappedType = bq.dataset.type ?? "note";
+      bq.prepend(createCalloutIcon(mappedType));
     });
 
     const cardTables = el.querySelectorAll<HTMLElement>("table[data-view='cards']");
     cardTables.forEach((table) => {
+      const headers = Array.from(table.querySelectorAll<HTMLElement>("thead th"));
+      const columnIndex = (label: string, fallback: number) => {
+        const index = headers.findIndex((header) => header.textContent?.trim().toLowerCase() === label);
+        return index >= 0 ? index : fallback;
+      };
+      const titleIndex = columnIndex("title", 0);
+      const descriptionIndex = columnIndex("description", 1);
+      const targetIndex = columnIndex("target", 2);
+      const coverIndex = columnIndex("cover", 3);
       const rows = table.querySelectorAll<HTMLElement>("tbody tr");
       const cards: HTMLElement[] = [];
 
       rows.forEach((row, index) => {
         const cells = row.querySelectorAll<HTMLElement>("td");
-        if (cells.length < 2) return;
+        if (cells.length === 0) return;
 
-        const titleEl = cells[0].querySelector("strong") || cells[0];
+        const titleEl = cells[titleIndex]?.querySelector("strong") || cells[titleIndex];
         const title = titleEl.textContent?.trim() ?? "";
-        const targetLink = cells[1]?.querySelector("a");
-        const rawHref = targetLink?.getAttribute("href") ?? "#";
-        const normalizedHref = rawHref.replace(/\.md$/, "");
-        const href = isSafeHref(normalizedHref) ? normalizedHref : "#";
-        const rawLabel = targetLink?.textContent?.trim() ?? cells[1]?.textContent?.trim() ?? title;
+        const targetLink = cells[targetIndex]?.querySelector("a");
+        const rawHref = targetLink?.getAttribute("href") ?? "";
+        const href = isSafeRenderedHref(rawHref) ? rawHref : null;
+        const rawLabel = targetLink?.textContent?.trim() ?? cells[targetIndex]?.textContent?.trim() ?? title;
         const targetLabel = rawLabel.replace(/\.md$/, "").trim();
-
-        const cell1Text = cells[1]?.textContent?.trim() ?? "";
-        const cell1HasOnlyLink = cell1Text === (targetLink?.textContent?.trim() ?? "");
-        const desc = cell1HasOnlyLink ? "" : cell1Text.replace(/\.md$/, "").trim();
-
-        const coverImg = cells[2]?.querySelector("img");
+        const desc = cells[descriptionIndex]?.textContent?.trim() ?? "";
+        const coverImg = cells[coverIndex]?.querySelector("img");
         const coverSrc = coverImg?.getAttribute("src");
-        const safeCoverSrc = isSafeHref(coverSrc ?? null) ? coverSrc : null;
+        const safeCoverSrc = isSafeRenderedHref(coverSrc ?? null) ? coverSrc : null;
 
-        const card = document.createElement("a");
+        const card = document.createElement(href ? "a" : "article");
         card.className = "docs-card";
-        card.setAttribute("href", href);
+        if (href) card.setAttribute("href", href);
         card.setAttribute("data-card-index", String(index));
 
         if (safeCoverSrc) {
@@ -169,7 +144,7 @@ export function DocsRendererClient({ html }: DocsRendererClientProps) {
           body.appendChild(descNode);
         }
 
-        if (href !== "#") {
+        if (href) {
           const targetNode = document.createElement("span");
           targetNode.className = "docs-card-target";
           targetNode.textContent = targetLabel;
@@ -192,12 +167,12 @@ export function DocsRendererClient({ html }: DocsRendererClientProps) {
     preBlocks.forEach((pre) => {
       const code = pre.querySelector("code");
       const codeText = code?.innerText ?? pre.innerText ?? "";
-      pre.style.position = "relative";
 
       const existing = pre.querySelector(".docs-copy-btn");
       if (existing) existing.remove();
 
       const btn = document.createElement("button");
+      btn.type = "button";
       btn.className = "docs-copy-btn";
       btn.textContent = "Copy";
       btn.setAttribute("aria-label", "Copy code");

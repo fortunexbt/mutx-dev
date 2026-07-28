@@ -6,6 +6,8 @@ from uuid import UUID
 
 import httpx
 
+from mutx._http import api_path
+
 
 class Lead:
     def __init__(self, data: dict[str, Any]):
@@ -56,7 +58,7 @@ class Leads:
     ) -> Lead:
         self._require_sync_client()
         response = self._client.post(
-            "/v1/leads",
+            "leads",
             json={
                 "email": email,
                 "name": name,
@@ -78,7 +80,7 @@ class Leads:
     ) -> Lead:
         self._require_async_client()
         response = await self._client.post(
-            "/v1/leads",
+            "leads",
             json={
                 "email": email,
                 "name": name,
@@ -92,7 +94,7 @@ class Leads:
 
     def list(self, skip: int = 0, limit: int = 50) -> list[Lead]:
         self._require_sync_client()
-        response = self._client.get("/v1/leads", params={"skip": skip, "limit": limit})
+        response = self._client.get("leads", params={"skip": skip, "limit": limit})
         response.raise_for_status()
         data = response.json()
         items = data.get("items", data) if isinstance(data, dict) else data
@@ -100,7 +102,7 @@ class Leads:
 
     async def alist(self, skip: int = 0, limit: int = 50) -> list[Lead]:
         self._require_async_client()
-        response = await self._client.get("/v1/leads", params={"skip": skip, "limit": limit})
+        response = await self._client.get("leads", params={"skip": skip, "limit": limit})
         response.raise_for_status()
         data = response.json()
         items = data.get("items", data) if isinstance(data, dict) else data
@@ -108,13 +110,13 @@ class Leads:
 
     def get(self, lead_id: UUID | str) -> Lead:
         self._require_sync_client()
-        response = self._client.get(f"/v1/leads/{lead_id}")
+        response = self._client.get(api_path("leads/{lead_id}", lead_id=lead_id))
         response.raise_for_status()
         return Lead(response.json())
 
     async def aget(self, lead_id: UUID | str) -> Lead:
         self._require_async_client()
-        response = await self._client.get(f"/v1/leads/{lead_id}")
+        response = await self._client.get(api_path("leads/{lead_id}", lead_id=lead_id))
         response.raise_for_status()
         return Lead(response.json())
 
@@ -137,7 +139,7 @@ class Leads:
         if source is not None:
             payload["source"] = source
 
-        response = self._client.patch(f"/v1/leads/{lead_id}", json=payload)
+        response = self._client.patch(api_path("leads/{lead_id}", lead_id=lead_id), json=payload)
         response.raise_for_status()
         return Lead(response.json())
 
@@ -160,18 +162,20 @@ class Leads:
         if source is not None:
             payload["source"] = source
 
-        response = await self._client.patch(f"/v1/leads/{lead_id}", json=payload)
+        response = await self._client.patch(
+            api_path("leads/{lead_id}", lead_id=lead_id), json=payload
+        )
         response.raise_for_status()
         return Lead(response.json())
 
     def delete(self, lead_id: UUID | str) -> None:
         self._require_sync_client()
-        response = self._client.delete(f"/v1/leads/{lead_id}")
+        response = self._client.delete(api_path("leads/{lead_id}", lead_id=lead_id))
         response.raise_for_status()
 
     async def adelete(self, lead_id: UUID | str) -> None:
         self._require_async_client()
-        response = await self._client.delete(f"/v1/leads/{lead_id}")
+        response = await self._client.delete(api_path("leads/{lead_id}", lead_id=lead_id))
         response.raise_for_status()
 
 
@@ -188,7 +192,7 @@ class Contacts(Leads):
     ) -> Lead:
         self._require_sync_client()
         response = self._client.post(
-            "/v1/leads/contacts",
+            "leads/contacts",
             json={
                 "email": email,
                 "name": name,
@@ -210,7 +214,7 @@ class Contacts(Leads):
     ) -> Lead:
         self._require_async_client()
         response = await self._client.post(
-            "/v1/leads/contacts",
+            "leads/contacts",
             json={
                 "email": email,
                 "name": name,
@@ -224,7 +228,7 @@ class Contacts(Leads):
 
     def list(self, skip: int = 0, limit: int = 50) -> list[Lead]:
         self._require_sync_client()
-        response = self._client.get("/v1/leads/contacts", params={"skip": skip, "limit": limit})
+        response = self._client.get("leads/contacts", params={"skip": skip, "limit": limit})
         response.raise_for_status()
         data = response.json()
         items = data.get("items", data) if isinstance(data, dict) else data
@@ -232,9 +236,7 @@ class Contacts(Leads):
 
     async def alist(self, skip: int = 0, limit: int = 50) -> list[Lead]:
         self._require_async_client()
-        response = await self._client.get(
-            "/v1/leads/contacts", params={"skip": skip, "limit": limit}
-        )
+        response = await self._client.get("leads/contacts", params={"skip": skip, "limit": limit})
         response.raise_for_status()
         data = response.json()
         items = data.get("items", data) if isinstance(data, dict) else data
@@ -242,13 +244,15 @@ class Contacts(Leads):
 
     def get(self, contact_id: UUID | str) -> Lead:
         self._require_sync_client()
-        response = self._client.get(f"/v1/leads/contacts/{contact_id}")
+        response = self._client.get(api_path("leads/contacts/{contact_id}", contact_id=contact_id))
         response.raise_for_status()
         return Lead(response.json())
 
     async def aget(self, contact_id: UUID | str) -> Lead:
         self._require_async_client()
-        response = await self._client.get(f"/v1/leads/contacts/{contact_id}")
+        response = await self._client.get(
+            api_path("leads/contacts/{contact_id}", contact_id=contact_id)
+        )
         response.raise_for_status()
         return Lead(response.json())
 
@@ -271,7 +275,9 @@ class Contacts(Leads):
         if source is not None:
             payload["source"] = source
 
-        response = self._client.patch(f"/v1/leads/contacts/{contact_id}", json=payload)
+        response = self._client.patch(
+            api_path("leads/contacts/{contact_id}", contact_id=contact_id), json=payload
+        )
         response.raise_for_status()
         return Lead(response.json())
 
@@ -294,16 +300,22 @@ class Contacts(Leads):
         if source is not None:
             payload["source"] = source
 
-        response = await self._client.patch(f"/v1/leads/contacts/{contact_id}", json=payload)
+        response = await self._client.patch(
+            api_path("leads/contacts/{contact_id}", contact_id=contact_id), json=payload
+        )
         response.raise_for_status()
         return Lead(response.json())
 
     def delete(self, contact_id: UUID | str) -> None:
         self._require_sync_client()
-        response = self._client.delete(f"/v1/leads/contacts/{contact_id}")
+        response = self._client.delete(
+            api_path("leads/contacts/{contact_id}", contact_id=contact_id)
+        )
         response.raise_for_status()
 
     async def adelete(self, contact_id: UUID | str) -> None:
         self._require_async_client()
-        response = await self._client.delete(f"/v1/leads/contacts/{contact_id}")
+        response = await self._client.delete(
+            api_path("leads/contacts/{contact_id}", contact_id=contact_id)
+        )
         response.raise_for_status()

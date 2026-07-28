@@ -8,9 +8,33 @@ Verifies:
 
 from __future__ import annotations
 
+import asyncio
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+
+
+class CallbackStreamingExecutor:
+    """Minimal executor that reports observed callbacks through the kit."""
+
+    async def ainvoke(
+        self,
+        inputs: dict[str, Any],
+        config: dict[str, Any],
+    ) -> dict[str, str]:
+        callback = config["callbacks"][0]
+        callback.on_llm_start({"name": "test-model"}, ["hello"], run_id="llm-1")
+        response = MagicMock()
+        response.llm_output = {"token_usage": {"total_tokens": 3}}
+        callback.on_llm_end(response, run_id="llm-1")
+        callback.on_tool_start({"name": "search"}, "MUTX", run_id="tool-1")
+        callback.on_tool_end("found", run_id="tool-1")
+        action = MagicMock(tool="search", tool_input="MUTX", log="Calling search")
+        callback.on_agent_action(action, run_id="agent-1")
+        finish = MagicMock(log="done", return_values={"output": "done"})
+        callback.on_agent_finish(finish, run_id="agent-1")
+        return {"output": "done"}
 
 
 class TestMutxLangChainCallbackHandlerImport:
@@ -108,7 +132,7 @@ class TestMutxLangChainCallbackSpans:
 
         handler._http.post.assert_called_once()
         call_args = handler._http.post.call_args
-        assert call_args[0][0] == "/v1/events"
+        assert call_args[0][0] == "events"
         event = call_args[1]["json"]
         assert event["event_type"] == "agent_action"
         assert event["agent_name"] == "test-agent"
@@ -215,8 +239,8 @@ class TestMutxAgentKit:
         with pytest.raises(RuntimeError, match="No agent executor set"):
             asyncio.run(kit.arun_async("Hello"))
 
-    def test_stream_events_yields_stream_start(self):
-        """stream_events should yield at least a stream_start event."""
+    def test_stream_events_without_executor_is_explicitly_unsupported(self):
+        """stream_events should never manufacture lifecycle entries."""
         from mutx.adapters.langchain import MutxAgentKit
 
         kit = MutxAgentKit(
@@ -224,13 +248,18 @@ class TestMutxAgentKit:
             agent_name="test-agent",
             api_key="test-key",
         )
-        events = list(kit.stream_events())
-        assert len(events) >= 1
-        assert events[0]["event_type"] == "stream_start"
-        assert events[0]["agent_name"] == "test-agent"
 
-    def test_stream_events_with_executor(self):
-        """stream_events yields events even when executor is set (stub)."""
+        async def collect() -> list[dict[str, Any]]:
+            return [event async for event in kit.stream_events("hello")]
+
+        with pytest.raises(RuntimeError, match="No agent executor set"):
+            asyncio.run(collect())
+
+        assert kit._callback_handler._event_listeners == []
+        kit._callback_handler._http.close()
+
+    def test_stream_events_forwards_callback_lifecycle_and_cleans_up(self):
+        """stream_events preserves callback order and removes its listener."""
         from mutx.adapters.langchain import MutxAgentKit
 
         kit = MutxAgentKit(
@@ -238,6 +267,23 @@ class TestMutxAgentKit:
             agent_name="test-agent",
             api_key="test-key",
         )
-        kit.set_agent_executor(MagicMock())
-        events = list(kit.stream_events())
-        assert len(events) >= 1
+        kit._callback_handler._http.post = MagicMock()
+        kit.set_agent_executor(CallbackStreamingExecutor())
+
+        async def collect() -> list[dict[str, Any]]:
+            return [event async for event in kit.stream_events("hello")]
+
+        events = asyncio.run(collect())
+
+        assert [event["event_type"] for event in events] == [
+            "llm_start",
+            "llm_end",
+            "tool_start",
+            "tool_end",
+            "agent_action",
+            "agent_finish",
+        ]
+        assert "stream_start" not in {event["event_type"] for event in events}
+        assert kit._callback_handler._event_listeners == []
+        assert kit._stream_active is False
+        kit._callback_handler._http.close()

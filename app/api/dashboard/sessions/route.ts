@@ -17,3 +17,17 @@ export async function GET(request: NextRequest) {
     );
   })(request);
 }
+
+export async function DELETE(request: NextRequest) {
+  return withErrorHandling(async () => {
+    const body = await request.json();
+    return proxyJson(request, `${getApiBaseUrl()}/v1/sessions`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      fallbackMessage: "Failed to delete session",
+    });
+  })(request);
+}

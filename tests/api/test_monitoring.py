@@ -10,7 +10,8 @@ from src.api.services.monitoring import monitor_agent_health
 
 
 @pytest.mark.asyncio
-async def test_monitoring_health_uses_app_state_start_time(client: AsyncClient):
+async def test_monitoring_health_uses_app_state_start_time(client: AsyncClient, test_user):
+    test_user.roles = ["ADMIN"]
     client.app.state.start_time = datetime.now(timezone.utc).timestamp() - 5
 
     response = await client.get("/v1/monitoring/health")

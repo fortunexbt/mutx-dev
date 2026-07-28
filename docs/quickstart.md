@@ -67,6 +67,6 @@ Once the starter assistant is live, these pages are the highest-value next reads
 
 * [Deployment Quickstart](/docs/deployment/quickstart) for the full hosted and local command paths
 * [Architecture Overview](/docs/architecture/overview) for the code-accurate system map
-* [API Reference](/docs/api/reference) for the public `/v1/*` contract
+* [API Reference](api/reference.md) for the public `/v1/*` contract
 * [AI Agent Cost Management](/ai-agent-cost) for spend visibility and budget controls
 * [AI Agent Approvals](/ai-agent-approvals) for human-in-the-loop controls

@@ -8,6 +8,8 @@ from uuid import UUID
 
 import httpx
 
+from mutx._http import api_path
+
 
 class UsageEvent:
     """Represents a usage event."""
@@ -73,7 +75,7 @@ class UsageEvents:
         if metadata:
             payload["metadata"] = metadata
 
-        response = self._client.post("/usage/events", json=payload)
+        response = self._client.post("usage/events", json=payload)
         response.raise_for_status()
         return UsageEvent(response.json())
 
@@ -98,7 +100,7 @@ class UsageEvents:
         if metadata:
             payload["metadata"] = metadata
 
-        response = await self._client.post("/usage/events", json=payload)
+        response = await self._client.post("usage/events", json=payload)
         response.raise_for_status()
         return UsageEvent(response.json())
 
@@ -121,7 +123,7 @@ class UsageEvents:
         if resource_id:
             params["resource_id"] = str(resource_id)
 
-        response = self._client.get("/usage/events", params=params)
+        response = self._client.get("usage/events", params=params)
         response.raise_for_status()
         data = response.json()
         return [UsageEvent(e) for e in data["items"]], data["total"]
@@ -141,7 +143,7 @@ class UsageEvents:
         if resource_id:
             params["resource_id"] = str(resource_id)
 
-        response = await self._client.get("/usage/events", params=params)
+        response = await self._client.get("usage/events", params=params)
         response.raise_for_status()
         data = response.json()
         return [UsageEvent(e) for e in data["items"]], data["total"]
@@ -152,7 +154,7 @@ class UsageEvents:
     ) -> UsageEvent:
         """Get a specific usage event."""
         self._require_sync_client()
-        response = self._client.get(f"/usage/events/{event_id}")
+        response = self._client.get(api_path("usage/events/{event_id}", event_id=event_id))
         response.raise_for_status()
         return UsageEvent(response.json())
 
@@ -162,6 +164,6 @@ class UsageEvents:
     ) -> UsageEvent:
         """Get a specific usage event (async)."""
         self._require_async_client()
-        response = await self._client.get(f"/usage/events/{event_id}")
+        response = await self._client.get(api_path("usage/events/{event_id}", event_id=event_id))
         response.raise_for_status()
         return UsageEvent(response.json())

@@ -1,14 +1,19 @@
-"""
-Policy store service — in-memory policy repository with hot-reload support.
-"""
+"""Durable, tenant-scoped policy repository and evaluator."""
 
-import asyncio
+from __future__ import annotations
+
+import json
+import uuid
 from datetime import datetime, timezone
 from fnmatch import fnmatch
-import json
 from typing import Literal
 
 from pydantic import BaseModel, Field, JsonValue
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.api.models.policy import PolicyRecord
 
 
 class Rule(BaseModel):
@@ -23,17 +28,27 @@ class Rule(BaseModel):
 class Policy(BaseModel):
     """A named collection of rules with versioning and enablement."""
 
-    id: str
-    name: str
+    id: str = Field(min_length=1, max_length=255)
+    name: str = Field(min_length=1, max_length=255)
     rules: list[Rule]
     enabled: bool
-    version: int
+    version: int = Field(ge=1)
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
 
+class PolicyUpdate(BaseModel):
+    """Complete policy replacement guarded by the caller's observed version."""
+
+    id: str = Field(min_length=1, max_length=255)
+    name: str = Field(min_length=1, max_length=255)
+    rules: list[Rule]
+    enabled: bool
+    expected_version: int = Field(ge=1)
+
+
 class PolicyEvaluationContext(BaseModel):
-    """Inputs used to evaluate stored policies against a pending action."""
+    """Inputs used to evaluate the authenticated tenant's stored policies."""
 
     input: str | None = None
     output: str | None = None
@@ -67,6 +82,22 @@ class PolicyEvaluationResult(BaseModel):
     run_id: str | None = None
     agent_id: str | None = None
     session_id: str | None = None
+
+
+class PolicyConflictError(Exception):
+    """A policy name or ID is already assigned within this tenant."""
+
+
+class PolicyNotFoundError(Exception):
+    """The named policy does not exist within this tenant."""
+
+
+class PolicyIdentityMismatchError(Exception):
+    """The update path and body do not identify the same stored policy."""
+
+
+class PolicyVersionConflictError(Exception):
+    """The policy changed after the caller observed it."""
 
 
 def _normalize_match_value(value: object) -> str:
@@ -107,83 +138,190 @@ def _select_decision(
     return "allow"
 
 
+def _policy_from_record(record: PolicyRecord) -> Policy:
+    return Policy(
+        id=record.policy_id,
+        name=record.name,
+        rules=[Rule.model_validate(rule) for rule in record.rules],
+        enabled=record.enabled,
+        version=record.version,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
 class PolicyStore:
-    """
-    Thread-safe in-memory policy repository.
+    """Database-backed policy repository bound to one authenticated owner."""
 
-    Supports SSE-based hot-reload: callers can register
-    async send-capable clients (e.g. ``EventSourceResponse``)
-    to receive version-push notifications when a policy changes.
-    """
+    def __init__(self, db: AsyncSession, owner_id: uuid.UUID) -> None:
+        self._db = db
+        self._owner_id = owner_id
 
-    def __init__(self) -> None:
-        self._policies: dict[str, Policy] = {}
-        self._lock = asyncio.Lock()
-        self._reload_clients: set[object] = set()
-
-    # ------------------------------------------------------------------
-    # Core CRUD
-    # ------------------------------------------------------------------
+    async def _get_record(self, name: str) -> PolicyRecord | None:
+        return (
+            await self._db.execute(
+                select(PolicyRecord)
+                .where(
+                    PolicyRecord.owner_id == self._owner_id,
+                    PolicyRecord.name == name,
+                )
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
 
     async def get_policy(self, name: str) -> Policy | None:
-        """Return the policy with the given name, or None if not found."""
-        async with self._lock:
-            return self._policies.get(name)
+        record = await self._get_record(name)
+        return _policy_from_record(record) if record is not None else None
 
     async def list_policies(self) -> list[Policy]:
-        """Return all stored policies."""
-        async with self._lock:
-            return list(self._policies.values())
+        records = (
+            (
+                await self._db.execute(
+                    select(PolicyRecord)
+                    .where(PolicyRecord.owner_id == self._owner_id)
+                    .order_by(PolicyRecord.name)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return [_policy_from_record(record) for record in records]
+
+    async def create_policy(self, policy: Policy) -> Policy:
+        now = datetime.now(timezone.utc)
+        record = PolicyRecord(
+            owner_id=self._owner_id,
+            policy_id=policy.id,
+            name=policy.name,
+            rules=[rule.model_dump(mode="json") for rule in policy.rules],
+            enabled=policy.enabled,
+            version=1,
+            created_at=now,
+            updated_at=now,
+        )
+        self._db.add(record)
+        try:
+            await self._db.commit()
+        except IntegrityError as exc:
+            await self._db.rollback()
+            raise PolicyConflictError(
+                f"Policy '{policy.name}' or ID '{policy.id}' already exists"
+            ) from exc
+        return _policy_from_record(record)
+
+    async def update_policy(self, name: str, policy: PolicyUpdate) -> Policy:
+        """Atomically replace an owned policy if its identity and version still match."""
+        record = await self._get_record(policy.name)
+        if name != policy.name:
+            record = await self._get_record(name)
+        if record is None:
+            raise PolicyNotFoundError(name)
+        if name != policy.name:
+            raise PolicyIdentityMismatchError(
+                f"Policy path name '{name}' does not match body name '{policy.name}'"
+            )
+        if record.policy_id != policy.id:
+            raise PolicyIdentityMismatchError(
+                f"Policy ID '{policy.id}' does not match the stored policy ID"
+            )
+
+        updated_at = datetime.now(timezone.utc)
+        statement = (
+            update(PolicyRecord)
+            .where(
+                PolicyRecord.owner_id == self._owner_id,
+                PolicyRecord.name == name,
+                PolicyRecord.policy_id == policy.id,
+                PolicyRecord.version == policy.expected_version,
+            )
+            .values(
+                rules=[rule.model_dump(mode="json") for rule in policy.rules],
+                enabled=policy.enabled,
+                version=PolicyRecord.version + 1,
+                updated_at=updated_at,
+            )
+            .returning(
+                PolicyRecord.policy_id,
+                PolicyRecord.name,
+                PolicyRecord.rules,
+                PolicyRecord.enabled,
+                PolicyRecord.version,
+                PolicyRecord.created_at,
+                PolicyRecord.updated_at,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        try:
+            result = await self._db.execute(statement)
+        except IntegrityError as exc:
+            await self._db.rollback()
+            raise PolicyConflictError(
+                f"Policy '{policy.name}' or ID '{policy.id}' already exists"
+            ) from exc
+
+        updated = result.one_or_none()
+        if updated is None:
+            current = await self._get_record(name)
+            if current is None:
+                raise PolicyNotFoundError(name)
+            if current.policy_id != policy.id:
+                raise PolicyIdentityMismatchError(
+                    f"Policy ID '{policy.id}' does not match the stored policy ID"
+                )
+            raise PolicyVersionConflictError(
+                f"Policy '{name}' is at version {current.version}; expected version "
+                f"{policy.expected_version}. Fetch the latest policy and retry the update."
+            )
+
+        await self._db.commit()
+        return Policy(
+            id=updated.policy_id,
+            name=updated.name,
+            rules=[Rule.model_validate(rule) for rule in updated.rules],
+            enabled=updated.enabled,
+            version=updated.version,
+            created_at=updated.created_at,
+            updated_at=updated.updated_at,
+        )
 
     async def upsert_policy(self, policy: Policy) -> Policy:
-        """
-        Insert or replace a policy, assigning/ incrementing its version
-        and updating ``updated_at``. Notifies registered reload clients.
-        """
-        async with self._lock:
-            now = datetime.now(timezone.utc)
-            existing = self._policies.get(policy.name)
-            if existing is not None:
-                stored = Policy(
-                    id=existing.id,
-                    name=policy.name,
-                    rules=policy.rules,
-                    enabled=policy.enabled,
-                    version=existing.version + 1,
-                    created_at=existing.created_at,
-                    updated_at=now,
-                )
-            else:
-                stored = Policy(
-                    id=policy.id,
-                    name=policy.name,
-                    rules=policy.rules,
-                    enabled=policy.enabled,
-                    version=1,
-                    created_at=now,
-                    updated_at=now,
-                )
-            self._policies[policy.name] = stored
-        await self._notify_reload(policy.name)
-        return stored
+        """Compatibility helper that creates or performs a version-guarded replacement."""
+        record = await self._get_record(policy.name)
+        if record is None:
+            return await self.create_policy(policy)
+        return await self.update_policy(
+            policy.name,
+            PolicyUpdate(
+                id=record.policy_id,
+                name=policy.name,
+                rules=policy.rules,
+                enabled=policy.enabled,
+                expected_version=policy.version,
+            ),
+        )
 
     async def delete_policy(self, name: str) -> bool:
-        """
-        Remove the policy with the given name. Returns True if the policy
-        existed and was deleted, False otherwise.
-        """
-        async with self._lock:
-            deleted = name in self._policies
-            if deleted:
-                del self._policies[name]
-        if deleted:
-            await self._notify_reload(name)
-        return deleted
+        record = await self._get_record(name)
+        if record is None:
+            return False
+        await self._db.delete(record)
+        await self._db.commit()
+        return True
 
     async def evaluate(self, context: PolicyEvaluationContext) -> PolicyEvaluationResult:
-        """Evaluate enabled policies against the supplied action context."""
-        async with self._lock:
-            policies = [policy for policy in self._policies.values() if policy.enabled]
+        records = (
+            (
+                await self._db.execute(
+                    select(PolicyRecord).where(
+                        PolicyRecord.owner_id == self._owner_id,
+                        PolicyRecord.enabled.is_(True),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        policies = [_policy_from_record(record) for record in records]
 
         matches: list[PolicyRuleMatch] = []
         for policy in policies:
@@ -212,11 +350,11 @@ class PolicyStore:
                 )
 
         decision = _select_decision(matches)
-        if matches:
-            reason = f"{len(matches)} policy rule(s) matched"
-        else:
-            reason = "No enabled policy rules matched"
-
+        reason = (
+            f"{len(matches)} policy rule(s) matched"
+            if matches
+            else "No enabled policy rules matched"
+        )
         return PolicyEvaluationResult(
             decision=decision,
             reason=reason,
@@ -226,48 +364,3 @@ class PolicyStore:
             agent_id=context.agent_id,
             session_id=context.session_id,
         )
-
-    # ------------------------------------------------------------------
-    # SSE hot-reload
-    # ------------------------------------------------------------------
-
-    def register_reload_client(self, client: object) -> None:
-        """Register an async send-capable client for reload pings (e.g. EventSourceResponse)."""
-        self._reload_clients.add(client)
-
-    def unregister_reload_client(self, client: object) -> None:
-        """Remove a reload client."""
-        self._reload_clients.discard(client)
-
-    async def _notify_reload(self, policy_name: str) -> None:
-        """Send a minimal SSE payload to all registered clients."""
-        import json
-
-        data = json.dumps({"policy": policy_name, "event": "reload"})
-        payload = f"data: {data}\n\n"
-        dead: set[object] = set()
-        for client in self._reload_clients:
-            try:
-                await client.send(payload)  # type: ignore[attr-defined]
-            except Exception:
-                dead.add(client)
-        for client in dead:
-            self._reload_clients.discard(client)
-
-
-# ------------------------------------------------------------------
-# Application-level singleton (used by dependency injection)
-# ------------------------------------------------------------------
-
-_policy_store: PolicyStore | None = None
-_store_lock = asyncio.Lock()
-
-
-async def get_policy_store() -> PolicyStore:
-    """Return the global PolicyStore instance."""
-    global _policy_store
-    if _policy_store is None:
-        async with _store_lock:
-            if _policy_store is None:
-                _policy_store = PolicyStore()
-    return _policy_store

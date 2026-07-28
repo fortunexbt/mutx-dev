@@ -17,9 +17,9 @@ export default function DashboardAutonomyPage() {
             iconTone="text-fuchsia-300 bg-fuchsia-400/10"
             badge="local autonomy surface"
             hint={{
-              tone: 'beta',
+              tone: 'boundary',
               detail:
-                'Autonomy is tied directly to the local daemon and repo state. The feed is real, but the dashboard is still evolving around internal workflows.',
+                'Autonomy is machine-host scoped. A host without the local daemon and repository queue configured reports the feed as unavailable.',
             }}
             stats={[
               { label: "Source", value: ".autonomy + queue", tone: "success" },

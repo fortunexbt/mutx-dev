@@ -7,8 +7,9 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from src.api.config import get_settings
-from src.api.auth.dependencies import get_current_user
+from src.api.auth.dependencies import require_roles
 from src.api.models import User
+from src.api.models.numeric import PositiveFiniteFloat
 from src.api.services.faramesh_supervisor import (
     SupervisionValidationError,
     get_faramesh_supervisor,
@@ -26,7 +27,7 @@ class SupervisedAgentStartRequest(BaseModel):
 
 
 class SupervisedAgentStopRequest(BaseModel):
-    timeout: Optional[float] = 10.0
+    timeout: Optional[PositiveFiniteFloat] = Field(default=10.0, le=300.0)
 
 
 class SupervisedLaunchProfileResponse(BaseModel):
@@ -53,22 +54,27 @@ def _assert_internal_user(current_user: User) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
 
+async def require_supervision_admin(
+    current_user: User = Depends(require_roles("ADMIN")),
+) -> User:
+    _assert_internal_user(current_user)
+    return current_user
+
+
 @router.get("/")
 async def list_supervised_agents(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_supervision_admin),
 ):
-    """List all supervised agents."""
-    _assert_internal_user(current_user)
+    """List globally supervised agents for an administrator."""
     supervisor = get_faramesh_supervisor()
     return supervisor.list_agents()
 
 
 @router.get("/profiles", response_model=list[SupervisedLaunchProfileResponse])
 async def list_supervised_launch_profiles(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_supervision_admin),
 ):
     """List configured launch profiles for supervised agents."""
-    _assert_internal_user(current_user)
     supervisor = get_faramesh_supervisor()
     return [
         SupervisedLaunchProfileResponse(
@@ -84,26 +90,24 @@ async def list_supervised_launch_profiles(
 @router.get("/{agent_id}")
 async def get_supervised_agent(
     agent_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_supervision_admin),
 ):
     """Get status of a supervised agent."""
-    _assert_internal_user(current_user)
     supervisor = get_faramesh_supervisor()
-    status = supervisor.get_agent_status(agent_id)
+    agent_status = supervisor.get_agent_status(agent_id)
 
-    if not status:
+    if not agent_status:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
 
-    return status
+    return agent_status
 
 
 @router.post("/start")
 async def start_supervised_agent(
     request: SupervisedAgentStartRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_supervision_admin),
 ):
     """Start an agent under Faramesh supervision."""
-    _assert_internal_user(current_user)
     supervisor = get_faramesh_supervisor()
     try:
         prepared = supervisor.prepare_launch_request(
@@ -129,10 +133,9 @@ async def start_supervised_agent(
 async def stop_supervised_agent(
     agent_id: str,
     request: SupervisedAgentStopRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_supervision_admin),
 ):
     """Stop a supervised agent."""
-    _assert_internal_user(current_user)
     supervisor = get_faramesh_supervisor()
 
     success = await supervisor.stop_agent(agent_id, timeout=request.timeout)
@@ -146,10 +149,9 @@ async def stop_supervised_agent(
 @router.post("/{agent_id}/restart")
 async def restart_supervised_agent(
     agent_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_supervision_admin),
 ):
     """Restart a supervised agent."""
-    _assert_internal_user(current_user)
     supervisor = get_faramesh_supervisor()
 
     success = await supervisor.restart_agent(agent_id)
@@ -157,5 +159,4 @@ async def restart_supervised_agent(
     if not success:
         raise HTTPException(status_code=500, detail="Failed to restart agent")
 
-    status = supervisor.get_agent_status(agent_id)
-    return status
+    return supervisor.get_agent_status(agent_id)

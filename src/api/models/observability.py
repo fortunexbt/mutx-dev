@@ -19,7 +19,16 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from src.api.models.numeric import (
+    DegradedNumericResponseModel,
+    FiniteJsonDict,
+    NonNegativeFiniteFloat,
+    PercentageFloat,
+    UnitIntervalFloat,
+    reject_non_finite_floats,
+)
 
 
 class MutxStepType(str, Enum):
@@ -85,8 +94,8 @@ class MutxCost(BaseModel):
     total_tokens: Optional[int] = Field(
         default=None, ge=0, description="Sum of all token fields. Convenience field."
     )
-    cost_usd: Optional[float] = Field(
-        default=None, ge=0, description="Estimated cost in USD. Null if pricing is unknown."
+    cost_usd: Optional[NonNegativeFiniteFloat] = Field(
+        default=None, description="Estimated cost in USD. Null if pricing is unknown."
     )
     model: Optional[str] = Field(
         default=None,
@@ -201,14 +210,12 @@ class MutxEvalMetrics(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    cost_usd: Optional[float] = Field(default=None, ge=0)
-    duration_s: Optional[float] = Field(default=None, ge=0)
+    cost_usd: Optional[NonNegativeFiniteFloat] = None
+    duration_s: Optional[NonNegativeFiniteFloat] = None
     tool_calls: Optional[int] = Field(default=None, ge=0)
     retries: Optional[int] = Field(default=None, ge=0)
-    convergence_score: Optional[float] = Field(
+    convergence_score: Optional[UnitIntervalFloat] = Field(
         default=None,
-        ge=0,
-        le=1,
         description="How directly the agent reached the solution (1.0 = optimal path, 0.0 = lost)",
     )
     total_steps: Optional[int] = Field(default=None, ge=0)
@@ -241,10 +248,8 @@ class MutxEval(BaseModel):
     eval_pass: bool = Field(
         ..., alias="pass", description="Whether the run met its acceptance criteria"
     )
-    score: float = Field(
+    score: PercentageFloat = Field(
         ...,
-        ge=0,
-        le=100,
         description="Numeric score (0-100). Interpretation depends on task_type.",
     )
     expected_outcome: Optional[str] = Field(
@@ -395,7 +400,16 @@ class MutxRunCreate(BaseModel):
     git_commit: Optional[str] = Field(default=None, description="Git commit SHA")
     workspace_id: Optional[str] = Field(default=None, description="Workspace/tenant scope")
     tags: list[str] = Field(default_factory=list, description="Tags")
-    run_metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    run_metadata: FiniteJsonDict = Field(default_factory=dict, description="Additional metadata")
+
+    @model_validator(mode="after")
+    def _validate_nested_step_metadata(self) -> "MutxRunCreate":
+        for index, step in enumerate(self.steps):
+            reject_non_finite_floats(
+                step.step_metadata,
+                path=f"$.steps[{index}].step_metadata",
+            )
+        return self
 
 
 class MutxStepCreate(BaseModel):
@@ -421,10 +435,45 @@ class MutxStepCreate(BaseModel):
     ended_at: Optional[datetime] = Field(default=None, description="Step end time")
     duration_ms: Optional[int] = Field(default=None, ge=0, description="Duration in ms")
     tokens_used: Optional[int] = Field(default=None, ge=0, description="Tokens consumed")
-    step_metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    step_metadata: FiniteJsonDict = Field(default_factory=dict, description="Additional metadata")
 
 
-class MutxRunResponse(BaseModel):
+class MutxCostResponse(DegradedNumericResponseModel):
+    """Legacy-safe cost telemetry returned without inventing a numeric value."""
+
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: Optional[int] = None
+    cache_write_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    cost_usd: Optional[float] = None
+    model: Optional[str] = None
+
+
+class MutxEvalMetricsResponse(DegradedNumericResponseModel):
+    cost_usd: Optional[float] = None
+    duration_s: Optional[float] = None
+    tool_calls: Optional[int] = None
+    retries: Optional[int] = None
+    convergence_score: Optional[float] = None
+    total_steps: Optional[int] = None
+    optimal_steps: Optional[int] = None
+
+
+class MutxEvalResponse(DegradedNumericResponseModel):
+    task_type: Optional[str] = None
+    eval_layer: Optional[str] = None
+    eval_pass: bool = Field(..., alias="pass")
+    score: Optional[float]
+    expected_outcome: Optional[str] = None
+    actual_outcome: Optional[str] = None
+    metrics: Optional[MutxEvalMetricsResponse] = None
+    regression_from: Optional[str] = None
+    detail: Optional[str] = None
+    benchmark_id: Optional[str] = None
+
+
+class MutxRunResponse(DegradedNumericResponseModel):
     """Schema for MutxRun API responses."""
 
     model_config = ConfigDict(from_attributes=True)
@@ -446,9 +495,9 @@ class MutxRunResponse(BaseModel):
     duration_ms: Optional[int] = None
     step_count: int = 0
     tools_available: list[str] = []
-    cost: Optional[MutxCost] = None
+    cost: Optional[MutxCostResponse] = None
     provenance: Optional[MutxProvenance] = None
-    eval: Optional[MutxEval] = None
+    eval: Optional[MutxEvalResponse] = None
     error: Optional[str] = None
     git_branch: Optional[str] = None
     git_commit: Optional[str] = None
@@ -489,7 +538,7 @@ class MutxEvalCreate(BaseModel):
     task_type: Optional[str] = None
     eval_layer: Optional[str] = None
     eval_pass: bool = Field(..., alias="pass", description="Pass/fail result")
-    score: float = Field(..., ge=0, le=100, description="Score 0-100")
+    score: PercentageFloat = Field(..., description="Score 0-100")
     expected_outcome: Optional[str] = None
     actual_outcome: Optional[str] = None
     metrics: Optional[MutxEvalMetrics] = None

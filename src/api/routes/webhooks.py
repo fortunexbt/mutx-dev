@@ -18,6 +18,7 @@ from src.api.models.schemas import (
 )
 from src.api.auth.dependencies import get_current_user_or_api_key
 from src.api.security import encrypt_secret_value
+from src.api.services.auth import Role, check_role
 from src.api.services.webhook_service import (
     UnsafeWebhookDestinationError,
     ensure_safe_webhook_destination,
@@ -68,9 +69,6 @@ def _validate_webhook_events(events: list[str]) -> None:
 
 
 async def _validate_webhook_url(url: str) -> None:
-    if not url.startswith(("http://", "https://")):
-        raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
-
     try:
         await ensure_safe_webhook_destination(url)
     except UnsafeWebhookDestinationError as exc:
@@ -120,11 +118,31 @@ async def get_webhook_auth(
     return user
 
 
+async def get_webhook_reader(
+    current_user: User = Depends(get_webhook_auth),
+) -> User:
+    """Require an owner principal with a persisted read-capable role."""
+
+    if not check_role(current_user.roles or [], [Role.VIEWER, Role.DEVELOPER]):
+        raise HTTPException(status_code=403, detail="Insufficient webhook read permissions")
+    return current_user
+
+
+async def get_webhook_developer(
+    current_user: User = Depends(get_webhook_auth),
+) -> User:
+    """Require a persisted developer role for webhook mutations and delivery."""
+
+    if not check_role(current_user.roles or [], [Role.DEVELOPER]):
+        raise HTTPException(status_code=403, detail="Insufficient webhook mutation permissions")
+    return current_user
+
+
 @router.post("/", response_model=WebhookResponse, status_code=201)
 async def create_webhook(
     webhook_data: WebhookCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_webhook_auth),
+    current_user: User = Depends(get_webhook_developer),
 ):
     """Register a new webhook endpoint."""
     await _validate_webhook_url(webhook_data.url)
@@ -151,7 +169,7 @@ async def list_webhooks(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_webhook_auth),
+    current_user: User = Depends(get_webhook_reader),
 ):
     """List all webhooks registered by the authenticated user."""
     filters = [Webhook.user_id == current_user.id]
@@ -170,148 +188,9 @@ async def list_webhooks(
     )
 
 
-@router.get("/{webhook_id}", response_model=WebhookResponse)
-async def get_webhook(
-    webhook_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_webhook_auth),
-):
-    """Get a specific webhook by ID."""
-    webhook = await _get_owned_webhook(webhook_id, db, current_user)
-    return _serialize_webhook(webhook)
-
-
-@router.patch("/{webhook_id}", response_model=WebhookResponse)
-async def update_webhook(
-    webhook_id: uuid.UUID,
-    webhook_data: WebhookUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_webhook_auth),
-):
-    """Update an existing webhook."""
-    webhook = await _get_owned_webhook(webhook_id, db, current_user)
-
-    # Update fields if provided
-    if webhook_data.url is not None:
-        await _validate_webhook_url(webhook_data.url)
-        webhook.url = webhook_data.url
-
-    if webhook_data.name is not None:
-        webhook.name = webhook_data.name
-
-    if webhook_data.events is not None:
-        _validate_webhook_events(webhook_data.events)
-        webhook.events = webhook_data.events
-
-    if webhook_data.is_active is not None:
-        webhook.is_active = webhook_data.is_active
-
-    # Reset circuit breaker if requested
-    if webhook_data.reset_circuit:
-        webhook.consecutive_failures = 0
-        logger.info(f"Circuit breaker reset for webhook {webhook.id}")
-
-    await db.commit()
-    await db.refresh(webhook)
-
-    logger.info(f"Webhook updated: {webhook.id}")
-    return _serialize_webhook(webhook)
-
-
-@router.delete("/{webhook_id}", status_code=204)
-async def delete_webhook(
-    webhook_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_webhook_auth),
-):
-    """Delete a webhook."""
-    webhook = await _get_owned_webhook(webhook_id, db, current_user)
-
-    await db.delete(webhook)
-    await db.commit()
-
-    logger.info(f"Webhook deleted: {webhook_id}")
-    return None
-
-
-@router.post("/{webhook_id}/test")
-async def test_webhook(
-    webhook_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_webhook_auth),
-):
-    """Send a test event to a webhook to verify it's working."""
-    webhook = await _get_owned_webhook(webhook_id, db, current_user)
-    await _validate_webhook_url(webhook.url)
-
-    # Import the delivery function
-    from src.api.services.webhook_service import deliver_webhook_with_retry
-    import aiohttp
-
-    test_payload = {
-        "message": "This is a test webhook from MUTX",
-        "event": "test",
-    }
-
-    async with aiohttp.ClientSession() as session:
-        success = await deliver_webhook_with_retry(session, db, webhook, "test", test_payload)
-
-    if success:
-        return {"status": "test_delivered", "message": "Test event delivered successfully"}
-    else:
-        raise HTTPException(
-            status_code=502,
-            detail="Test event delivery failed. Check webhook URL and ensure it's reachable.",
-        )
-
-
-@router.get("/{webhook_id}/deliveries", response_model=WebhookDeliveryListResponse)
-async def list_webhook_deliveries(
-    webhook_id: uuid.UUID,
-    event: Optional[str] = Query(None),
-    success: Optional[bool] = Query(None),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=500),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_webhook_auth),
-):
-    """List delivery attempts for a webhook owned by the authenticated user."""
-    webhook = await _get_owned_webhook(webhook_id, db, current_user)
-
-    filters = [WebhookDeliveryLog.webhook_id == webhook.id]
-    if event is not None:
-        filters.append(WebhookDeliveryLog.event == event)
-    if success is not None:
-        filters.append(WebhookDeliveryLog.success == success)
-
-    total_stmt = select(func.count()).select_from(WebhookDeliveryLog).where(*filters)
-    total = (await db.execute(total_stmt)).scalar_one()
-
-    query = (
-        select(WebhookDeliveryLog)
-        .where(*filters)
-        .order_by(WebhookDeliveryLog.created_at.desc())
-        .offset(skip)
-        .limit(limit)
-    )
-
-    result = await db.execute(query)
-    deliveries = result.scalars().all()
-    return WebhookDeliveryListResponse(
-        webhook_id=webhook.id,
-        items=deliveries,
-        total=total,
-        skip=skip,
-        limit=limit,
-        has_more=total > skip + len(deliveries),
-        event=event,
-        success=success,
-    )
-
-
 @router.get("/verify-docs")
 async def webhook_verify_docs(
-    current_user: User = Depends(get_webhook_auth),
+    current_user: User = Depends(get_webhook_reader),
 ):
     """Documentation for verifying webhook signatures.
 
@@ -347,11 +226,148 @@ async def webhook_verify_docs(
     }
 
 
+@router.get("/{webhook_id}", response_model=WebhookResponse)
+async def get_webhook(
+    webhook_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_webhook_reader),
+):
+    """Get a specific webhook by ID."""
+    webhook = await _get_owned_webhook(webhook_id, db, current_user)
+    return _serialize_webhook(webhook)
+
+
+@router.patch("/{webhook_id}", response_model=WebhookResponse)
+async def update_webhook(
+    webhook_id: uuid.UUID,
+    webhook_data: WebhookUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_webhook_developer),
+):
+    """Update an existing webhook."""
+    webhook = await _get_owned_webhook(webhook_id, db, current_user)
+
+    # Update fields if provided
+    if webhook_data.url is not None:
+        await _validate_webhook_url(webhook_data.url)
+        webhook.url = webhook_data.url
+
+    if webhook_data.name is not None:
+        webhook.name = webhook_data.name
+
+    if webhook_data.events is not None:
+        _validate_webhook_events(webhook_data.events)
+        webhook.events = webhook_data.events
+
+    if webhook_data.is_active is not None:
+        webhook.is_active = webhook_data.is_active
+
+    # Reset circuit breaker if requested
+    if webhook_data.reset_circuit:
+        webhook.consecutive_failures = 0
+        logger.info(f"Circuit breaker reset for webhook {webhook.id}")
+
+    await db.commit()
+    await db.refresh(webhook)
+
+    logger.info(f"Webhook updated: {webhook.id}")
+    return _serialize_webhook(webhook)
+
+
+@router.delete("/{webhook_id}", status_code=204)
+async def delete_webhook(
+    webhook_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_webhook_developer),
+):
+    """Delete a webhook."""
+    webhook = await _get_owned_webhook(webhook_id, db, current_user)
+
+    await db.delete(webhook)
+    await db.commit()
+
+    logger.info(f"Webhook deleted: {webhook_id}")
+    return None
+
+
+@router.post("/{webhook_id}/test")
+async def test_webhook(
+    webhook_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_webhook_developer),
+):
+    """Send a test event to a webhook to verify it's working."""
+    webhook = await _get_owned_webhook(webhook_id, db, current_user)
+    await _validate_webhook_url(webhook.url)
+
+    # Import the delivery function
+    from src.api.services.webhook_service import deliver_webhook_with_retry
+
+    test_payload = {
+        "message": "This is a test webhook from MUTX",
+        "event": "test",
+    }
+
+    success = await deliver_webhook_with_retry(db, webhook, "test", test_payload)
+
+    if success:
+        return {"status": "test_delivered", "message": "Test event delivered successfully"}
+    else:
+        raise HTTPException(
+            status_code=502,
+            detail="Test event delivery failed. Check webhook URL and ensure it's reachable.",
+        )
+
+
+@router.get("/{webhook_id}/deliveries", response_model=WebhookDeliveryListResponse)
+async def list_webhook_deliveries(
+    webhook_id: uuid.UUID,
+    event: Optional[str] = Query(None),
+    success: Optional[bool] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_webhook_reader),
+):
+    """List delivery attempts for a webhook owned by the authenticated user."""
+    webhook = await _get_owned_webhook(webhook_id, db, current_user)
+
+    filters = [WebhookDeliveryLog.webhook_id == webhook.id]
+    if event is not None:
+        filters.append(WebhookDeliveryLog.event == event)
+    if success is not None:
+        filters.append(WebhookDeliveryLog.success == success)
+
+    total_stmt = select(func.count()).select_from(WebhookDeliveryLog).where(*filters)
+    total = (await db.execute(total_stmt)).scalar_one()
+
+    query = (
+        select(WebhookDeliveryLog)
+        .where(*filters)
+        .order_by(WebhookDeliveryLog.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+
+    result = await db.execute(query)
+    deliveries = result.scalars().all()
+    return WebhookDeliveryListResponse(
+        webhook_id=webhook.id,
+        items=deliveries,
+        total=total,
+        skip=skip,
+        limit=limit,
+        has_more=total > skip + len(deliveries),
+        event=event,
+        success=success,
+    )
+
+
 @router.post("/retry")
 async def retry_webhook_delivery(
     request: WebhookRetryRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_webhook_auth),
+    current_user: User = Depends(get_webhook_developer),
 ):
     """Manually retry a specific webhook delivery.
 
@@ -382,17 +398,14 @@ async def retry_webhook_delivery(
     from src.api.services.webhook_service import (
         deliver_webhook_with_retry,
     )
-    import aiohttp
 
-    async with aiohttp.ClientSession() as session:
-        success = await deliver_webhook_with_retry(
-            session,
-            db,
-            webhook,
-            original.event,
-            payload,
-            parent_delivery_id=original.id,
-        )
+    success = await deliver_webhook_with_retry(
+        db,
+        webhook,
+        original.event,
+        payload,
+        parent_delivery_id=original.id,
+    )
 
     if success:
         return {

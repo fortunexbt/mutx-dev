@@ -1,0 +1,6 @@
+.DS_Store
+.git/
+.gitignore
+tests/*.py
+tests/__pycache__/
+*.tgz

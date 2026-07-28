@@ -1,5 +1,120 @@
 {
   "pico": {
+    "auth": {
+      "eyebrow": "PicoMUTX アカウント",
+      "orUseEmail": "またはメールを使用",
+      "forgotPassword": "パスワードを忘れた場合",
+      "fields": {
+        "name": { "label": "名前", "placeholder": "お名前" },
+        "email": { "label": "メールアドレス", "placeholder": "you@company.com" },
+        "password": { "label": "パスワード", "placeholder": "8文字以上で入力" },
+        "confirmPassword": { "label": "パスワードを確認", "placeholder": "もう一度入力" }
+      },
+      "modes": {
+        "login": {
+          "title": "PicoMUTX にサインイン",
+          "subtitle": "プロバイダーまたはメールでサインインし、保存した場所から続けます。",
+          "submit": "サインイン",
+          "loading": "サインインしています...",
+          "toggleQuestion": "アカウントをお持ちでないですか？",
+          "toggleAction": "作成する"
+        },
+        "register": {
+          "title": "PicoMUTX アカウントを作成",
+          "subtitle": "アカウントを作成すると、PicoMUTX セッション間で進捗を保存できます。",
+          "submit": "アカウントを作成",
+          "loading": "作成しています...",
+          "toggleQuestion": "すでにアカウントをお持ちですか？",
+          "toggleAction": "サインイン"
+        }
+      },
+      "errors": {
+        "passwordMismatch": "パスワードが一致しません",
+        "passwordTooShort": "パスワードは8文字以上にしてください",
+        "loginFailed": "サインインできませんでした",
+        "registerFailed": "アカウントを作成できませんでした",
+        "emailRequired": "先にメールアドレスを入力してください",
+        "resendFailed": "再送信できませんでした"
+      },
+      "notice": {
+        "verificationSent": "確認メールを送信しました",
+        "resending": "送信しています...",
+        "resendVerification": "確認メールを再送信"
+      }
+    },
+    "authRecovery": {
+      "forgotPassword": {
+        "eyebrow": "パスワードの復旧",
+        "title": "オペレーターアカウントへのアクセスを復旧します。",
+        "description": "MUTX アカウントのメールアドレスを入力すると、再設定リンクを送信します。ドキュメントとダッシュボードは引き続き利用できます。",
+        "asideEyebrow": "復旧の注意点",
+        "asideTitle": "認証の復旧を分かりやすく。",
+        "asideBody": "パスワードの再設定は、簡潔で正直かつ確認しやすい必要があります。",
+        "highlights": ["ホストされたアカウントに紐づく仕事用メールを使用してください。", "再設定リンクには有効期限があります。届いたメールを早めに確認してください。", "製品情報が必要な場合は、ドキュメントとダッシュボードを引き続き利用できます。"],
+        "successTitle": "メールを確認してください",
+        "successBody": "パスワード再設定の手順を {email} に送信しました。",
+        "successHint": "届かない場合は迷惑メールを確認するか、新しいリンクを申請してください。",
+        "backToSignIn": "サインインに戻る",
+        "tryAgain": "もう一度試す",
+        "sendTitle": "再設定手順を送信",
+        "sendBody": "メールアドレスを入力すると、新しいリンクを送信します。",
+        "emailLabel": "メールアドレス",
+        "emailPlaceholder": "you@company.com",
+        "sending": "送信しています...",
+        "sendLink": "再設定リンクを送信",
+        "sendFailed": "再設定リンクを送信できませんでした"
+      },
+      "resetPassword": {
+        "eyebrow": "パスワードを再設定",
+        "title": "新しいパスワードを設定します。",
+        "description": "安全なパスワードを入力して確認し、結果が明確な状態で再設定を完了します。",
+        "asideEyebrow": "再設定のルール",
+        "asideTitle": "復旧経路をシンプルに。",
+        "asideBody": "パスワードの再設定は、迅速で分かりやすく、確認可能であるべきです。",
+        "highlights": ["再設定リンクはトークンを使用するため、欠落または期限切れの場合は明確に失敗します。", "最低要件だけでなく、十分に安全なパスワードを使用してください。", "ホスト認証を使わない場合でも、ドキュメントとダッシュボードは利用できます。"],
+        "invalidTitle": "再設定リンクが無効です",
+        "invalidBody": "このパスワード再設定リンクは、存在しない、無効、または期限切れです。",
+        "requestNewLink": "新しいリンクを申請",
+        "backToSignIn": "サインインに戻る",
+        "completeTitle": "再設定が完了しました",
+        "completeBody": "パスワードを更新しました。新しい認証情報でサインインできます。",
+        "signIn": "サインイン",
+        "formTitle": "新しいパスワードを選択",
+        "formBody": "安全なパスワードを入力し、もう一度確認してください。",
+        "newPassword": "新しいパスワード",
+        "confirmPassword": "パスワードを確認",
+        "resetting": "再設定しています...",
+        "resetPassword": "パスワードを再設定",
+        "passwordsMismatch": "パスワードが一致しません",
+        "passwordTooShort": "パスワードは8文字以上にしてください"
+      },
+      "verifyEmail": {
+        "eyebrow": "メールを確認",
+        "title": "アカウントのメールアドレスを確認します。",
+        "description": "確認フローはトークンを検証し、現在のホストから再送信でき、次の移動先を保持します。",
+        "asideEyebrow": "確認のルール",
+        "asideTitle": "確認状態を明確に。",
+        "asideBody": "プロバイダー認証では本人確認済みのため、この手順を省略できます。パスワード登録ではメール確認が必要です。",
+        "highlights": ["確認リンクは固定されたマーケティング画面ではなく、現在のフロントエンドホストに戻ります。", "期限切れまたは無効なトークンは明確に失敗し、再送信経路を示します。", "確認後は、サインインから予定された製品画面へ戻れます。"],
+        "verifying": "メールを確認しています...",
+        "missingContext": "この確認画面にはトークンまたは受信先メールアドレスが必要です。",
+        "sentTo": "確認リンクを {email} に送信しました。",
+        "verificationComplete": "確認が完了しました",
+        "verificationCompleteBody": "アカウントでサインインできるようになりました。同じメールアドレスで続けてください。",
+        "signIn": "サインイン",
+        "checkInbox": "受信トレイを確認",
+        "checkInboxBody": "可能であれば同じ端末で確認リンクを開いてください。届かない場合はここから再送信できます。",
+        "resend": "確認メールを再送信",
+        "resendSending": "送信しています...",
+        "resendNeedsEmail": "再送信するには、先に登録フォームのメールアドレスを入力してください。",
+        "resendSent": "別の確認リンクを {email} に送信しました。",
+        "verifySuccess": "メールアドレスを確認しました。",
+        "verifyFailure": "メールアドレスを確認できませんでした",
+        "resendFailure": "確認メールを再送信できませんでした",
+        "verificationFailed": "確認に失敗しました",
+        "verificationFailedBody": "トークンの期限が切れている場合は、アカウントのメールアドレス宛てに新しいメッセージを申請してください。"
+      }
+    },
     "meta": {
       "title": "PicoMUTX — AIエージェントを任せきりにせず、動かして制御する",
       "description": "PicoMUTX は、創業者やオペレーターが実務で信頼できる AI エージェントを構築・復旧・制御できるよう支援します。"
@@ -7,49 +122,49 @@
     "nav": {
       "brand": "PicoMUTX",
       "brandTag": " by MUTX",
-      "cta": "アクセスを申請",
-      "ctaMobile": "申請",
+      "cta": "オンボーディングを開く",
+      "ctaMobile": "開始",
       "sectionsLabel": "ページセクション",
       "skipToMain": "メインコンテンツへスキップ"
     },
     "hero": {
-      "badge": "ウェイトリスト受付中 · 創設アクセス",
+      "badge": "プロダクト経路を公開中",
       "title": "AI を見張り続けるのは、",
       "titleAccent": "もう終わりに。",
       "subtitle": "ゼロから始める、壊れた設定を立て直す、稼働中のエージェントを制御する。Pico は実際の詰まりを見極め、構築・修復・制御の正しいレーンへ案内します。",
-      "cta": "アクセスを申請",
+      "cta": "オンボーディングを開く",
       "ctaSecondary": "仕組みを見る",
-      "meta": "ウェイトリスト受付中。アカデミーの仕上げ後にプロダクトルートを再開します。"
+      "meta": "無料で開始できます。セッション間で進捗を同期したいときにサインインしてください。"
     },
     "agentSlider": {
       "ariaLabel": "自律型エージェントの種類",
       "items": {
         "0": {
-          "name": "Dev Agent",
+          "name": "開発エージェント",
           "description": "コードを書き、テストし、自律的に出荷します。"
         },
         "1": {
-          "name": "Market Agent",
+          "name": "市場分析エージェント",
           "description": "シグナルを監視し、重要な変化を浮かび上がらせます。"
         },
         "2": {
-          "name": "Deal Agent",
+          "name": "商談エージェント",
           "description": "機会を評価し、確度の高い打ち手を知らせます。"
         },
         "3": {
-          "name": "Ops Agent",
+          "name": "運用エージェント",
           "description": "問題を検知し、リアルタイムで修正を実行します。"
         },
         "4": {
-          "name": "Growth Agent",
+          "name": "グロースエージェント",
           "description": "成果に基づいてコンテンツと配信を改善します。"
         },
         "5": {
-          "name": "Security Agent",
+          "name": "セキュリティエージェント",
           "description": "リスクを継続的にスキャンし、軽減します。"
         },
         "6": {
-          "name": "Data Agent",
+          "name": "データエージェント",
           "description": "パイプラインを自動で維持し、進化させます。"
         }
       }
@@ -90,6 +205,7 @@
       "eyebrow": "Pico の仕組み",
       "title": "まず診断。その後、構築・修復・制御へ。",
       "body": "Pico は詰まりを見つけ、次の一手を振り分けます。壊れた瞬間に進捗が消えないようにするためです。",
+      "sampleLabel": "セットアップ記録の例",
       "howItWorks": {
         "0": {
           "title": "目的を説明するか、エージェントを接続する",
@@ -132,8 +248,8 @@
     "beforeAfter": {
       "eyebrow": "変化",
       "title": "PicoMUTX の前と後",
-      "beforeLabel": "Before",
-      "afterLabel": "After",
+      "beforeLabel": "導入前",
+      "afterLabel": "導入後",
       "items": {
         "0": {
           "before": "まず構築すべきか、デバッグすべきか、制御を足すべきか分からない",
@@ -170,6 +286,7 @@
       "eyebrow": "創設価格",
       "title": "プロダクトルート再開前に創設レーンを確保。",
       "tiers": {
+        "free": { "name": "無料", "price": "$0", "period": "期限なし", "description": "支出する前にスタックマップとレッスンの流れを確認します。", "features": ["月間100クレジット", "読み取り専用の Academy ガイド", "基本の Academy レッスン", "コミュニティサポート"], "cta": "現在のプラン", "ctaHref": null },
         "starter": {
           "name": "創設 Tier",
           "price": "€29",
@@ -178,7 +295,9 @@
           "features": [
             "AI 診断インテーク",
             "構築・修復・制御のガイド付きパス",
-            "自立実行向けに設計"
+            "自立実行向けに設計",
+            "Autopilot モード",
+            "優先サポート"
           ],
           "cta": "創設アクセスを申請",
           "ctaHref": "/pricing",
@@ -195,7 +314,10 @@
           "features": [
             "創設 Tier のすべて",
             "週次のグループトラブルシュート",
-            "共有オペレーター責任"
+            "共有オペレーター責任",
+            "優先サポート",
+            "カスタムワークフロー",
+            "新機能への早期アクセス"
           ],
           "cta": "支援付きアクセスを申請",
           "ctaHref": "/pricing",
@@ -252,8 +374,8 @@
           "a": "サポート導線、社内コパイロット、リード獲得、営業フォロー、実世界で構築・修復・制御が必要な運用ワークフローなど、実用的なエージェントシステム向けです。"
         },
         "3": {
-          "q": "ウェイトリストは開いていますか？",
-          "a": "はい。公開ウェイトリストを再開しました。アカデミーとプロダクトルートは、このランディングページの redesign が先へ進むまで private のままです。"
+          "q": "今すぐ始められますか？",
+          "a": "はい。オンボーディングを開き、Academy に進み、進捗・Tutor・チェックアウトを同期したいときにサインインしてください。"
         },
         "4": {
           "q": "エンタープライズ向けですか？",
@@ -262,21 +384,22 @@
       }
     },
     "finalCta": {
-      "eyebrow": "創設アクセス",
+      "eyebrow": "実際の一歩から始める",
       "title": "正しいレーンへのアクセスを申請してください。",
       "body": "Pico は、役に立つものを動かし、壊れたら立て直し、実務では制御できる状態に保つための仕組みです。",
       "faqLabel": "まだ迷っていますか？最後の懸念を解消しましょう。",
       "formHeadline": "本当の詰まりから始めてください。",
       "formSubline": "構築・修復・制御のどれが必要か教えてください。正しいレーンへ案内します。",
-      "ctaButton": "アクセスを申請",
-      "formCtaMeta": "無料トライアル · 創設価格 90%オフ · €29 / €79 · Pico Pilot は €1,000+ から",
+      "ctaButton": "オンボーディングを開く",
+      "formCtaMeta": "公開中: オンボーディング、Academy、Tutor、サポート、Autopilot",
       "secondaryButton": "計画相談を予約"
     },
+    "localeSwitcher": { "currentLanguage": "現在の言語", "listLabel": "表示言語を選択", "changedTo": "言語を {language} に変更しました" },
     "contactForm": {
       "dialogLabel": "お問い合わせフォーム",
       "closeLabel": "閉じる",
-      "title": "Pico アクセスを申請",
-      "subtitle": "出荷したいもの、復旧したいもの、制御したいものを教えてください。正しい次の一手へ案内します。",
+      "title": "Pico チームに相談",
+      "subtitle": "出荷・復旧・制御したい内容を教えてください。チームが確認できるようリクエストを保存します。",
       "emailLabel": "勤務先メール",
       "emailPlaceholder": "you@company.com",
       "nameLabel": "名前",
@@ -297,11 +420,13 @@
       "messageLabel": "補足はありますか？",
       "messageOptional": "（任意）",
       "messagePlaceholder": "目的、詰まり、稼働中システムを説明してください…",
+      "productUpdatesLabel": "Pico の製品・リリース情報をときどきメールで受け取る。",
+      "productUpdatesHint": "任意で、初期状態では未選択です。購読しなくても申請は送信されます。",
       "submitting": "送信中...",
-      "submit": "アクセスを申請",
-      "disclaimer": "一般的な育成メールはありません。人が正直な次のルートを返信します。",
-      "successTitle": "申請を受け取りました。",
-      "successBody": "状況を受け取りました。Pico への次のルートをメールで確認してください。",
+      "submit": "リクエストを送信",
+      "disclaimer": "リクエストはチームのフォローアップ用に保存されます。製品情報は上で同意した場合にのみ送信します。",
+      "successTitle": "申請を受け付けました。",
+      "successBody": "リクエストを保存しました。チームは入力されたメールアドレスに返信できます。",
       "successBack": "ページに戻る",
       "errorFallback": "問題が発生しました。もう一度お試しください。",
       "networkError": "ネットワークエラーです。もう一度お試しください。"
@@ -316,7 +441,20 @@
       "successBody": "あなたの PicoMUTX アクセス枠が開いたら連絡します。スパムも支払い要求もありません。",
       "errorFallback": "問題が発生しました。もう一度お試しください。"
     },
+    "pages": {
+      "onboarding": { "meta": { "title": "はじめる — PicoMUTX", "description": "PicoMUTX ワークスペースを設定して学習を始めます。" } },
+      "pricing": { "meta": { "title": "料金 — PicoMUTX", "description": "レッスン、Tutor、ランタイム情報、エージェントスタックに対応したプランです。" } },
+      "academy": { "meta": { "title": "Academy — PicoMUTX", "description": "PicoMUTX Academy のレッスンと学習経路を確認できます。" } },
+      "lesson": { "meta": { "title": "{title} — PicoMUTX Academy", "description": "{summary}" } },
+      "autopilot": { "meta": { "title": "Autopilot — PicoMUTX", "description": "Autopilot でワークフローとランタイム信号を確認します。" } },
+      "tutor": { "meta": { "title": "Tutor — PicoMUTX", "description": "PicoMUTX Tutor からガイド付きの支援を受けます。" } },
+      "support": { "meta": { "title": "サポート — PicoMUTX", "description": "PicoMUTX のヘルプとサポートを利用できます。" } },
+      "wip": { "meta": { "title": "ライブビルド台帳 — PicoMUTX", "description": "PicoMUTX を支えるビルダーパック文書、リポジトリのスナップショット、リモートアクセス設定を確認します。" }, "title": "ライブビルド台帳", "subtitle": "このページでは、Pico の情報源となる文書、Academy レッスン、追跡リポジトリ、リモートアクセス設定を表示します。", "backToPico": "Pico に戻る", "mutxPlatform": "MUTX プラットフォーム", "imageAlt": "ライブのスタック情報を確認する PicoMUTX ロボット" }
+    },
     "footer": {
+      "brand": "PicoMUTX",
+      "logoAlt": "PicoMUTX ロゴ",
+      "tagline": "PicoMUTX は AI エージェント開発者向けの学習・運用プラットフォームです。",
       "links": {
         "releases": "リリース",
         "docs": "ドキュメント",
@@ -326,6 +464,9 @@
         "contact": "お問い合わせ",
         "privacy": "プライバシー"
       },
+      "supportPrompt": "さらに支援が必要ですか？",
+      "supportCta": "お問い合わせ",
+      "supportBody": "Enterprise 料金（100K+ クレジット、SSO、SLA）について。",
       "copyright": "© MUTX 2026. デプロイ済みエージェントのオープン制御。"
     },
     "waitlistForm": {
@@ -638,10 +779,41 @@
           "contextReady": "文脈準備完了",
           "needsProof": "証拠が必要"
         },
-        "returnAcademy": "academy",
+        "returnAcademy": "Academy",
         "resumeLesson": "{lessonTitle} を再開",
         "openLesson": "{lessonTitle} を開く",
         "stepsClear": "{completed}/{total} 手順クリア"
+      }
+    },
+    "welcomeTour": { "page": { "eyebrow": "01 ページ", "title": "Pico の各ページには主な役割が1つあります。", "body": "目の前の設定手順に合うページを使い、すべての画面を調査課題にしないでください。", "current": "現在の章 {chapter}: {label}。", "back": "戻る: {label}。", "backOnboarding": "戻る: オンボーディング。", "next": "次へ: {label}。", "nextSupport": "次へ: サポート。" }, "routes": { "currentPage": "現在のページ: {pageTitle}。", "academy": { "eyebrow": "02 まずレッスン", "title": "設定手順を1つずつ進めます。", "body": "現在のレッスンを開き、見えている手順を完了し、設定が安定するまで残りは保留します。", "bullets": ["マップが順序を示します。", "現在のレッスンをすぐ見つけられる状態にします。"] }, "tutor": { "eyebrow": "02 1つの問題", "title": "Tutor は正確な次の手順のために使います。", "body": "設定を止めているコマンド、パス、プロバイダー、検証手順を質問します。", "bullets": ["順序が違う場合は Academy に戻ります。", "runtime が動いている場合は Autopilot を開きます。"] }, "autopilot": { "eyebrow": "02 ランタイム", "title": "実際の実行後に Autopilot を使います。", "body": "実行、アラート、承認、支出、現在の runtime 状態に使うページです。", "bullets": ["設定が未完了なら Academy に戻ります。", "ホスティング、キー、展開が不明なら人に相談します。"] }, "support": { "eyebrow": "02 人による支援", "title": "設定に判断が必要ならサポートを使います。", "body": "レッスン、エラー、runtime メモを添えてください。API キー、ホスティング、連携、実装を人が支援します。", "bullets": ["ホスティングを一人で解決する必要はありません。", "レッスンの slug、エラー、runtime メモを添えます。"] }, "onboarding": { "eyebrow": "02 最初の実行", "title": "オンボーディングで1つの runtime を動かします。", "body": "runtime を導入し、プロンプトを1つ実行して、エージェント用 Markdown パケットを準備します。", "bullets": ["最初の実行まで設定項目は後回しにします。", "Academy が正確な手順を示します。"] } }, "output": { "eyebrow": "03 出力", "title": "進む前に出力を保存します。", "body": "コマンド、結果、変更点の短いメモが残ると、エージェントパケットが役立ちます。", "bullets": ["問題が明確なら Tutor に質問します。", "runtime が稼働中なら Autopilot を開きます。", "判断が必要ならメモを添えてサポートに相談します。"] }, "dialog": { "label": "クイックヘルプ", "title": "流れを一度学んだら閉じます。", "closeLabel": "クイックツアーを閉じる", "close": "閉じる", "step": "{total} 件中 {current} · {eyebrow}", "back": "戻る", "finish": "完了", "next": "次へ" } },
+    "signalDiagram": { "signal": "シグナル / {index}", "routes": { "landing": { "label": "開始マーカー", "title": "動く経路を1つ作ることから始めます。", "caption": "入口はシンプルにし、設定は製品ページで進めます。" }, "onboarding": { "label": "ガイドマーカー", "title": "導入。実行。記録。", "caption": "オンボーディングは1つの手順とエージェントパケットを表示します。" }, "academy": { "label": "レッスンマーカー", "title": "章を1つずつ完了します。", "caption": "Academy はレッスンごとに設定を進めます。" }, "tutor": { "label": "Tutor マーカー", "title": "問題を正確に示します。", "caption": "Tutor は1つの問題に答え、設定へ戻します。" }, "autopilot": { "label": "Runtime マーカー", "title": "行動の前に状態を読みます。", "caption": "Autopilot は実行、支出、承認をまとめて表示します。" }, "support": { "label": "サポートマーカー", "title": "最短で役立つパケットを添えます。", "caption": "サポートはキー、ホスティング、連携、実装を扱います。" } } },
+    "surfaceCompass": { "label": "画面コンパス", "operatingRule": "運用ルール", "forwardSymbol": "→" },
+    "routeStates": { "error": { "route": "Pico ルート", "step": "ルートエラー", "eyebrow": "現在の手順で問題が発生しました", "title": "このルートを読み込めませんでした。", "body": "再試行してください。再び失敗する場合は、ページと問題をサポートに伝えてください。", "retry": "再試行", "support": "サポートを開く", "scopeLabel": "復旧方針", "scopeTitle": "経路を保持", "scopeBody": "障害後も作業を消さず、同じタスクに戻れる必要があります。" }, "loading": { "route": "Pico ルート", "step": "読み込み中", "eyebrow": "現在の手順を準備中", "title": "Pico がルートを復元しています。", "body": "ホスト状態、レッスンの文脈、次の有用な手順を読み込んでいます。", "postureLabel": "読み込み状態", "waiting": "ライブ情報を待機中", "postureBody": "検証済み状態が届くまで画面を静かに保ちます。" }, "notFound": { "route": "Pico ルート", "step": "見つかりません", "eyebrow": "そのルートはアトラスにありません", "title": "この Pico ページは存在しません。", "body": "Pico に戻るか Academy マップを開いてください。", "recoveryLabel": "ページ復旧", "home": "Pico に戻る", "academy": "Academy を開く", "nextLabel": "次の手順", "nextTitle": "既知のルートに戻る", "nextBody": "推測した URL ではなく、実在するページから復旧します。" } },
+    "buildLedger": {
+      "meta": { "title": "ライブビルド台帳 — PicoMUTX", "description": "PicoMUTX のスタック、Academy レッスン、ビルダーパックの対応状況を、情報源に基づいて確認できます。" },
+      "snapshotUnavailable": "利用不可",
+      "brandSuffix": "/ ビルド台帳",
+      "navigationLabel": "ビルド台帳ナビゲーション",
+      "navigation": { "academy": "Academy", "onboarding": "オンボーディング" },
+      "hero": { "sourceStatus": "ソーススナップショット更新日: {date}", "title": "Pico を支えるライブビルド台帳。", "subtitle": "セットアップガイドの根拠となるスタック概要、Academy ルート、ビルダーパックを確認できます。" },
+      "actions": { "continueOnboarding": "オンボーディングを続ける", "inspectAcademy": "Academy を確認" },
+      "remote": { "postureLabel": "リモートアクセス方針", "kicker": "04 / リモートアクセス", "title": "初期状態は非公開。必要なときだけ到達可能に。", "body": "オペレーターが選択して検証したアクセス経路だけを公開します。", "defaults": ["プライベートネットワーク経由のアクセスを優先する。", "ゲートウェイのバインド先を明示的に決める。", "アクセスを開く前に最新の情報源を確認する。", "アプリが意図的に tailnet インターフェイスを待ち受ける場合にのみ、tailnet へ直接バインドする。", "意図的に一般公開する場合にのみ Tailscale Funnel を使用する。"], "readSource": "ソースガイドを読む" },
+      "metrics": { "label": "ビルダーパック指標", "packDocs": "パック文書", "lessons": "Academy レッスン", "minutes": "ガイド時間（分）", "stacks": "追跡中のスタック" },
+      "stacks": {
+        "kicker": "01 / スタック概要", "title": "最新のスタックノート", "body": "情報源に基づく要約により、セットアップを調査プロジェクトに変えることなく、推奨事項を最新に保ちます。", "repositorySnapshot": "リポジトリのスナップショット", "stars": "スター {count} 件", "openIssues": "未解決 Issue {count} 件", "installNote": "インストール時の注意: ", "repository": "リポジトリ", "officialDocs": "公式ドキュメント", "snapshotRef": "スナップショット参照",
+        "items": {
+          "hermes": { "strength": "完全なオペレーターランタイム", "profile": "ツール、メモリ、ゲートウェイワークフローを備えた幅広いローカルエージェントランタイムです。", "installReality": "文書化されたインストーラーを使用し、新しいシェルでコマンドを検証してください。" },
+          "openclaw": { "strength": "ゲートウェイとチャネルの制御", "profile": "チャネル、ワークスペース状態、リモート操作を扱うゲートウェイ中心のランタイムです。", "installReality": "ゲートウェイの公開範囲とチャネル設定は、オペレーターが明示的に決定してください。" },
+          "nanoclaw": { "strength": "分離されたコンテナ実行", "profile": "コンテナ分離と監査可能な実行に重点を置いた小規模なランタイムです。", "installReality": "連携を追加する前に、コンテナ境界と永続化されたワークスペースを検証してください。" },
+          "picoclaw": { "strength": "軽量なエッジランタイム", "profile": "リソースの少ないホストや限定的なエージェントジョブ向けのコンパクトなランタイムです。", "installReality": "最小ビルドを選ぶ前に、対象アーキテクチャとリソース制限を確認してください。" }
+        }
+      },
+      "academy": { "kicker": "02 / Academy 台帳", "title": "順序に沿ったセットアップルート", "body": "トラックとレッスンにより、スタック調査を、各段階で証拠となる成果物を 1 つ残す有限のルートに変えます。", "lessonCount": "{count} レッスン", "lessonMeta": "{difficulty} · {minutes} 分", "difficulty": { "setup": "セットアップ", "operator": "オペレーター", "builder": "ビルダー" } },
+      "pack": { "kicker": "03 / ビルダーパック", "title": "エージェントが参照できるソースパック", "body": "各文書は、セットアップ、運用、安全性、引き継ぎの一領域を、再利用可能なコンテキストへ絞り込みます。" },
+      "access": { "kicker": "04 / アクセス方針", "title": "稼働中のスタックに照らしてリモートアクセスを検証", "body": "プライベート接続を優先し、ゲートウェイのバインド先を明示的に決め、ランタイムを公開する前に公式ガイドを確認してください。", "verifySource": "ソースガイドを確認" },
+      "footer": { "generated": "台帳生成日: {date}", "sourceGrounded": "情報源に基づき、スナップショットを考慮した簡潔な内容です。" },
+      "topics": {
+        "workflow": "ワークフロー", "operating-model": "運用モデル", "guidance": "ガイド", "persona": "ペルソナ", "audience": "対象者", "coaching": "コーチング", "conversation": "会話", "questioning": "質問", "profiling": "プロファイリング", "skill-level": "スキルレベル", "context": "コンテキスト", "install": "インストール", "bootstrap": "ブートストラップ", "order-of-operations": "作業順序", "diagnostics": "診断", "triage": "トリアージ", "repair": "修復", "commands": "コマンド", "verification": "検証", "formatting": "書式設定", "research": "調査", "official-docs": "公式ドキュメント", "version-sensitive": "バージョン依存", "safety": "安全性", "risk": "リスク", "exposure": "公開範囲", "secrets": "シークレット", "tailscale": "Tailscale", "remote-access": "リモートアクセス", "networking": "ネットワーク", "ssh": "SSH", "hermes": "Hermes", "gateway": "ゲートウェイ", "profiles": "プロファイル", "memory": "メモリ", "openclaw": "OpenClaw", "channels": "チャネル", "workspace": "ワークスペース", "nanoclaw": "NanoClaw", "containers": "コンテナ", "auditability": "監査可能性", "isolation": "分離", "picoclaw": "PicoClaw", "edge": "エッジ", "lightweight": "軽量", "low-resource": "低リソース", "comparison": "比較", "recommendation": "推奨", "tradeoffs": "トレードオフ", "examples": "例", "answer-style": "回答スタイル", "format": "形式", "tool-selection": "ツール選定", "capabilities": "機能", "mapping": "対応付け"
       }
     },
     "autopilotPage": {
@@ -659,6 +831,7 @@
         "error": {
           "partialSignals": "一部のライブ MUTX シグナルの読み込みに失敗しました。表示されているのは一部であり、捏造ではありません。",
           "loadLiveData": "ライブ Autopilot データの読み込みに失敗しました",
+          "loadLiveDataFallback": "ライブ Autopilot データは利用できません。",
           "resolveRequest": "{action} リクエストの処理に失敗しました",
           "createApprovalRequiredFields": "承認リクエストを作成する前に agent、session、action type が必要です",
           "createApproval": "承認リクエストの作成に失敗しました"
@@ -690,7 +863,8 @@
           "loading": "読み込み中",
           "saving": "保存中",
           "synced": "同期済み",
-          "offline": "オフライン"
+          "offline": "オフライン",
+          "error": "同期エラー"
         },
         "timelineSources": {
           "runs": "実行",
@@ -724,7 +898,7 @@
           "changed": "この承認は状態が変わりました。ライブ挙動に影響するなら見直すべきです。"
         },
         "timeline": {
-          "runTitle": "{status} run {runId}",
+          "runTitle": "{status} 実行 {runId}",
           "alertTitle": "{type} {state}",
           "alertResolved": "解決済み",
           "alertTriggered": "発火",
@@ -738,6 +912,28 @@
           }
         }
       },
+      "signals": { "runtime": "ランタイム", "runs": "実行", "budget": "予算", "usage": "使用量", "alerts": "アラート", "approvals": "承認" },
+      "signalFailure": {
+        "authRequired": "{signal} を読み込むにはサインインしてください。", "permissionDenied": "{signal} を読み込む権限がありません。", "notFound": "{signal} のリソースが見つかりませんでした。", "conflict": "このページの読み込み中に {signal} が変更されました。", "controlPlaneUnavailable": "コントロールプレーンから {signal} を取得できませんでした。", "network": "{signal} のネットワークリクエストに失敗しました。", "invalidResponse": "{signal} から無効な応答が返されました。", "invalidPaginatedResponse": "{signal} から無効なページが返されました。", "requestFailed": "{signal} を読み込めませんでした。", "requestUnavailable": "{signal} は利用できません。", "traceRequestsUnavailable": "この実行ではトレースリクエストを利用できません。", "detail": "詳細: {detail}"
+      },
+      "pagination": { "loadFailed": "次のページを読み込めませんでした。", "queueChanged": "読み込み中にキューが変更されました。操作する前に更新してください。", "signalUnavailable": "このシグナルは利用できません。" },
+      "runtimePresentation": {
+        "loadingLabel": "ランタイムの実態を読み込み中",
+        "loadingDetail": "コントロールプレーンからの最初の応答を待っています。",
+        "waitingForFirstFetch": "最初の取得を待機中",
+        "waitingForObservation": "観測タイムスタンプを待機中",
+        "fetchedAt": "取得: {timestamp}",
+        "observedAt": "観測: {timestamp}",
+        "fetchedWithoutObservation": "取得: {timestamp}、ソースの観測時刻は利用不可",
+        "fresh": { "label": "最新のランタイムスナップショット", "detail": "プロバイダーは現在 {status} と報告しています。新しい情報であっても、操作が安全である証明にはなりません。" },
+        "stale": { "label": "古いランタイムスナップショット", "detail": "最後の報告は {status} でした。現在の健全性や安全性の信号ではなく、履歴として扱ってください。" },
+        "unavailable": { "label": "ランタイムスナップショットを利用できません", "detail": "信頼できる現在の観測はありません。報告された状態は {status} でした。" }
+      },
+      "visuals": [
+        { "index": "01", "label": "実行シグナル", "title": "最新の実行を最初に読む", "caption": "現在の実行により、その後の判断を観測済みの作業に結び付けます。" },
+        { "index": "02", "label": "支出ライン", "title": "動きとコストを比較する", "caption": "ライブ支出により、オペレーターのしきい値が飾りではなく具体的になります。" },
+        { "index": "03", "label": "人によるゲート", "title": "リスクのある作業を見える状態に保つ", "caption": "操作が境界を越える前に、承認をレビューできる状態に保つ必要があります。" }
+      ],
       "emptyStates": {
         "runs": {
           "noAgent": {
@@ -780,8 +976,8 @@
             "body": "承認キューが意味を持つのは、実際のエージェントがリスクのあることを実行できる場合だけです。まずエージェントを作成またはデプロイしてください。"
           },
           "gateOff": {
-            "title": "承認履歴はありますが、ローカルではゲートがオフです",
-            "body": "MUTX にはすでに承認記録がありますが、Pico ではまだゲートが無効と表示されています。ここでゲートを有効化し、製品状態をコントロールプレーンの現実と一致させてください。"
+          "title": "承認履歴はありますが、強制適用は未確認です",
+          "body": "承認記録はレビューワークフローの利用を示しますが、ランタイムゲートが有効である証明にはなりません。"
           },
           "none": {
             "title": "まだ承認記録がありません",
@@ -804,7 +1000,8 @@
           "label": "実行状態",
           "authRequired": "認証が必要",
           "noLiveRun": "ライブ実行なし",
-          "triggerTaskFirst": "まず実際のタスクを起動"
+          "triggerTaskFirst": "まず実際のタスクを起動",
+          "unavailable": "実行状態を利用できません"
         },
         "budgetLine": {
           "label": "予算ライン",
@@ -819,7 +1016,8 @@
           "armed": "有効",
           "off": "オフ",
           "reviewVisible": "人のレビューは可視のまま",
-          "enableBeforeRisk": "危険な操作の前に有効化"
+          "enableBeforeRisk": "危険な操作の前に有効化",
+          "unavailable": "利用不可"
         },
         "nextCheck": {
           "label": "次のオペレーターチェック",
@@ -834,7 +1032,8 @@
           "budget": "予算 {value}",
           "gate": "ゲート {value}",
           "recovery": "復旧 {value}",
-          "recoveryNotSet": "未設定"
+          "recoveryNotSet": "未設定",
+          "runtime": "ランタイム {value}"
         },
         "decisionLine": {
           "label": "判断ライン",
@@ -846,7 +1045,8 @@
           "finishLesson": "まず {lessonTitle} を完了",
           "goBackToAcademy": "Academy に戻る",
           "inspectRun": "実行 {runId} を確認"
-        }
+        },
+        "providerSnapshot": "プロバイダーのスナップショット"
       },
       "surfaceCompass": {
         "title": "ライブランタイムが本当の真実源であるときだけここに留まる",
@@ -886,21 +1086,26 @@
             "title": "最も強いライブシグナルから始める",
             "authRequired": "ホスト済みセッションがなければ、この部屋は即興で埋め合わせるべきではありません。まずライブフィードを接続してください。",
             "withRun": "最初に読むべきは実行 {runId} です。{detail}",
-            "noRun": "まだライブ実行が存在しません。他のものを調整する前に、実際のタスクを 1 つ起動するのが正直な一手です。"
+            "noRun": "まだライブ実行が存在しません。他のものを調整する前に、実際のタスクを 1 つ起動するのが正直な一手です。",
+            "loading": "最新の実行を読み込み中...",
+            "unavailable": "実行シグナルを利用できません。"
           },
           "judge": {
             "label": "02 • 判断する",
             "title": "判断ラインを明示する",
             "authRequired": "ライブアカウントが接続されるまで予算レビューは利用できません。",
             "withBudget": "{threshold} のしきい値に対して使用量は {usage} です。このラインが、人が介入すべきタイミングを示すべきです。",
-            "noBudget": "まだライブの予算スナップショットがありません。実際の消費と結びつくまで、しきい値が意味を持つふりをしてはいけません。"
+            "noBudget": "まだライブの予算スナップショットがありません。実際の消費と結びつくまで、しきい値が意味を持つふりをしてはいけません。",
+            "loading": "ライブの支出を読み込み中...",
+            "unavailable": "予算シグナルを利用できません。"
           },
           "intervene": {
             "label": "03 • 介入する",
             "title": "危険な操作をレビュー可能なままに保つ",
             "pending": "{count} 件の approval item{pluralSuffix} が待機中です。よい状態です。危険な作業はまだ可視です。",
             "configured": "ゲートは設定されていますが、今は待機中のものがありません。レビュー可能で退屈なくらいがちょうどよい状態です。",
-            "off": "ゲートはまだオフです。危険な操作が見えない副作用になる前に有効化してください。"
+            "off": "ゲートはまだオフです。危険な操作が見えない副作用になる前に有効化してください。",
+            "unavailable": "承認シグナルを利用できません。"
           }
         },
         "postureLabel": "コントロールルームの姿勢",
@@ -1048,7 +1253,8 @@
         "title": "設定に触れる前にライブの物語を読む",
         "body": "これはオペレーターの物語です。タイムラインが空なら、正しい答えは「まだ意味のあることは何も起きていない」です。",
         "authRequired": "ライブ control-plane へのアクセスなしにタイムラインはありません。それが正直な答えです。",
-        "olderSignalsHidden": "古い signal{pluralSuffix} を {count} 件、意図的に表示していません。まず最も強い 4 件から確認してください。"
+        "olderSignalsHidden": "古い signal{pluralSuffix} を {count} 件、意図的に表示していません。まず最も強い 4 件から確認してください。",
+        "loading": "ライブシグナルを読み込み中..."
       },
       "runs": {
         "sectionLabel": "実行レビュー",
@@ -1056,6 +1262,9 @@
         "body": "ここから始めてください。しきい値や承認に触る前に、最新の実行を読んでください。",
         "refresh": "ライブデータを更新",
         "authRequired": "サインインしてからここに戻り、最初の実際の実行を確認してください。",
+        "loading": "実行を読み込み中...",
+        "refreshing": "実行を更新中...",
+        "unavailable": "実行履歴を利用できません。",
         "card": {
           "title": "実行 {runId}",
           "operatorReadLabel": "オペレーター読解",
@@ -1071,7 +1280,8 @@
           "started": "開始 {timestamp}",
           "startUnavailable": "開始時刻は利用不可",
           "traceSignalsLabel": "トレースシグナル",
-          "noTraces": "この実行ではトレースは返されませんでした。"
+          "noTraces": "この実行ではトレースは返されませんでした。",
+          "tracesUnavailable": "トレースシグナルを利用できません。"
         },
         "olderRunsHidden": "レビューが最新の判断から始まるよう、古い run{pluralSuffix} を {count} 件非表示にしています。"
       },
@@ -1081,13 +1291,17 @@
         "usageLabel": "使用量",
         "thresholdStatus": {
           "above": "しきい値超過",
-          "within": "しきい値内"
+          "within": "しきい値内",
+          "noSnapshot": "スナップショットなし",
+          "unavailable": "利用不可"
         },
         "summary": {
           "authRequired": "ライブ予算には認証が必要です。",
           "withBudget": "{used} / {total} 使用。リセット {reset}。",
           "resetUnknown": "不明",
-          "noSnapshot": "ライブ予算スナップショットは返されませんでした。"
+          "noSnapshot": "ライブ予算スナップショットは返されませんでした。",
+          "loading": "ライブ予算を読み込み中...",
+          "unavailable": "ライブ予算を利用できません。"
         },
         "thresholdLabel": "しきい値",
         "thresholdBody": "Pico はローカルの予算ラインをここに保存します。実際のアラート配信は引き続きライブの MUTX 監視設定に従うため、この画面は、そうでないのにメールや webhook ルーティングが有効であるふりをしません。",
@@ -1098,13 +1312,19 @@
         "topSpendersLabel": "上位の消費元",
         "usageDriversLabel": "使用量ドライバー",
         "breakdownAuthRequired": "サインインして使用量の内訳を読んでください。",
-        "breakdownRow": "{events} 件のイベントで {credits} クレジット"
+        "breakdownRow": "{events} 件のイベントで {credits} クレジット",
+        "breakdownLoading": "使用量の内訳を読み込み中...",
+        "breakdownUnavailable": "使用量の内訳を利用できません。",
+        "driversLoading": "使用量ドライバーを読み込み中...",
+        "driversUnavailable": "使用量ドライバーを利用できません。"
       },
       "alerts": {
         "sectionLabel": "アラート",
         "title": "意味のある監視イベント",
         "body": "これはライブアラートフィードです。偽の警告バッジも、合成されたインシデントもありません。",
         "authRequired": "サインインしてライブアラートを読み込んでください。",
+        "loading": "アラートを読み込み中...",
+        "unavailable": "アラートを利用できません。",
         "card": {
           "resolvedTitle": "解決済みアラート",
           "activeTitle": "アクティブなアラート",
@@ -1120,11 +1340,21 @@
         "body": "このキューは、Pico にとって承認の真実源になりました。プロセスの再起動で消えてはいけません。",
         "authRequired": "サインインしてライブ承認リクエストを読み込んでください。",
         "gateMismatch": "MUTX にはすでに承認記録がありますが、Pico ではまだゲートがローカルでオフです。ここで有効にし、製品状態を control-plane の現実と一致させてください。",
+        "loading": "承認を読み込み中...",
+        "loadingPending": "保留中の承認を読み込み中...",
+        "partial": "一部の承認データを利用できません。",
+        "pendingPageCount": "このページで保留中: {count} 件",
+        "showMorePending": "保留中の承認をさらに表示",
+        "requestFailed": "承認リクエストに失敗しました。",
+        "createdNotice": "承認リクエストを作成しました。",
+        "resolvedNotice": "承認リクエストを{action}しました。",
         "card": {
           "pendingLabel": "保留",
           "fallbackSummary": "{requester} がエージェント {agentId} に対してこの操作を依頼しました。",
           "approve": "承認",
           "reject": "却下",
+          "approveLabel": "{action} を承認",
+          "rejectLabel": "{action} を却下",
           "working": "処理中..."
         },
         "hiddenPending": "キューの最重要判断を上位に保つため、追加の pending approval{pluralSuffix} を {count} 件表示していません。"
@@ -1156,11 +1386,15 @@
       },
       "recentDecisions": {
         "sectionLabel": "最近の判断",
-        "hiddenOlder": "最近の記録を読みやすく保つため、古い decision{pluralSuffix} を {count} 件非表示にしています。"
+        "hiddenOlder": "最近の記録を読みやすく保つため、古い decision{pluralSuffix} を {count} 件非表示にしています。",
+        "loading": "最近の判断を読み込み中...",
+        "pageCount": "このページの判断: {count} 件",
+        "showMore": "判断をさらに表示"
       }
     },
     "sessionBanner": {
       "errors": {
+        "sessionUnavailable": "ホストされたセッションを利用できません",
         "loadWebhookRoutes": "webhook ルートのロードに失敗しました"
       },
       "authenticated": {
@@ -1206,12 +1440,12 @@
       },
       "loading": {
         "label": "ホストセッション",
-        "body": "この Pico ホストにオペレーター セッションが接続されているかどうかを確認しています。"
+        "body": "PicoMUTX アカウントのセッションが利用可能か確認しています。"
       },
       "anonymous": {
         "chips": {
           "sessionRequired": "ホストセッションが必要です",
-          "picoHostAuth": "ピコホスト認証"
+          "picoHostAuth": "PicoMUTX アカウント"
         },
         "body": "Pico プラットフォーム ルートはここでライブですが、ホストセッションはまだこのドメインに接続されていません。 Pico にサインインして、進行状況を保持し、ライブ実行を読み取り、バックエンドのオンボーディング/ランタイム状態を使用します。 Google、GitHub、Discord、Apple、パスワードのサインアップ、および電子メールによる確認はすべて、このホスト上で終了します。",
         "rails": {
@@ -1250,27 +1484,27 @@
       "surfaceOptions": {
         "onboarding": {
           "label": "オンボーディング",
-          "note": "Launch bay memory"
+          "note": "起動レーンの記録"
         },
         "academy": {
           "label": "Academy",
-          "note": "Primary learning spine"
+          "note": "中心となる学習ルート"
         },
         "lesson": {
           "label": "レッスン",
-          "note": "Active step memory"
+          "note": "現在の手順の記録"
         },
         "tutor": {
           "label": "Tutor",
-          "note": "Grounded next-step help"
+          "note": "根拠に基づく次の一手"
         },
         "autopilot": {
           "label": "Autopilot",
-          "note": "Runtime control room"
+          "note": "ランタイムコントロールルーム"
         },
         "support": {
           "label": "サポート",
-          "note": "Human escalation lane"
+          "note": "人へのエスカレーションレーン"
         },
         "activeNow": "現在活動中",
         "setRoute": "ルートを設定する"
@@ -1369,7 +1603,19 @@
         "proofCaptured": "捕らえられた証拠",
         "runtimeNotAttached": "付いていない",
         "nextMove": "次の動き",
-        "visibleSuccess": "目に見える成功"
+        "visibleSuccess": "目に見える成功",
+        "continueWith": "{lessonTitle} を続ける",
+        "firstRunReady": "最初の実行準備完了",
+        "gatewayLive": "ゲートウェイ稼働中",
+        "gatewayUnbound": "ゲートウェイ未バインド",
+        "hostedSyncOffline": "ホスト同期はオフライン",
+        "installThenPacket": "先にインストールし、その後パケットを準備",
+        "onePromptAway": "あと 1 回のプロンプト",
+        "openAutopilot": "Autopilot を開く",
+        "refreshingStatus": "ステータスを更新中",
+        "saveFirstRun": "最初の実行を保存",
+        "saveThenPacket": "証拠を保存し、その後パケットを準備",
+        "stepsClear": "{completed}/{total} 手順クリア"
       },
       "labels": {
         "chapterPulse": "チャプターパルス",
@@ -1461,7 +1707,11 @@
         "nextMove": "次の動き",
         "blocked": "ブロックされました",
         "runtime": "ランタイム",
-        "messyEdge": "乱雑なエッジ"
+        "messyEdge": "乱雑なエッジ",
+        "primaryCaption": "証拠が確立するまで、現在のミッションを続けてください。",
+        "tutorCaption": "既知のコマンドまたはセットアップ手順が 1 つ停止している場合は Tutor を使用してください。",
+        "runtimeCaption": "ライブランタイム状態が信頼できる情報源になった場合は Autopilot を使用してください。",
+        "supportCaption": "製品ルートで問題を正確に解決できなくなった場合に限り、エスカレーションしてください。"
       },
       "doctrine": {
         "label": "キックオフドクトリン",
@@ -1473,16 +1723,30 @@
         "postTitle": "章の姿勢",
         "postBody": "Chapter 01 は意図的に狭くしてください。実際のアーティファクトが存在する前に、ブラウジング、スタック ツーリズム、追加のセットアップ シアターは必要ありません。",
         "trackTitle": "トラックチェックリスト",
-        "trackBody": "最初の校正がまだ形成されている間は、明確なガイド キューが 1 つあれば十分です。"
+        "trackBody": "最初の校正がまだ形成されている間は、明確なガイド キューが 1 つあれば十分です。",
+        "fastestPath": { "start": "ここから開始", "installed": "インストール済み", "cleared": "クリア済み" },
+        "items": {
+          "install": { "label": "01 • インストール", "body": "Hermes をインストールし、新しいシェルからコマンドを実行できる状態にします。" },
+          "firstRun": { "label": "02 • 最初の実行", "body": "後で再び開けるファイルに、プロンプトと回答を 1 つずつ保存します。" },
+          "packet": { "label": "03 • エージェントパケット", "title": "Markdown パケットをダウンロード", "body": "コンテキストを再構築せずに、検証済みのセットアップを次のエージェントまたはランタイムへ引き継ぎます。" }
+        }
       },
       "protocol": {
         "title": "証明プロトコル",
         "body": "これらは、サーフェスが広くなる権利を獲得する前に重要な唯一の動きです。",
-        "chip": "先勝プロトコル"
+        "chip": "先勝プロトコル",
+        "items": {
+          "0": { "title": "Hermes をインストール", "body": "クリーンなローカル Hermes インストールを最初から最後まで動作させます。" },
+          "1": { "title": "最初のエージェントを実行", "body": "設定したプロバイダーで、ランタイムが範囲を限定したプロンプトに応答できることを証明します。" },
+          "2": { "title": "証拠を保存", "body": "Hermes が小さなプロンプトに応答し、再度開けるファイルに記録が保存されます。" }
+        }
       },
       "runtime": {
         "signInFirst": "まずサインインしてください。実行時スナップショットはオペレーターアカウントごとに作成されます。",
+        "signInShort": "サインイン",
         "loading": "バックエンドのオンボーディングとランタイム状態を読み込みます。",
+        "checking": "確認中",
+        "localOnly": "ローカルのみ",
         "noHostedState": "ホストオンボーディング状態はまだ記録されていません。",
         "currentProvider": "現在のプロバイダー",
         "availableSoon": "もうすぐ利用可能",
@@ -1509,7 +1773,9 @@
         "unknown": "未知",
         "noRuntimeSnapshot": "実行時スナップショットはまだ同期されていません。",
         "gatewayHealth": "ゲートウェイの健全性",
-        "noDoctorSummary": "医師の概要はまだ同期されていません。"
+        "noDoctorSummary": "doctor の概要はまだ同期されていません。",
+        "statusOptions": { "client_required": "クライアントが必要", "healthy": "正常", "degraded": "低下", "offline": "オフライン", "warning": "警告", "unknown": "不明" },
+        "installMethods": { "npm": "npm", "brew": "Homebrew", "binary": "バイナリ", "manual": "手動" }
       },
       "mission": {
         "firstWinProtocol": "先勝プロトコル",
@@ -1523,7 +1789,70 @@
         "completed": "完成した",
         "missing": "ない",
         "resumeInstall": "インストールミッションを再開する",
-        "resumePrompt": "プロンプトミッションを再開する"
+        "resumePrompt": "プロンプトミッションを再開する",
+        "title": "セットアップを広げる前に、目に見えるミッションを 1 つ完了する",
+        "body": "現在の手順を終え、証拠を保存し、検証済みのコンテキストだけを次へ引き継いでください。",
+        "continuity": "レッスンのワークスペースは、次の画面へ引き継ぐ継続記録として残ります。"
+      },
+      "stack": {
+        "label": "ライブスタックレーダー",
+        "title": "ミッションを離れずにスタックを把握",
+        "body": "現在のセットアップ上の疑問に答えるためだけに、これらのノートを使用してください。",
+        "itemBody": "{stack} の簡潔な運用概要を開きます。",
+        "openNotes": "ノートを開く",
+        "items": {
+          "hermes": { "whyNow": "組み込みの学習ループ", "latestSignal": "リリース v2026.7.20 · 2026年7月20日" },
+          "openclaw": { "whyNow": "ローカルファーストのゲートウェイコントロールプレーン", "latestSignal": "リリース v2026.7.1 · 2026年7月13日" },
+          "nanoclaw": { "whyNow": "軽量なメンタルモデル", "latestSignal": "リリース v2.1.17 · 2026年6月17日" },
+          "picoclaw": { "whyNow": "Go で記述", "latestSignal": "リリース v0.3.1 · 2026年7月3日" }
+        }
+      },
+      "operatorRecord": {
+        "title": "オペレーター記録",
+        "body": "ホスト上の進捗とランタイムの実態は、サインイン中のオペレーターに関連付けられます。",
+        "signIn": "サインインしてホスト状態を関連付ける",
+        "errorDetail": "ホストの詳細: {detail}",
+        "track": { "active": "アクティブなトラック", "select": "トラックを選択" },
+        "trackStatus": { "start": "未開始", "installed": "インストール済み", "firstRunSaved": "最初の実行を保存済み" }
+      },
+      "runtimeEditor": {
+        "title": "ホストランタイムエディター",
+        "body": "オペレーターホストで検証済みのランタイム値だけを記録します。",
+        "savingSnapshot": "ランタイムスナップショットを保存中...",
+        "dismissChecklist": "チェックリストを閉じる"
+      },
+      "coach": {
+        "label": "Pico Coach",
+        "title": "このミッションにセットアップの会話を 1 つ関連付ける",
+        "body": "現在のブロッカーについて質問し、ホスト上のセットアップ状態に基づく回答を維持します。",
+        "fields": { "stack": "スタック", "os": "オペレーティングシステム", "provider": "プロバイダー", "goal": "目標" },
+        "checkingSession": "コーチセッションを確認中...",
+        "loadingHistory": "会話履歴を読み込み中...",
+        "emptyHistory": "コーチとの会話はまだありません。停止した具体的な手順について質問してください。",
+        "you": "あなた",
+        "picoCoach": "Pico Coach",
+        "placeholder": "停止しているセットアップ手順を説明してください...",
+        "send": "送信",
+        "savingTurn": "会話を保存中...",
+        "session": "セッション {sessionId}",
+        "readiness": "準備度 {percent}%",
+        "needsDetails": "詳細が必要",
+        "notConfirmed": "未確認",
+        "signInFirst": "サインインしてホスト上のコーチングセッションを開始してください。",
+        "verifyEmail": "ホスト上のコーチングを利用する前に、メールアドレスを確認してください。",
+        "planRequired": "ホスト上のコーチングには対象プランが必要です。",
+        "comparePlans": "プランを比較",
+        "refreshSignIn": "サインインを更新",
+        "retryHostedSession": "ホストセッションを再試行",
+        "retryHistory": "履歴を再試行",
+        "startNewSession": "新しいセッションを開始",
+        "startOver": "最初からやり直す",
+        "continueSetup": "セットアップを続ける",
+        "downloadPackage": "パッケージをダウンロード",
+        "preparingPackage": "パッケージを準備中...",
+        "retryPackage": "パッケージを再試行",
+        "upgradePlan": "プランをアップグレード",
+        "errorDetail": "コーチの詳細: {detail}"
       }
     },
     "tutorPage": {
@@ -1579,7 +1908,10 @@
           "groundedMode": "接地モード",
           "attachLesson": "レッスンを付ける",
           "notSet": "設定されていません",
-          "lessonSteps": "{completed}/{total} 歩"
+          "lessonSteps": "{completed}/{total} 歩",
+          "academyOnly": "読み取り専用の Academy ガイド",
+          "providerMissing": "プロバイダーを利用できません",
+          "statusUnavailable": "ステータスを利用できません"
         }
       },
       "actions": {
@@ -1674,10 +2006,18 @@
           "notSynced": "同期されていません"
         },
         "questionPlaceholder": "障害となるもの、正確な手順、何が起こると予想したかについて説明してください。",
+        "questionProtocol": [
+          "作業していた正確な手順、コマンド、またはダッシュボード操作を示してください。",
+          "出力、エラー、記録、ランタイム状態などの証拠を貼り付けてください。",
+          "経路が再び稼働したことを証明する、次の一手だけを尋ねてください。"
+        ],
+        "questionLabel": "停止しているセットアップの質問",
         "blockedLessonLabel": "ブロックされたレッスン",
         "noLessonSelected": "レッスンが選択されていません",
         "submitLoading": "次のステップを探しています...",
-        "submitIdle": "次のステップに進む"
+        "submitIdle": "次のステップに進む",
+        "cancelRequest": "リクエストをキャンセル",
+        "comparePlans": "プランを比較"
       },
       "rail": {
         "label": "オペレーターレール",
@@ -1701,7 +2041,10 @@
           "apiKeyPlaceholder": "sk-proj-...",
           "connecting": "OpenAI を接続中...",
           "connect": "OpenAI を接続してください",
-          "platformHint": "プラットフォームへのアクセスはすでに利用可能です。独自のキーを接続すると、このアカウントの Tutor モデルの予算と所有権パスが単純にオーバーライドされます。"
+          "platformHint": "プラットフォームへのアクセスはすでに利用可能です。独自のキーを接続すると、このアカウントの Tutor モデルの予算と所有権パスが単純にオーバーライドされます。",
+          "personalKey": "個人キー",
+          "platformStarterHint": "プラットフォームの Starter アクセス",
+          "validatedAt": "検証日時: {timestamp}"
         },
         "escalationRule": {
           "label": "エスカレーションルール",
@@ -1724,7 +2067,17 @@
         "reviewLine": "レビューライン",
         "fallbackRoute": "フォールバックルート",
         "empty": "全体の話をするのではなく、1 人のブロッカーに質問してください。 Pico Tutor は、質問がバージョンに依存する場合、レッスン、厳選されたオペレーター パック、および公式ドキュメントに回答を基礎付けます。",
-        "emptyHowItWorks": "これがどのように機能するか: 失敗したステップ、予想される結果、および正確な失敗を述べます。答えは、具体的な行動、1 つの検証ステップ、および証拠がまだ薄い場合の明確なエスカレーション パスを提供するはずです。"
+        "emptyHowItWorks": "これがどのように機能するか: 失敗したステップ、予想される結果、および正確な失敗を述べます。答えは、具体的な行動、1 つの検証ステップ、および証拠がまだ薄い場合の明確なエスカレーション パスを提供するはずです。",
+        "academyGuidance": "読み取り専用の Academy ガイド",
+        "academyGuidanceEmpty": "無料アクセスでは、読み取り専用の Academy ガイドを利用できます。続行するには一致したレッスンを開いてください。",
+        "generationProof": "生成の証拠",
+        "lessonValidation": "レッスンの検証",
+        "loadingAnnouncement": "Tutor がブロッカーを確認しています。",
+        "nextLessonStep": "次のレッスン手順",
+        "openLesson": "レッスンを開く",
+        "readOnly": "読み取り専用",
+        "readyAnnouncement": "Tutor の回答を利用できます。",
+        "retryHint": "失敗した証拠と具体的な手順を 1 つ示して再試行してください。"
       },
       "matches": {
         "label": "グラウンデッドレッスンマッチ",
@@ -1753,13 +2106,33 @@
       "nextQuestion": {
         "label": "答えがあいまいな場合"
       },
+      "availability": {
+        "checkingEntitlement": "Tutor の利用資格を確認中...",
+        "checkingProvider": "プロバイダー接続を確認中...",
+        "platformProvider": "プラットフォームプロバイダー",
+        "providerDetail": "プロバイダーの詳細: {detail}",
+        "providerUnavailable": "Tutor プロバイダーを利用できません",
+        "readOnly": "読み取り専用の Academy ガイド",
+        "readyThrough": "{provider} 経由で Tutor を利用できます",
+        "signIn": "ライブ Tutor を利用するにはサインイン",
+        "validatedKey": "検証済みの個人キー"
+      },
       "errors": {
         "loadOpenAIConnection": "OpenAI 接続のロードに失敗しました",
         "tutorRequestFailed": "Tutor リクエストが失敗しました",
         "malformedResponse": "Tutor 応答が不正な形式で返されました",
         "pasteOpenAIKeyFirst": "最初に OpenAI API キーを貼り付けます",
         "connectOpenAIKey": "OpenAI keyの接続に失敗しました",
-        "disconnectOpenAIKey": "OpenAI keyの切断に失敗しました"
+        "disconnectOpenAIKey": "OpenAI keyの切断に失敗しました",
+        "detail": "Tutor の詳細: {detail}",
+        "disconnectUnconfirmed": "プロバイダーから切断の確認が返されませんでした。",
+        "keyUpdateUnconfirmed": "プロバイダーからキー更新の確認が返されませんでした。",
+        "planRequired": "ライブ Tutor には対象プランが必要です。",
+        "proPlanRequired": "個人プロバイダーキーを使用するには Pro プランが必要です。",
+        "providerStatusUnverified": "プロバイダーのステータスを検証できませんでした。",
+        "requestCanceled": "Tutor リクエストをキャンセルしました。",
+        "signInForLiveTutor": "ライブ Tutor を使用するにはサインインしてください。",
+        "unverifiedResponse": "Tutor から未検証の応答が返されました。"
       },
       "shared": {
         "openLesson": "{lessonTitle} を開く"
@@ -1967,10 +2340,10 @@
         },
         "5": {
           "title": "コントロール",
-          "objective": "コストのしきい値、アラート、危険なアクションのゲートを追加します。",
-          "projectOutcome": "エージェントを監視し、損害が発生する前に中断することができます。",
-          "completionState": "しきい値と承認が構成されます。",
-          "badge": "門番",
+          "objective": "コストしきい値を保存し、実際の申請で承認ワークフローを試します。",
+          "projectOutcome": "オペレーターが支出を確認し、キュー内のアクションを意図的に解決できます。",
+          "completionState": "しきい値を保存し、1件の承認ワークフローを実行しました。",
+          "badge": "承認レビュー担当",
           "recommendedNextStep": "より深いパターンを出荷します。"
         },
         "6": {
@@ -2308,9 +2681,9 @@
           ]
         },
         "add-an-approval-gate": {
-          "title": "承認ゲートを追加する",
-          "summary": "実際の承認チェックポイントを 1 つ作成し、それを意図的に解決します。",
-          "objective": "ランタイムに重大な影響を与えるものを信頼する前に、危険なアクションのゲートを実行してください。",
+          "title": "承認ワークフローを試す",
+          "summary": "実際の承認申請を作成して解決し、強制適用までは推測しません。",
+          "objective": "重大なランタイム動作を信頼する前に、承認キューを試します。",
           "outcome": "1 つの実行中の承認リクエストと 1 つの意図的な決議。",
           "expectedResult": "保留中の承認が存在し、意図的に承認または拒否できます。",
           "validation": "承認リクエストを 1 つ作成し、キューから解決します。",
@@ -2322,7 +2695,7 @@
             },
             {
               "title": "承認リクエストを作成する",
-              "body": "アクションをすぐに実行するのではなく、承認キューにプッシュします。",
+              "body": "承認キューに申請を作成します。これはワークフローを証明しますが、ランタイムの強制適用は証明しません。",
               "command": "Open /pico/autopilot and create one approval request for the risky action."
             },
             {
@@ -2333,7 +2706,7 @@
           ],
           "troubleshooting": [
             "承認が得られない場合は、その旨をはっきりと伝えてください。ランタイムはまだ管理されていません。",
-            "全員がすべてを承認できる場合、ゲートは存在しますが、ポリシーは弱いです。そのギャップを記録して、続けてください。",
+            "全員がすべてを承認できる場合、ワークフローは存在しますが、ポリシーは弱いです。そのギャップを記録して続けてください。",
             "些細なノイズをゲートすると、キューはスパムになり、オペレーターはキューを信頼しなくなります。"
           ]
         },
@@ -2466,24 +2839,24 @@
           "actionLabel": "コストのしきい値を設定する"
         },
         "cap-approvals": {
-          "title": "承認ゲートのロックが解除されました",
-          "description": "予算の意識は生きています。危険なアウトバウンドアクションが実際に発生する前に、人による停止を追加します。",
-          "actionLabel": "承認ゲートを追加する"
+          "title": "承認ワークフローを利用できます",
+          "description": "保存したしきい値は設定値にすぎません。実際の承認申請を試し、ランタイムの動作を確認してください。",
+          "actionLabel": "承認ワークフローを試す"
         },
         "cap-production-pattern": {
           "title": "生産パターンのロックが解除されました",
-          "description": "ガードレールが設置されています。すぐに使えるトリックではなく、製品のように見えるワークフローを提供します。",
+          "description": "承認ワークフローを実行しました。強制適用は引き続きランタイムが所有する事実として扱ってください。",
           "actionLabel": "生産パターンを出荷する"
         }
       },
       "planMatrix": {
         "free": {
           "academy": "アカデミーへのフルアクセス",
-          "tutor": "毎日の使用量が軽い家庭教師",
+          "tutor": "読み取り専用の Academy ガイド",
           "project_limit": "1 つのアクティブなプロジェクト レーン",
-          "monitored_agents": "プレビューのみ",
+          "monitored_agents": "読み取り専用のランタイム概要",
           "alerts": "アプリ内閾値アラート",
-          "approvals": "承認ワークフローをプレビューする",
+          "approvals": "承認ワークフローの概要",
           "retention": "7日間の製品メモリ"
         },
         "starter": {
@@ -2531,7 +2904,7 @@
       },
       "wordmark": {
         "logoAlt": "PicoMUTX ロゴ",
-        "atlas": "operator atlas"
+        "atlas": "オペレーターアトラス"
       },
       "robotCard": {
         "signalLabel": "Pico シグナル"
@@ -2562,6 +2935,7 @@
         "proof": "証跡"
       },
       "defaultMode": {
+        "mobileNavigation": "Pico モバイルナビゲーション",
         "currentChapter": "現在のチャプター",
         "chapter": "チャプター {chapter}",
         "quickHelp": "クイックヘルプ",
@@ -2587,7 +2961,7 @@
         "logoAlt": "PicoMUTX ロゴ",
         "links": {
           "releases": "リリース",
-          "docs": "Docs",
+          "docs": "ドキュメント",
           "github": "GitHub",
           "download": "ダウンロード",
           "privacy": "プライバシー"
@@ -2602,6 +2976,10 @@
       "primaryCta": "始める",
       "secondaryCta": "サポートに相談",
       "returnToLanding": "ランディングに戻る",
+      "navigation": { "homeLabel": "Pico ホーム", "label": "Pico 料金ナビゲーション" },
+      "checkout": {
+        "confirming": "{plan} プランを確認しています…", "confirmingShort": "プランを確認しています…", "signInAgain": "再度サインインして、決済を確認しプランを更新してください。", "signIn": "サインイン", "billingForbidden": "このアカウントには請求情報やプラン権限へのアクセスがありません。", "refreshFailed": "プランを更新できませんでした。決済は失敗として処理されていません。", "retryRefresh": "プラン更新を再試行", "active": "{plan} プランは有効です。", "stillSyncing": "決済は正常に完了しました。プランはまだ同期中です。", "refreshPlan": "プランを更新", "canceled": "決済はキャンセルされました。現在のプランは変更されていません。", "incompleteReturn": "決済の戻りリンクが不完全です。ここではプランを変更していません。", "forbidden": "このアカウントには決済へのアクセスがありません。", "unavailable": "このプランは一時的に利用できません。もう一度お試しください。", "retryCheckout": "決済を再試行"
+      },
       "routeState": {
         "label": "ルート状態",
         "title": "公開アクセスは正しいレーンに入るための入口です。製品課金はシステムの奥にあります。",
@@ -2642,7 +3020,8 @@
               "優先サポート",
               "高度な分析",
               "より多くの AI エージェント",
-              "製品へのフルアクセス"
+              "製品へのフルアクセス",
+              "初めて構築する方に最適"
             ],
             "cta": "Starter を選ぶ"
           },
@@ -2657,7 +3036,8 @@
               "強化されたオンボーディング支援",
               "週次グループトラブルシュート",
               "共有オペレーターサポート環境",
-              "実装が複雑になったときの摩擦を低減"
+              "実装が複雑になったときの摩擦を低減",
+              "実装中のより手厚いサポート"
             ],
             "cta": "Pro を選ぶ",
             "anchorPrice": "€790"
@@ -2691,7 +3071,8 @@
               "本気度を証明する最初の一歩として最適"
             ],
             "cta": "始める",
-            "priceNote": "クレジットカード不要。"
+            "priceNote": "クレジットカード不要。",
+            "recommended": true
           }
         }
       },
@@ -2863,15 +3244,15 @@
         "stamp": "一度にひとつの本物のレッスン",
         "cards": {
           "brief": {
-            "label": "01 • Brief",
+            "label": "01 • 概要",
             "title": "スタジオが狙う成果"
           },
           "deliverable": {
-            "label": "02 • Deliverable",
+            "label": "02 • 成果物",
             "title": "完成した成果物が証明すべきこと"
           },
           "critique": {
-            "label": "03 • Critique",
+            "label": "03 • 講評",
             "title": "次に進む前のレビューライン"
           }
         },
@@ -2892,9 +3273,9 @@
         "title": "チャプタースパイン"
       },
       "workspace": {
-        "label": "Studio workspace",
+        "label": "スタジオワークスペース",
         "selectStep": "ステップを選ぶ",
-        "studioBrief": "Studio brief",
+        "studioBrief": "スタジオ概要",
         "chooseStepBody": "レーンを始めるには、チャプタースパインからステップを選んでください。",
         "deliverableArtifact": "成果物アーティファクト",
         "deliverablePlaceholder": "このチャプターが機能した証明になる出力、書き起こしメモ、または成果物を貼り付けてください。",

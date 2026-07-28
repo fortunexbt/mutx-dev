@@ -11,40 +11,39 @@ This matrix tracks the current repo state and where contributors can help next.
 
 | Area         | Current state                                                       | Biggest gaps                                                                                                                                     | Contributor-ready work                                                               |
 | ------------ | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| Web          | landing site, supported dashboard routes, observability dashboard, and control demo all exist in Next.js | dashboard still does not cover every backend capability; some flows remain better in CLI or direct API                                           | fill dashboard gaps, tighten auth/session UX, keep demo vs live boundaries honest    |
-| API          | real `/v1/*` contract with 29 route prefixes, 181 endpoint-method pairs, auth enforcement across 29/32 route modules, RBAC, OIDC validation | RAG and scheduler are real implementations (no longer 503 stubs); swarms have real DB persistence with PATCH/DELETE; sessions have local Claude/Codex/Hermes discovery; pico progress now has a real `/v1/pico/progress` surface | typed response polish, lifecycle tests, OpenAPI `required: false` → `true` fix on auth headers |
-| CLI          | grouped `auth`, `agent`, `deployment`, `assistant`, `runtime`, `setup`, `governance`, and `observability` commands plus compatibility aliases | some older aliases still create duplicate docs burden; setup ergonomics and error recovery still need polish                                    | streamline help/docs, keep setup truthful, tighten command coverage                  |
-| SDK          | sync client is useful and tracks `/v1/*` correctly; observability SDK with `OpenClawObservability` added | `MutxAsyncClient` remains limited and must stay explicitly documented as such                                                                     | async contract coverage, clearer supported-method matrix, docs truth                 |
-| Infra        | Docker, Terraform, Ansible, Railway, Kubernetes/Helm chart, and monitoring assets exist    | Vault integration is still a stub and validation confidence loops are thin                                                                       | infra docs cleanup, validation, stub visibility, Helm chart hardening                |
-| Tests and CI | API, CLI, frontend, observability, docs, and serial release smoke now exist | hosted-vs-local assumptions still need careful coverage; signed desktop artifact validation depends on real Apple credentials                     | route/openapi drift checks, link checks, local-first validation, signed-artifact CI  |
+| Web          | public site, authenticated dashboard, PicoMUTX, docs, desktop handoff, and an isolated `/control/*` simulation exist in Next.js | a repository build does not prove hosted availability or configured external providers | browser regression coverage, accessibility checks, keep simulation and live-data boundaries honest |
+| API          | `/v1/*` routes cover owned agents, runs, deployment records, usage, governance, and other control-plane resources; route dependencies enforce authentication, ownership, or explicit roles where declared | RAG is optional and disabled by default; the scheduler is internal, tenant-owned, and database-backed with leased execution claims; governed tool policy covers the MUTX runtime dispatch path, not uninstrumented external agents | typed response polish, lifecycle tests, authorization inventory, OpenAPI auth accuracy |
+| CLI          | grouped `auth`, `agent`, `deployment`, `assistant`, `runtime`, `setup`, `governance`, and `observability` commands plus compatibility aliases | Faramesh governance depends on an installed, operator-managed local daemon; some aliases still add docs burden | streamline help/docs, keep setup truthful, tighten command coverage |
+| SDK          | sync clients, runtime heartbeat/metric reporting, adapters, and opt-in guardrail middleware exist | traces contain only callbacks an integration observes and submits; `MutxAsyncClient` remains limited | async contract coverage, supported-method matrix, instrumentation docs |
+| Infra        | Docker, Terraform, Ansible, Railway manifests, Kubernetes/Helm, and monitoring configuration exist | checked-in configuration and validation are not proof of a rollout; provider credentials, secrets, and production reconciliation remain operator-owned | infra docs cleanup, deployment verification boundaries, Vault and secret-backend clarity |
+| Tests and CI | API, CLI, frontend, observability, docs, and release-contract checks exist | signing/notarization requires real Apple credentials, and no source-only check proves a complete public desktop asset set or Railway rollout | route/OpenAPI drift checks, link checks, local-first validation, conditional artifact checks |
 | Docs         | docs are now structured for GitBook and GitHub together; v1.4 release notes and release checklists through v1.5 exist | drift risk remains high whenever routes, app paths, or CLI groups move                                                                           | doc drift guardrails, GitBook sync rules, API reference upkeep                       |
 | Autonomous   | autonomous dev lane shipped for agentic workflows | still early; coverage and reliability need real-world validation | autonomous flow coverage, reliability, docs alignment |
 
 ## Highest-Leverage Next Tasks
 
 - keep route, CLI, SDK, and docs truth aligned around the live `/v1/*` contract
-- keep the dashboard honest about which flows are live, partial, or still backend-only
-- keep preview and redirect-backed routes out of primary stable navigation until their contracts are real
-- keep the signed desktop artifact lane healthy so `mutx.dev/download/macos` and the supported dashboard release stay trustworthy
+- keep live dashboard workflows, optional integration boundaries, and compatibility redirects aligned to the canonical route registry
+- keep the desktop resolver conditional: offer downloads only when a complete remote artifact set is discovered; do not infer signing or notarization from filenames
 - keep SDK async documentation honest until full async support is real
-- fix OpenAPI spec auth header `required: false` → `true` to match runtime enforcement
+- keep generated per-operation OpenAPI security metadata aligned with route dependencies
 - keep GitBook sync GitHub-first and stop GitBook-only README drift
-- deepen RBAC role coverage and OIDC provider support
+- deepen role coverage and OIDC provider support without describing authentication as universal role enforcement
 
 ## Contribution Lanes
 
 ### `area:web`
 
-- dashboard completeness for live routes
+- dashboard lifecycle and browser regression coverage
 - better browser auth/session handling
 - keep `/dashboard` and `/control` semantics clear
 
 ### `area:api`
 
-- auth dependencies and per-user ownership checks (shipped — `get_current_user` is present in 29/32 route modules)
+- maintain the route-level authentication, ownership, internal-user, and role checks declared in source
 - deeper runtime-backed lifecycle semantics
-- OpenAPI spec accuracy: `required: false` → `true` on auth headers
-- Vault integration completion
+- preserve public, optional-auth, bearer, and `X-API-Key` alternatives in generated OpenAPI
+- provider-backed deployment reconciliation and Vault integration completion
 
 ### `area:cli`
 
@@ -67,7 +66,7 @@ This matrix tracks the current repo state and where contributors can help next.
 ### `area:docs`
 
 * keep examples aligned with real routes
-* document supported versus preview surfaces clearly (see [Surface Matrix](../docs/surfaces.md))
+* document supported, conditional, and simulated surfaces clearly (see [Surface Matrix](./surfaces.md))
 * keep GitBook sidebar and repo docs in sync
 
 For priority and sequencing, see `roadmap.md`.

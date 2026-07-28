@@ -75,6 +75,28 @@ describe('pico onboarding route', () => {
     )
   })
 
+  it('loads an exact durable coach session without leaking the internal view parameter', async () => {
+    const proxiedResponse = new Response(JSON.stringify({ session_id: 'sess_123' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+    proxyJson.mockResolvedValue(proxiedResponse)
+
+    const { GET } = await import('../../app/api/pico/onboarding/route')
+    const request = new NextRequest(
+      'https://pico.mutx.dev/api/pico/onboarding?view=coach_session&session_id=sess_123',
+    )
+
+    const response = await GET(request)
+
+    expect(response).toBe(proxiedResponse)
+    expect(proxyJson).toHaveBeenCalledWith(
+      request,
+      'http://localhost:8000/v1/pico/session?session_id=sess_123',
+      { fallbackMessage: 'Failed to resume Pico onboarding session' },
+    )
+  })
+
   it('forwards onboarding mutations to the backend with a JSON body', async () => {
     const proxiedResponse = new Response(JSON.stringify({ status: 'ok' }), {
       status: 200,
@@ -108,6 +130,74 @@ describe('pico onboarding route', () => {
       }),
       fallbackMessage: 'Failed to update Pico onboarding state',
     })
+  })
+
+  it('forwards trimmed coach turns through the durable Pico chat contract', async () => {
+    const proxiedResponse = new Response(JSON.stringify({ session_id: 'sess_123' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+    proxyJson.mockResolvedValue(proxiedResponse)
+
+    const { POST } = await import('../../app/api/pico/onboarding/route')
+    const request = createJsonRequest({
+      body: {
+        action: 'coach_message',
+        message: '  Help me install Hermes.  ',
+        session_id: 'sess_123',
+        request_id: 'request_123',
+      },
+    })
+
+    const response = await POST(request)
+
+    expect(response).toBe(proxiedResponse)
+    expect(proxyJson).toHaveBeenCalledWith(request, 'http://localhost:8000/v1/pico/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Help me install Hermes.',
+        session_id: 'sess_123',
+        request_id: 'request_123',
+      }),
+      fallbackMessage: 'Pico onboarding coach request failed',
+    })
+  })
+
+  it('forwards authenticated coach start-over to the durable session reset', async () => {
+    const proxiedResponse = new Response(null, { status: 204 })
+    proxyJson.mockResolvedValue(proxiedResponse)
+    const sessionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+
+    const { DELETE } = await import('../../app/api/pico/onboarding/route')
+    const request = new NextRequest(
+      `https://pico.mutx.dev/api/pico/onboarding?session_id=${sessionId}`,
+      { method: 'DELETE' },
+    )
+    const response = await DELETE(request)
+
+    expect(response).toBe(proxiedResponse)
+    expect(proxyJson).toHaveBeenCalledWith(
+      request,
+      `http://localhost:8000/v1/pico/session?session_id=${sessionId}`,
+      {
+        method: 'DELETE',
+        fallbackMessage: 'Failed to reset Pico onboarding session',
+      },
+    )
+  })
+
+  it('rejects unauthenticated coach start-over before contacting the backend', async () => {
+    hasAuthSession.mockReturnValue(false)
+
+    const { DELETE } = await import('../../app/api/pico/onboarding/route')
+    const request = new NextRequest('https://pico.mutx.dev/api/pico/onboarding', {
+      method: 'DELETE',
+    })
+    const response = await DELETE(request)
+
+    expect(response.status).toBe(401)
+    expect(proxyJson).not.toHaveBeenCalled()
   })
 
   it('returns a 400 when the onboarding request body is invalid JSON', async () => {

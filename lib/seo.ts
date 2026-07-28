@@ -87,7 +87,7 @@ type OpenGraphImages = NonNullable<NonNullable<Metadata['openGraph']>['images']>
 type SocialImageDescriptor = ArrayElement<OpenGraphImages>
 
 const APP_HOSTNAMES = new Set(['app.mutx.dev', 'app.localhost'])
-const PICO_HOSTNAMES = new Set(['pico.mutx.dev', 'pico.mutxx.dev', 'pico.localhost'])
+const PICO_HOSTNAMES = new Set(['pico.mutx.dev', 'pico.localhost'])
 
 function normalizeUrl(value: string | undefined, fallback: string) {
   if (!value) {

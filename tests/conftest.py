@@ -42,6 +42,18 @@ for entry in (str(ROOT), str(SDK_ROOT)):
         sys.path.insert(0, entry)
 
 
+@pytest.fixture(autouse=True)
+def prevent_external_transactional_email(monkeypatch: pytest.MonkeyPatch):
+    """Keep API tests from contacting a developer-configured email provider."""
+    from src.api.routes import auth as auth_routes
+
+    async def not_delivered(*_args, **_kwargs) -> bool:
+        return False
+
+    monkeypatch.setattr(auth_routes, "send_verification_email", not_delivered)
+    monkeypatch.setattr(auth_routes, "send_password_reset_email", not_delivered)
+
+
 @compiles(PGUUID, "sqlite")
 def compile_uuid_sqlite(_type, _compiler, **_kw):
     return "CHAR(36)"

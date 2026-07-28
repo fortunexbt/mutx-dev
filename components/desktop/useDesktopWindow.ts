@@ -17,6 +17,11 @@ import type {
   DesktopWindowRole,
   DesktopWindowsState,
 } from "@/components/desktop/types";
+import {
+  DASHBOARD_ROUTE_PATHS,
+  getDesktopWindowRoleForPath,
+  getDesktopWorkspacePaneForPath,
+} from "@/components/desktop/desktopRouteConfig";
 
 const DEFAULT_WINDOWS_STATE: DesktopWindowsState = {
   activeRole: "workspace",
@@ -24,7 +29,7 @@ const DEFAULT_WINDOWS_STATE: DesktopWindowsState = {
     workspace: {
       role: "workspace",
       title: "Workspace",
-      route: "/dashboard",
+      route: DASHBOARD_ROUTE_PATHS.home,
       payload: { pane: "overview" },
       visible: true,
       focused: true,
@@ -33,7 +38,7 @@ const DEFAULT_WINDOWS_STATE: DesktopWindowsState = {
     sessions: {
       role: "sessions",
       title: "Sessions",
-      route: "/dashboard/sessions",
+      route: DASHBOARD_ROUTE_PATHS.sessions,
       payload: { tab: "live" },
       visible: false,
       focused: false,
@@ -42,7 +47,7 @@ const DEFAULT_WINDOWS_STATE: DesktopWindowsState = {
     traces: {
       role: "traces",
       title: "Traces",
-      route: "/dashboard/traces",
+      route: DASHBOARD_ROUTE_PATHS.traces,
       payload: { tab: "timeline" },
       visible: false,
       focused: false,
@@ -51,7 +56,7 @@ const DEFAULT_WINDOWS_STATE: DesktopWindowsState = {
     settings: {
       role: "settings",
       title: "Settings",
-      route: "/dashboard/control",
+      route: DASHBOARD_ROUTE_PATHS.control,
       payload: { pane: "account" },
       visible: false,
       focused: false,
@@ -79,72 +84,17 @@ function isDesktopRole(value: string | null): value is DesktopWindowRole {
   return value === "workspace" || value === "sessions" || value === "traces" || value === "settings";
 }
 
-function getDesktopRoleForPath(pathname: string): DesktopWindowRole {
-  if (pathname === "/dashboard/sessions") {
-    return "sessions";
-  }
-
-  if (pathname === "/dashboard/traces" || pathname === "/dashboard/logs") {
-    return "traces";
-  }
-
-  if (pathname === "/dashboard/control") {
-    return "settings";
-  }
-
-  return "workspace";
-}
-
-function getWorkspacePaneForPath(pathname: string) {
-  switch (pathname) {
-    case "/dashboard/agents":
-      return "fleet";
-    case "/dashboard/deployments":
-      return "rollouts";
-    case "/dashboard/runs":
-      return "operations";
-    case "/dashboard/monitoring":
-      return "monitoring";
-    case "/dashboard/api-keys":
-      return "api-keys";
-    case "/dashboard/budgets":
-      return "budgets";
-    case "/dashboard/analytics":
-      return "analytics";
-    case "/dashboard/webhooks":
-      return "webhooks";
-    case "/dashboard/security":
-      return "security";
-    case "/dashboard/orchestration":
-      return "automation";
-    case "/dashboard/memory":
-      return "memory";
-    case "/dashboard/swarm":
-      return "swarm";
-    case "/dashboard/channels":
-      return "channels";
-    case "/dashboard/history":
-      return "history";
-    case "/dashboard/skills":
-      return "skills";
-    case "/dashboard/spawn":
-      return "spawn";
-    case "/dashboard/logs":
-      return "logs";
-    default:
-      return "overview";
-  }
-}
-
 function getDerivedWindowStateFromLocation(): DesktopCurrentWindowState {
   if (typeof window === "undefined") {
     return DEFAULT_CURRENT_WINDOW;
   }
 
-  const pathname = window.location.pathname || "/dashboard";
+  const pathname = window.location.pathname || DASHBOARD_ROUTE_PATHS.home;
   const searchParams = new URLSearchParams(window.location.search);
   const hintedRole = searchParams.get("desktopWindowRole");
-  const currentRole = isDesktopRole(hintedRole) ? hintedRole : getDesktopRoleForPath(pathname);
+  const currentRole = isDesktopRole(hintedRole)
+    ? hintedRole
+    : getDesktopWindowRoleForPath(pathname);
   const defaultWindow = DEFAULT_WINDOWS_STATE.windows[currentRole];
   const payload: DesktopWindowPayload = { ...defaultWindow.payload };
 
@@ -155,12 +105,12 @@ function getDerivedWindowStateFromLocation(): DesktopCurrentWindowState {
     }
   }
 
-  if (currentRole === "workspace" && !payload.pane) {
-    payload.pane = getWorkspacePaneForPath(pathname);
+  if (currentRole === "workspace" && !searchParams.get("pane")) {
+    payload.pane = getDesktopWorkspacePaneForPath(pathname);
   }
 
-  if (currentRole === "traces" && !payload.tab) {
-    payload.tab = pathname === "/dashboard/logs" ? "logs" : "timeline";
+  if (currentRole === "traces" && !searchParams.get("tab")) {
+    payload.tab = pathname === DASHBOARD_ROUTE_PATHS.logs ? "logs" : "timeline";
   }
 
   if (currentRole === "settings" && !payload.pane) {

@@ -3,10 +3,10 @@
   "version": "1.4.0",
   "private": true,
   "license": "BUSL-1.1",
-  "packageManager": "npm@11.12.1",
+  "packageManager": "npm@11.18.0",
   "engines": {
     "node": ">=24.15.0",
-    "npm": ">=11.12.1 <12"
+    "npm": ">=11.18.0 <12"
   },
   "main": "desktop/main.cjs",
   "scripts": {
@@ -14,7 +14,7 @@
     "postbuild": "node scripts/fix-next-types.mjs",
     "prepare:standalone": "node scripts/prepare-standalone.mjs",
     "dev": "next dev",
-    "build": "next build --webpack",
+    "build": "npm run build:docs-search && next build --webpack",
     "start": "npm run prepare:standalone && node scripts/start-standalone.mjs",
     "lint": "eslint . --max-warnings=0",
     "desktop:start": "npm run prepare:standalone && npx electron .",
@@ -45,7 +45,7 @@
     "release:verify:production": "bash scripts/verify-production-release.sh",
     "release:check": "bash scripts/release-check.sh",
     "sync:pico-content": "node scripts/build-pico-content.mjs",
-    "build:docs-search": "npx tsx scripts/build-docs-search-index.ts",
+    "build:docs-search": "node --experimental-strip-types scripts/build-docs-search-index.ts",
     "docs:watch": "npx tsx scripts/docs-watcher.ts",
     "qa:pico-i18n": "node scripts/qa-pico-i18n.mjs",
     "validate:social-embeds": "node scripts/validate-social-embeds.mjs"
@@ -87,7 +87,7 @@
         }
       ],
       "icon": "desktop/Resources/icon.png",
-      "minimumSystemVersion": "10.15",
+      "minimumSystemVersion": "12.0",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "desktop/entitlements.plist",
@@ -157,7 +157,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.169.0",
     "autoprefixer": "^10.4.17",
-    "electron": "^39.8.5",
+    "electron": "43.2.0",
     "electron-builder": "^26.15.3",
     "eslint": "^10.7.0",
     "eslint-config-next": "16.2.10",

@@ -124,12 +124,16 @@ def test_runtime_schema_repair_creates_missing_refresh_token_indexes(monkeypatch
         ("usage_events", "credits_used"),
         ("usage_events", "event_metadata"),
     }
-    existing_indexes = {
-        ("usage_events", "ix_usage_events_created_at"),
-        ("usage_events", "ix_usage_events_event_type"),
-        ("usage_events", "ix_usage_events_resource_type"),
-        ("usage_events", "ix_usage_events_user_id"),
-    } | _DOCUMENT_JOB_INDEXES | _DOCUMENT_ARTIFACT_INDEXES
+    existing_indexes = (
+        {
+            ("usage_events", "ix_usage_events_created_at"),
+            ("usage_events", "ix_usage_events_event_type"),
+            ("usage_events", "ix_usage_events_resource_type"),
+            ("usage_events", "ix_usage_events_user_id"),
+        }
+        | _DOCUMENT_JOB_INDEXES
+        | _DOCUMENT_ARTIFACT_INDEXES
+    )
     calls: list[tuple[str, str]] = []
 
     monkeypatch.setattr(
@@ -174,11 +178,15 @@ def test_runtime_schema_repair_creates_missing_refresh_token_indexes(monkeypatch
 def test_runtime_schema_repair_repairs_usage_events_columns_and_indexes(monkeypatch):
     existing_tables = {"agent_logs", "refresh_token_sessions", "usage_events"} | _DOCUMENT_TABLES
     existing_columns = {("agent_logs", "meta_data")}
-    existing_indexes = {
-        ("refresh_token_sessions", "ix_refresh_token_sessions_family_id"),
-        ("refresh_token_sessions", "ix_refresh_token_sessions_token_jti"),
-        ("refresh_token_sessions", "ix_refresh_token_sessions_user_id"),
-    } | _DOCUMENT_JOB_INDEXES | _DOCUMENT_ARTIFACT_INDEXES
+    existing_indexes = (
+        {
+            ("refresh_token_sessions", "ix_refresh_token_sessions_family_id"),
+            ("refresh_token_sessions", "ix_refresh_token_sessions_token_jti"),
+            ("refresh_token_sessions", "ix_refresh_token_sessions_user_id"),
+        }
+        | _DOCUMENT_JOB_INDEXES
+        | _DOCUMENT_ARTIFACT_INDEXES
+    )
     calls: list[tuple[str, str]] = []
 
     monkeypatch.setattr(
@@ -232,7 +240,12 @@ def test_runtime_schema_repair_repairs_usage_events_columns_and_indexes(monkeypa
 
 
 def test_runtime_schema_repair_adds_missing_agents_last_heartbeat(monkeypatch):
-    existing_tables = {"agents", "agent_logs", "refresh_token_sessions", "usage_events"} | _DOCUMENT_TABLES
+    existing_tables = {
+        "agents",
+        "agent_logs",
+        "refresh_token_sessions",
+        "usage_events",
+    } | _DOCUMENT_TABLES
     existing_columns = {
         ("agent_logs", "meta_data"),
         ("usage_events", "resource_type"),
@@ -240,15 +253,19 @@ def test_runtime_schema_repair_adds_missing_agents_last_heartbeat(monkeypatch):
         ("usage_events", "credits_used"),
         ("usage_events", "event_metadata"),
     }
-    existing_indexes = {
-        ("refresh_token_sessions", "ix_refresh_token_sessions_family_id"),
-        ("refresh_token_sessions", "ix_refresh_token_sessions_token_jti"),
-        ("refresh_token_sessions", "ix_refresh_token_sessions_user_id"),
-        ("usage_events", "ix_usage_events_created_at"),
-        ("usage_events", "ix_usage_events_event_type"),
-        ("usage_events", "ix_usage_events_resource_type"),
-        ("usage_events", "ix_usage_events_user_id"),
-    } | _DOCUMENT_JOB_INDEXES | _DOCUMENT_ARTIFACT_INDEXES
+    existing_indexes = (
+        {
+            ("refresh_token_sessions", "ix_refresh_token_sessions_family_id"),
+            ("refresh_token_sessions", "ix_refresh_token_sessions_token_jti"),
+            ("refresh_token_sessions", "ix_refresh_token_sessions_user_id"),
+            ("usage_events", "ix_usage_events_created_at"),
+            ("usage_events", "ix_usage_events_event_type"),
+            ("usage_events", "ix_usage_events_resource_type"),
+            ("usage_events", "ix_usage_events_user_id"),
+        }
+        | _DOCUMENT_JOB_INDEXES
+        | _DOCUMENT_ARTIFACT_INDEXES
+    )
 
     monkeypatch.setattr(
         database,
@@ -274,7 +291,13 @@ def test_runtime_schema_repair_adds_missing_agents_last_heartbeat(monkeypatch):
 
 
 def test_runtime_schema_repair_repairs_openclaw_enum_and_alert_timestamp_drift(monkeypatch):
-    existing_tables = {"agents", "alerts", "agent_logs", "refresh_token_sessions", "usage_events"} | _DOCUMENT_TABLES
+    existing_tables = {
+        "agents",
+        "alerts",
+        "agent_logs",
+        "refresh_token_sessions",
+        "usage_events",
+    } | _DOCUMENT_TABLES
     existing_columns = {
         ("agents", "last_heartbeat"),
         ("agent_logs", "meta_data"),
@@ -284,15 +307,19 @@ def test_runtime_schema_repair_repairs_openclaw_enum_and_alert_timestamp_drift(m
         ("usage_events", "credits_used"),
         ("usage_events", "event_metadata"),
     }
-    existing_indexes = {
-        ("refresh_token_sessions", "ix_refresh_token_sessions_family_id"),
-        ("refresh_token_sessions", "ix_refresh_token_sessions_token_jti"),
-        ("refresh_token_sessions", "ix_refresh_token_sessions_user_id"),
-        ("usage_events", "ix_usage_events_created_at"),
-        ("usage_events", "ix_usage_events_event_type"),
-        ("usage_events", "ix_usage_events_resource_type"),
-        ("usage_events", "ix_usage_events_user_id"),
-    } | _DOCUMENT_JOB_INDEXES | _DOCUMENT_ARTIFACT_INDEXES
+    existing_indexes = (
+        {
+            ("refresh_token_sessions", "ix_refresh_token_sessions_family_id"),
+            ("refresh_token_sessions", "ix_refresh_token_sessions_token_jti"),
+            ("refresh_token_sessions", "ix_refresh_token_sessions_user_id"),
+            ("usage_events", "ix_usage_events_created_at"),
+            ("usage_events", "ix_usage_events_event_type"),
+            ("usage_events", "ix_usage_events_resource_type"),
+            ("usage_events", "ix_usage_events_user_id"),
+        }
+        | _DOCUMENT_JOB_INDEXES
+        | _DOCUMENT_ARTIFACT_INDEXES
+    )
 
     monkeypatch.setattr(
         database,

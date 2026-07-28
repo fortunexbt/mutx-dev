@@ -112,7 +112,7 @@ Reflect the current onboarding flow, Node 24 recommendation, Control UI at `127.
 
 ### NanoClaw
 
-Reflect the fork/clone → `claude` → `/setup` flow, Node 20+, Docker or Apple Container, OneCLI Agent Vault, the fact that Claude Code slash commands run inside Claude Code rather than the normal shell, and the current git-branch/fork model for skills and channels.
+Reflect the NanoClaw v2 clone → `bash nanoclaw.sh` flow, Node 20+, Docker, Claude Code, and OneCLI. Keep the older v1 `/setup` and branch-marketplace model clearly separated as migration-only guidance.
 
 ### PicoClaw
 

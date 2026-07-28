@@ -1,5 +1,3 @@
-import { randomBytes } from "node:crypto";
-
 import { NextRequest, NextResponse } from "next/server";
 
 import {
@@ -97,17 +95,19 @@ export async function GET(
   }
 
   const redirectUri = `${getPublicOrigin(request)}/api/auth/oauth/${provider}/callback`;
-  const state = randomBytes(24).toString("base64url");
   const authorizeUrl = new URL(
     `${getApiBaseUrl()}/v1/auth/oauth/${provider}/authorize`,
   );
   authorizeUrl.searchParams.set("redirect_uri", redirectUri);
-  authorizeUrl.searchParams.set("state", state);
 
   const response = await fetch(authorizeUrl, { cache: "no-store" });
   const payload = await response.json().catch(() => null);
 
-  if (!response.ok || typeof payload?.authorization_url !== "string") {
+  if (
+    !response.ok ||
+    typeof payload?.authorization_url !== "string" ||
+    typeof payload?.state !== "string"
+  ) {
     return NextResponse.redirect(
       buildAuthRedirect(
         request,
@@ -125,7 +125,7 @@ export async function GET(
     redirectResponse,
     request,
     `${OAUTH_COOKIE_PREFIX}_state`,
-    state,
+    payload.state,
   );
   setOAuthCookie(
     redirectResponse,

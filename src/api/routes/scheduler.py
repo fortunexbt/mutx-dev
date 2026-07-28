@@ -1,393 +1,585 @@
-"""Scheduler API routes — asyncio-based task scheduler."""
+"""Durable tenant-owned scheduler API and background execution loop."""
 
 from __future__ import annotations
 
 import asyncio
-import croniter
 import logging
+import time
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+import croniter
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.api import database
 from src.api.auth.dependencies import get_current_internal_user
-from src.api.models import User
+from src.api.database import get_db
+from src.api.models import Agent, ScheduledTask, User
+from src.api.models.scheduler_schemas import (
+    SchedulerTaskCreate,
+    SchedulerListResponse,
+    SchedulerTaskResponse,
+    SchedulerTaskUpdate,
+    SchedulerWebhookPayload,
+    TriggerTaskResponse,
+)
+from src.api.services.auth import Role, check_role
+from src.api.services.scheduler_service import (
+    SchedulerService,
+    SchedulerTaskNotFound,
+    TaskClaim,
+    as_utc,
+)
+from src.api.services.scheduler_webhook import (
+    SchedulerWebhookDeliveryError,
+    UnsafeSchedulerWebhookTarget,
+    deliver_scheduler_webhook,
+    validate_scheduler_webhook_target,
+)
 
-router = APIRouter(prefix="/scheduler", tags=["scheduler"])
 logger = logging.getLogger(__name__)
+SUPPORTED_TASK_TYPES = frozenset({"log", "webhook", "agent_heartbeat"})
 
-# --- In-memory task store ---
-_task_store: dict[str, dict[str, Any]] = {}
-_scheduler_lock = asyncio.Lock()
 _scheduler_running = False
-_scheduler_task: asyncio.Task | None = None
+_scheduler_task: asyncio.Task[None] | None = None
+_execution_tasks: dict[str, asyncio.Task[None]] = {}
+_execution_ids: dict[str, str] = {}
 
 
-# --- Pydantic Schemas ---
+@asynccontextmanager
+async def _scheduler_lifespan(app):
+    """Start one polling loop per API worker; database claims coordinate execution."""
+    ready_event = getattr(app.state, "database_ready_event", None)
+    _ensure_scheduler_running(ready_event=ready_event)
+    try:
+        yield
+    finally:
+        await _stop_scheduler()
 
 
-class SchedulerTaskCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    description: Optional[str] = Field(None, max_length=1000)
-    enabled: bool = True
-    schedule: Optional[str] = Field(
-        None, max_length=255, description="Cron expression, e.g. '*/5 * * * *'"
-    )
-    interval_seconds: Optional[int] = Field(
-        None, ge=1, le=604800, description="Interval in seconds (alternative to cron)"
-    )
-    task_type: str = Field(default="log", description="Task type: log, webhook, agent_heartbeat")
-    payload: dict[str, Any] = Field(default_factory=dict)
+router = APIRouter(
+    prefix="/scheduler",
+    tags=["scheduler"],
+    lifespan=_scheduler_lifespan,
+)
 
 
-class SchedulerTaskUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    description: Optional[str] = Field(None, max_length=1000)
-    enabled: Optional[bool] = None
-    schedule: Optional[str] = Field(None, max_length=255)
-    interval_seconds: Optional[int] = Field(None, ge=1, le=604800)
-    task_type: Optional[str] = None
-    payload: Optional[dict[str, Any]] = None
+class ScheduledActionError(RuntimeError):
+    """An expected scheduled-action failure with an API-safe status code."""
+
+    def __init__(self, message: str, *, status_code: int = 500, code: str = "runtime_error"):
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
 
 
-class SchedulerTaskResponse(BaseModel):
-    id: str
-    name: str
-    description: Optional[str]
-    enabled: bool
-    schedule: Optional[str]
-    interval_seconds: Optional[int]
-    task_type: str
-    payload: dict[str, Any]
-    last_run: Optional[int]
-    next_run: Optional[int]
-    run_count: int
-    created_at: int
-    updated_at: int
-
-
-class TriggerTaskRequest(BaseModel):
-    task_id: str
-
-
-class TriggerTaskResponse(BaseModel):
-    task_id: str
-    triggered_at: int
-    execution_id: str
-
-
-# --- Scheduler engine ---
-
-
-def _parse_schedule_next(task: dict[str, Any]) -> datetime | None:
-    """Calculate the next scheduled run from cron expression or interval."""
-    interval_seconds = task.get("interval_seconds")
-    if interval_seconds:
-        base_timestamp = task.get("last_run") or task.get("created_at")
-        base = (
-            datetime.fromtimestamp(base_timestamp, tz=timezone.utc)
-            if base_timestamp
-            else datetime.now(tz=timezone.utc)
+async def require_scheduler_reader(
+    current_user: User = Depends(get_current_internal_user),
+) -> User:
+    """Require the persisted read role after applying the internal-user gate."""
+    if not check_role(current_user.roles or [], [Role.VIEWER, Role.DEVELOPER]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions. Required roles: ['VIEWER', 'DEVELOPER']",
         )
-        return (base + timedelta(seconds=int(interval_seconds))).replace(microsecond=0)
+    return current_user
 
-    schedule = task.get("schedule")
-    if not schedule:
-        return None
 
-    base_timestamp = task.get("last_run") or task.get("created_at")
-    base = (
-        datetime.fromtimestamp(base_timestamp, tz=timezone.utc)
-        if base_timestamp
-        else datetime.now(tz=timezone.utc)
+async def require_scheduler_developer(
+    current_user: User = Depends(get_current_internal_user),
+) -> User:
+    """Require the persisted mutation role after applying the internal-user gate."""
+    if not check_role(current_user.roles or [], [Role.DEVELOPER]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions. Required roles: ['DEVELOPER']",
+        )
+    return current_user
+
+
+def _task_not_found() -> HTTPException:
+    return HTTPException(status_code=404, detail="Task not found")
+
+
+def _timestamp(value: datetime | None) -> int | None:
+    normalized = as_utc(value)
+    return int(normalized.timestamp()) if normalized is not None else None
+
+
+def _serialize_task(task: ScheduledTask) -> SchedulerTaskResponse:
+    return SchedulerTaskResponse(
+        id=str(task.id),
+        name=task.name,
+        description=task.description,
+        enabled=task.enabled,
+        schedule=task.schedule,
+        interval_seconds=task.interval_seconds,
+        task_type=task.task_type,
+        payload=dict(task.payload or {}),
+        last_run=_timestamp(task.last_run),
+        next_run=_timestamp(task.next_run) if task.enabled else None,
+        run_count=task.run_count,
+        success_count=task.success_count,
+        failure_count=task.failure_count,
+        status=task.status,
+        last_started_at=_timestamp(task.last_started_at),
+        last_finished_at=_timestamp(task.last_finished_at),
+        last_succeeded_at=_timestamp(task.last_succeeded_at),
+        last_failed_at=_timestamp(task.last_failed_at),
+        last_error=task.last_error,
+        active_execution_id=(
+            str(task.active_execution_id) if task.active_execution_id is not None else None
+        ),
+        created_at=_timestamp(task.created_at) or 0,
+        updated_at=_timestamp(task.updated_at) or 0,
     )
+
+
+async def _get_owned_heartbeat_agent(
+    agent_id: uuid.UUID,
+    db: AsyncSession,
+    owner: User | SimpleNamespace,
+) -> Agent:
+    result = await db.execute(
+        select(Agent).where(
+            Agent.id == agent_id,
+            Agent.user_id == owner.id,
+        )
+    )
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return agent
+
+
+async def _send_agent_heartbeat(task: dict[str, Any], db: AsyncSession) -> None:
+    payload = task.get("payload", {})
+    raw_agent_id = payload.get("agent_id")
+    if not raw_agent_id:
+        raise ScheduledActionError(
+            "agent_heartbeat requires payload.agent_id",
+            status_code=400,
+            code="invalid_payload",
+        )
+    try:
+        agent_id = uuid.UUID(str(raw_agent_id))
+        owner_id = uuid.UUID(str(task["owner_user_id"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ScheduledActionError(
+            "agent_heartbeat requires valid agent and owner identifiers",
+            status_code=400,
+            code="invalid_payload",
+        ) from exc
 
     try:
-        cron = croniter.croniter(schedule, base)
-        return cron.get_next(datetime)
-    except (croniter.CroniterBadCronError, ValueError):
-        return None
+        agent = await _get_owned_heartbeat_agent(agent_id, db, SimpleNamespace(id=owner_id))
+    except HTTPException as exc:
+        raise ScheduledActionError(
+            str(exc.detail),
+            status_code=exc.status_code,
+            code="agent_not_found",
+        ) from exc
+
+    from src.api.routes.agent_runtime import HeartbeatRequest, heartbeat
+
+    request = HeartbeatRequest(
+        agent_id=str(agent.id),
+        timestamp=datetime.now(tz=timezone.utc).isoformat(),
+    )
+    await heartbeat(request=request, db=db, agent=agent)
 
 
-async def _execute_task(task: dict[str, Any]) -> None:
-    """Execute a single scheduled task."""
+async def _execute_task_action(task: dict[str, Any], *, db: AsyncSession) -> None:
+    """Execute the immutable action snapshot associated with one durable claim."""
     task_type = task.get("task_type", "log")
     payload = task.get("payload", {})
     task_id = task["id"]
+    if task_type not in SUPPORTED_TASK_TYPES:
+        raise ScheduledActionError(
+            f"Unsupported scheduled task type: {task_type}",
+            status_code=400,
+            code="unsupported_task_type",
+        )
 
-    logger.info(f"[scheduler] Executing task {task_id} ({task_type})")
+    logger.info("[scheduler] Executing task %s (%s)", task_id, task_type)
+    if task_type == "webhook":
+        try:
+            webhook_payload = SchedulerWebhookPayload.model_validate(payload)
+        except ValidationError as exc:
+            error = exc.errors(include_input=False)[0]
+            location = ".".join(str(part) for part in error["loc"])
+            raise ScheduledActionError(
+                f"Invalid webhook payload at {location}: {error['msg']}",
+                status_code=400,
+                code="invalid_payload",
+            ) from exc
+        try:
+            status_code = await deliver_scheduler_webhook(webhook_payload)
+        except UnsafeSchedulerWebhookTarget as exc:
+            raise ScheduledActionError(
+                str(exc),
+                status_code=400,
+                code="unsafe_webhook_target",
+            ) from exc
+        except SchedulerWebhookDeliveryError as exc:
+            raise ScheduledActionError(
+                str(exc),
+                status_code=502,
+                code="webhook_delivery_failed",
+            ) from exc
+        logger.info("[scheduler] Webhook task %s → %s", task_id, status_code)
+        return
 
+    if task_type == "agent_heartbeat":
+        await _send_agent_heartbeat(task, db)
+        logger.info("[scheduler] Heartbeat recorded for agent %s", payload.get("agent_id"))
+        return
+
+    logger.info("[scheduler] Log task %s: %s", task_id, payload.get("message", ""))
+
+
+def _session_factory_for(db: AsyncSession) -> async_sessionmaker[AsyncSession]:
+    if db.bind is None:
+        return database.async_session_maker
+    return async_sessionmaker(db.bind, class_=AsyncSession, expire_on_commit=False)
+
+
+async def _run_task_execution(
+    claim: TaskClaim,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    error: Exception | None = None
     try:
-        if task_type == "webhook":
-            url = payload.get("url")
-            if not url:
-                logger.warning(f"[scheduler] Webhook task {task_id} has no URL in payload")
-                return
+        if claim.snapshot is None:
+            return
+        async with session_factory() as db:
             try:
-                import aiohttp
-
-                method = payload.get("method", "POST").upper()
-                headers = payload.get("headers", {})
-                body = payload.get("body", {})
-                async with aiohttp.ClientSession() as session:
-                    async with session.request(
-                        method,
-                        url,
-                        json=body,
-                        headers=headers,
-                        timeout=aiohttp.ClientTimeout(total=10),
-                    ) as resp:
-                        logger.info(f"[scheduler] Webhook task {task_id} → {resp.status}")
-            except ImportError:
-                logger.warning(
-                    f"[scheduler] aiohttp not installed, skipping webhook task {task_id}"
+                await _execute_task_action(claim.snapshot, db=db)
+            except asyncio.CancelledError:
+                error = ScheduledActionError(
+                    "Scheduled task execution cancelled",
+                    code="cancelled",
                 )
             except Exception as exc:
-                logger.warning(f"[scheduler] Webhook task {task_id} failed: {exc}")
-
-        elif task_type == "agent_heartbeat":
-            agent_id = payload.get("agent_id")
-            if agent_id:
-                try:
-                    from src.api.services.agent_runtime import AgentRuntimeService
-
-                    svc = AgentRuntimeService.get_instance()
-                    if svc:
-                        await svc.send_agent_heartbeat(uuid.UUID(agent_id))
-                        logger.info(f"[scheduler] Heartbeat sent for agent {agent_id}")
-                except Exception as exc:
-                    logger.warning(f"[scheduler] Could not send heartbeat for {agent_id}: {exc}")
-
-        else:
-            # Default: log
-            logger.info(f"[scheduler] Log task {task_id}: {payload.get('message', '')}")
-
-    except Exception as exc:
-        logger.exception(f"[scheduler] Task {task_id} raised: {exc}")
+                error = exc
+                logger.exception(
+                    "[scheduler] Task %s execution %s failed",
+                    claim.task_id,
+                    claim.execution_id,
+                )
+            await SchedulerService(db).finalize_execution(
+                claim.task_id,
+                claim.execution_id,
+                error=error,
+            )
+    finally:
+        task_key = str(claim.task_id)
+        if _execution_tasks.get(task_key) is asyncio.current_task():
+            _execution_tasks.pop(task_key, None)
+            _execution_ids.pop(task_key, None)
 
 
-async def _scheduler_loop() -> None:
-    """Background loop that ticks every 10 seconds and fires due tasks."""
+def _launch_claimed_execution(
+    claim: TaskClaim,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> asyncio.Task[None]:
+    execution_task = asyncio.create_task(
+        _run_task_execution(claim, session_factory=session_factory)
+    )
+    task_key = str(claim.task_id)
+    _execution_tasks[task_key] = execution_task
+    _execution_ids[task_key] = str(claim.execution_id)
+    return execution_task
+
+
+async def _schedule_due_tasks(
+    now: datetime | None = None,
+    *,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> list[asyncio.Task[None]]:
+    """Load and conditionally claim due rows before launching their actions."""
+    factory = session_factory or database.async_session_maker
+    async with factory() as db:
+        claims = await SchedulerService(db).claim_due_tasks(now=now)
+    return [
+        _launch_claimed_execution(claim, session_factory=factory)
+        for claim in claims
+        if claim.snapshot is not None
+    ]
+
+
+async def _scheduler_loop(*, ready_event: asyncio.Event | None = None) -> None:
     global _scheduler_running
-    while _scheduler_running:
-        try:
-            now = datetime.now(tz=timezone.utc)
-            now_ts = int(now.timestamp())
-
-            async with _scheduler_lock:
-                for task_id, task in list(_task_store.items()):
-                    if not task.get("enabled", False):
-                        continue
-
-                    next_run = _parse_schedule_next(task)
-                    if next_run is None:
-                        continue
-                    next_run_ts = int(next_run.timestamp())
-
-                    if now_ts >= next_run_ts:
-                        task["last_run"] = now_ts
-                        task["run_count"] = task.get("run_count", 0) + 1
-                        upcoming_run = _parse_schedule_next(task)
-                        task["next_run"] = int(upcoming_run.timestamp()) if upcoming_run else None
-                        # Fire in background
-                        asyncio.create_task(_execute_task(task))
-
-        except Exception as exc:
-            logger.exception(f"[scheduler] Loop error: {exc}")
-
-        await asyncio.sleep(10)
+    try:
+        if ready_event is not None:
+            await ready_event.wait()
+        while _scheduler_running:
+            try:
+                await _schedule_due_tasks()
+            except Exception:
+                logger.exception("[scheduler] Durable polling loop failed")
+            await asyncio.sleep(10)
+    except asyncio.CancelledError:
+        logger.info("[scheduler] Background scheduler loop cancelled")
+    finally:
+        _scheduler_running = False
 
 
-def _ensure_scheduler_running() -> None:
-    global _scheduler_task, _scheduler_running
-    if not _scheduler_running:
+def _ensure_scheduler_running(*, ready_event: asyncio.Event | None = None) -> None:
+    global _scheduler_running, _scheduler_task
+    if not _scheduler_running or _scheduler_task is None or _scheduler_task.done():
         _scheduler_running = True
-        _scheduler_task = asyncio.create_task(_scheduler_loop())
+        _scheduler_task = asyncio.create_task(_scheduler_loop(ready_event=ready_event))
         logger.info("[scheduler] Background scheduler loop started")
 
 
-def _serialize_task(task: dict[str, Any]) -> SchedulerTaskResponse:
-    next_run = None
-    if task.get("enabled"):
-        nr = _parse_schedule_next(task)
-        next_run = int(nr.timestamp()) if nr else None
-    return SchedulerTaskResponse(
-        id=task["id"],
-        name=task["name"],
-        description=task.get("description"),
-        enabled=task.get("enabled", True),
-        schedule=task.get("schedule"),
-        interval_seconds=task.get("interval_seconds"),
-        task_type=task.get("task_type", "log"),
-        payload=task.get("payload", {}),
-        last_run=task.get("last_run"),
-        next_run=next_run,
-        run_count=task.get("run_count", 0),
-        created_at=task.get("created_at", 0),
-        updated_at=task.get("updated_at", 0),
-    )
+async def _stop_scheduler() -> None:
+    global _scheduler_running, _scheduler_task
+    _scheduler_running = False
+    if _scheduler_task is not None and not _scheduler_task.done():
+        _scheduler_task.cancel()
+        await asyncio.gather(_scheduler_task, return_exceptions=True)
+    _scheduler_task = None
+
+    executions = list(_execution_tasks.values())
+    for execution in executions:
+        if not execution.done():
+            execution.cancel()
+    if executions:
+        await asyncio.gather(*executions, return_exceptions=True)
+    _execution_tasks.clear()
+    _execution_ids.clear()
 
 
-# --- Routes ---
+async def _validate_task_action(
+    task_type: str,
+    payload: dict[str, Any],
+    *,
+    current_user: User,
+    db: AsyncSession,
+) -> None:
+    if task_type not in SUPPORTED_TASK_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported task type: {task_type}")
 
+    if task_type == "webhook":
+        try:
+            webhook_payload = SchedulerWebhookPayload.model_validate(payload)
+        except ValidationError as exc:
+            error = exc.errors(include_input=False)[0]
+            location = ".".join(str(part) for part in error["loc"])
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid webhook payload at {location}: {error['msg']}",
+            ) from exc
+        try:
+            await validate_scheduler_webhook_target(webhook_payload.url)
+        except UnsafeSchedulerWebhookTarget as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-class SchedulerListResponse(BaseModel):
-    tasks: list[SchedulerTaskResponse]
-    total: int
+    if task_type != "agent_heartbeat":
+        return
+    raw_agent_id = payload.get("agent_id")
+    if not raw_agent_id:
+        raise HTTPException(
+            status_code=400,
+            detail="agent_heartbeat requires payload.agent_id",
+        )
+    try:
+        agent_id = uuid.UUID(str(raw_agent_id))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid agent_id") from exc
+    await _get_owned_heartbeat_agent(agent_id, db, current_user)
 
 
 @router.get("", response_model=SchedulerListResponse)
 async def get_scheduler(
-    current_user: User = Depends(get_current_internal_user),
+    current_user: User = Depends(require_scheduler_reader),
+    db: AsyncSession = Depends(get_db),
 ) -> SchedulerListResponse:
-    """List all scheduled tasks for the admin user."""
-    _ensure_scheduler_running()
-
-    async with _scheduler_lock:
-        tasks = [_serialize_task(t) for t in _task_store.values()]
-
-    return SchedulerListResponse(tasks=tasks, total=len(tasks))
+    """List durable scheduled tasks owned by the authenticated user."""
+    tasks = await SchedulerService(db).list_tasks(current_user.id)
+    return SchedulerListResponse(tasks=[_serialize_task(task) for task in tasks], total=len(tasks))
 
 
 @router.post("", response_model=SchedulerTaskResponse, status_code=201)
 async def create_scheduled_task(
     task_data: SchedulerTaskCreate,
-    current_user: User = Depends(get_current_internal_user),
+    current_user: User = Depends(require_scheduler_developer),
+    db: AsyncSession = Depends(get_db),
 ) -> SchedulerTaskResponse:
-    """Create a new scheduled task."""
+    """Create a durable tenant-owned scheduled task."""
     if task_data.schedule:
         try:
             croniter.croniter(task_data.schedule, datetime.now(tz=timezone.utc))
         except (croniter.CroniterBadCronError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=f"Invalid cron expression: {exc}") from exc
-
     if not task_data.schedule and not task_data.interval_seconds:
         raise HTTPException(
             status_code=400,
             detail="Either 'schedule' (cron expression) or 'interval_seconds' is required",
         )
-
-    now_ts = int(datetime.now(tz=timezone.utc).timestamp())
-    task_id = str(uuid.uuid4())
-
-    task: dict[str, Any] = {
-        "id": task_id,
-        "name": task_data.name,
-        "description": task_data.description,
-        "enabled": task_data.enabled,
-        "schedule": task_data.schedule,
-        "interval_seconds": task_data.interval_seconds,
-        "task_type": task_data.task_type,
-        "payload": task_data.payload,
-        "last_run": None,
-        "next_run": None,
-        "run_count": 0,
-        "created_at": now_ts,
-        "updated_at": now_ts,
-    }
-    next_run = _parse_schedule_next(task)
-    task["next_run"] = int(next_run.timestamp()) if next_run else None
-
-    async with _scheduler_lock:
-        _task_store[task_id] = task
-
-    _ensure_scheduler_running()
-
-    logger.info(f"[scheduler] Created task {task_id}: {task_data.name}")
+    await _validate_task_action(
+        task_data.task_type,
+        task_data.payload,
+        current_user=current_user,
+        db=db,
+    )
+    task = await SchedulerService(db).create_task(current_user.id, task_data)
+    logger.info("[scheduler] Created task %s: %s", task.id, task.name)
     return _serialize_task(task)
 
 
 @router.get("/{task_id}", response_model=SchedulerTaskResponse)
 async def get_task(
     task_id: str,
-    current_user: User = Depends(get_current_internal_user),
+    current_user: User = Depends(require_scheduler_reader),
+    db: AsyncSession = Depends(get_db),
 ) -> SchedulerTaskResponse:
-    """Get a specific scheduled task."""
-    async with _scheduler_lock:
-        task = _task_store.get(task_id)
-
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-
+    """Get one owned scheduled task without exposing foreign identifiers."""
+    try:
+        task = await SchedulerService(db).get_owned_task(task_id, current_user.id)
+    except SchedulerTaskNotFound as exc:
+        raise _task_not_found() from exc
     return _serialize_task(task)
 
 
 @router.patch("/{task_id}", response_model=SchedulerTaskResponse)
 async def update_scheduled_task(
     task_id: str,
-    update: SchedulerTaskUpdate,
-    current_user: User = Depends(get_current_internal_user),
+    update_data: SchedulerTaskUpdate,
+    current_user: User = Depends(require_scheduler_developer),
+    db: AsyncSession = Depends(get_db),
 ) -> SchedulerTaskResponse:
-    """Update an existing scheduled task."""
-    async with _scheduler_lock:
-        task = _task_store.get(task_id)
-        if not task:
-            raise HTTPException(status_code=404, detail="Task not found")
+    """Update one owned task under a database row lock."""
+    service = SchedulerService(db)
+    try:
+        task = await service.get_owned_task(task_id, current_user.id, for_update=True)
+    except SchedulerTaskNotFound as exc:
+        raise _task_not_found() from exc
 
-        update_data = update.model_dump(exclude_none=True)
+    changes = update_data.model_dump(exclude_none=True)
+    effective_task_type = changes.get("task_type", task.task_type)
+    effective_payload = changes.get("payload", task.payload or {})
+    await _validate_task_action(
+        effective_task_type,
+        effective_payload,
+        current_user=current_user,
+        db=db,
+    )
+    new_schedule = changes.get("schedule", task.schedule)
+    if changes.get("schedule") is not None and new_schedule:
+        try:
+            croniter.croniter(new_schedule, datetime.now(tz=timezone.utc))
+        except (croniter.CroniterBadCronError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid cron expression: {exc}") from exc
 
-        # Validate cron if being updated
-        new_schedule = update_data.get("schedule") or task.get("schedule")
-        if update_data.get("schedule") is not None and new_schedule:
-            try:
-                croniter.croniter(new_schedule, datetime.now(tz=timezone.utc))
-            except (croniter.CroniterBadCronError, ValueError) as exc:
-                raise HTTPException(
-                    status_code=400, detail=f"Invalid cron expression: {exc}"
-                ) from exc
+    cancel_running = changes.get("enabled") is False and task.active_execution_id is not None
+    task = await service.update_task(task, changes)
+    execution_task = _execution_tasks.get(str(task.id)) if cancel_running else None
+    if execution_task is not None and not execution_task.done():
+        execution_task.cancel()
+        await asyncio.gather(execution_task, return_exceptions=True)
+        task = await service.get_owned_task(task.id, current_user.id)
 
-        for key, value in update_data.items():
-            task[key] = value
-        task["updated_at"] = int(datetime.now(tz=timezone.utc).timestamp())
-        next_run = _parse_schedule_next(task) if task.get("enabled", True) else None
-        task["next_run"] = int(next_run.timestamp()) if next_run else None
-
-    logger.info(f"[scheduler] Updated task {task_id}")
+    logger.info("[scheduler] Updated task %s", task.id)
     return _serialize_task(task)
 
 
 @router.delete("/{task_id}", status_code=204)
 async def delete_scheduled_task(
     task_id: str,
-    current_user: User = Depends(get_current_internal_user),
+    current_user: User = Depends(require_scheduler_developer),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
-    """Delete a scheduled task."""
-    async with _scheduler_lock:
-        if task_id not in _task_store:
-            raise HTTPException(status_code=404, detail="Task not found")
-        del _task_store[task_id]
+    """Delete one owned task without revealing whether a foreign ID exists."""
+    service = SchedulerService(db)
+    if not await service.delete_task(task_id, current_user.id):
+        raise _task_not_found()
+    execution_task = _execution_tasks.get(task_id)
+    if execution_task is not None and not execution_task.done():
+        execution_task.cancel()
+        await asyncio.gather(execution_task, return_exceptions=True)
+    _execution_tasks.pop(task_id, None)
+    _execution_ids.pop(task_id, None)
+    logger.info("[scheduler] Deleted task %s", task_id)
 
-    logger.info(f"[scheduler] Deleted task {task_id}")
+
+async def _wait_for_execution(
+    service: SchedulerService,
+    *,
+    task_id: uuid.UUID,
+    owner_id: uuid.UUID,
+    execution_id: uuid.UUID,
+    timeout_seconds: float = 30,
+) -> ScheduledTask:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        task = await service.get_owned_task(task_id, owner_id)
+        if task.active_execution_id != execution_id or task.status != "running":
+            return task
+        if time.monotonic() >= deadline:
+            raise HTTPException(status_code=409, detail="Task execution is still running")
+        await asyncio.sleep(0.05)
 
 
 @router.post("/{task_id}/trigger", response_model=TriggerTaskResponse)
 async def trigger_scheduled_task(
     task_id: str,
-    current_user: User = Depends(get_current_internal_user),
+    current_user: User = Depends(require_scheduler_developer),
+    db: AsyncSession = Depends(get_db),
 ) -> TriggerTaskResponse:
-    """Manually trigger a scheduled task immediately (fire-and-forget)."""
-    async with _scheduler_lock:
-        task = _task_store.get(task_id)
-        if not task:
-            raise HTTPException(status_code=404, detail="Task not found")
+    """Atomically claim an owned task and return once its durable outcome is known."""
+    service = SchedulerService(db)
+    try:
+        claim = await service.claim_owned_task(task_id, current_user.id)
+    except SchedulerTaskNotFound as exc:
+        raise _task_not_found() from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-        execution_id = str(uuid.uuid4())
-        triggered_at = int(datetime.now(tz=timezone.utc).timestamp())
-        task["last_run"] = triggered_at
-        task["run_count"] = task.get("run_count", 0) + 1
-        task["updated_at"] = triggered_at
-        next_run = _parse_schedule_next(task) if task.get("enabled", True) else None
-        task["next_run"] = int(next_run.timestamp()) if next_run else None
+    execution_task = None
+    if claim.claimed:
+        execution_task = _launch_claimed_execution(
+            claim,
+            session_factory=_session_factory_for(db),
+        )
+    elif _execution_ids.get(str(claim.task_id)) == str(claim.execution_id):
+        execution_task = _execution_tasks.get(str(claim.task_id))
 
-    # Fire in background without blocking
-    asyncio.create_task(_execute_task(task))
+    if execution_task is not None:
+        await asyncio.shield(execution_task)
+    try:
+        completed_task = await _wait_for_execution(
+            service,
+            task_id=claim.task_id,
+            owner_id=current_user.id,
+            execution_id=claim.execution_id,
+        )
+    except SchedulerTaskNotFound as exc:
+        raise _task_not_found() from exc
 
-    logger.info(f"[scheduler] Manually triggered task {task_id} (execution={execution_id})")
-
+    logger.info(
+        "[scheduler] Manually triggered task %s (execution=%s)",
+        task_id,
+        claim.execution_id,
+    )
+    if completed_task.status == "failed":
+        raise HTTPException(
+            status_code=completed_task.last_error_status_code or 500,
+            detail=f"Scheduled task execution failed: {completed_task.last_error}",
+        )
     return TriggerTaskResponse(
-        task_id=task_id,
-        triggered_at=triggered_at,
-        execution_id=execution_id,
+        task_id=str(claim.task_id),
+        triggered_at=_timestamp(claim.triggered_at) or 0,
+        execution_id=str(claim.execution_id),
+        status=completed_task.status,
+        completed_at=_timestamp(completed_task.last_finished_at),
     )

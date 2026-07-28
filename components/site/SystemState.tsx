@@ -30,9 +30,10 @@ export function SystemState({
   return (
     <Tag
       id={compact ? undefined : 'main-content'}
+      tabIndex={compact ? undefined : -1}
       className={`${styles.page} ${compact ? styles.compact : ''}`}
       role={role}
-      aria-live={role ? 'polite' : undefined}
+      aria-live={role === 'alert' ? 'assertive' : role === 'status' ? 'polite' : undefined}
     >
       <div className={styles.frame}>
         <header className={styles.topline}>

@@ -25,7 +25,8 @@ class DocumentsService(APIService):
     def list_templates(self) -> list[DocumentTemplateRecord]:
         response = self._request("get", "/v1/documents/templates")
         self._expect_status(response, {200})
-        return [DocumentTemplateRecord.from_payload(item) for item in response.json()]
+        payload = self._decode_json(response, expected_type=list)
+        return [DocumentTemplateRecord.from_payload(item) for item in payload]
 
     def create_job(
         self,
@@ -44,7 +45,7 @@ class DocumentsService(APIService):
             },
         )
         self._expect_status(response, {201}, invalid_message="Unable to create document job")
-        return DocumentJobRecord.from_payload(response.json())
+        return DocumentJobRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def list_jobs(
         self,
@@ -61,12 +62,14 @@ class DocumentsService(APIService):
             params["template_id"] = template_id
         response = self._request("get", "/v1/documents/jobs", params=params)
         self._expect_status(response, {200})
-        return DocumentJobHistoryRecord.from_payload(response.json())
+        return DocumentJobHistoryRecord.from_payload(
+            self._decode_json(response, expected_type=dict)
+        )
 
     def get_job(self, job_id: str) -> DocumentJobRecord:
         response = self._request("get", f"/v1/documents/jobs/{job_id}")
         self._expect_status(response, {200}, not_found_message="Document job not found")
-        return DocumentJobRecord.from_payload(response.json())
+        return DocumentJobRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def register_artifact_reference(
         self,
@@ -93,7 +96,7 @@ class DocumentsService(APIService):
         }
         response = self._request("post", f"/v1/documents/jobs/{job_id}/artifacts", json=payload)
         self._expect_status(response, {201}, invalid_message="Unable to register document artifact")
-        return DocumentArtifactRecord.from_payload(response.json())
+        return DocumentArtifactRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def upload_artifact(
         self,
@@ -124,7 +127,7 @@ class DocumentsService(APIService):
                 data=data,
             )
         self._expect_status(response, {201}, invalid_message="Unable to upload document artifact")
-        return DocumentArtifactRecord.from_payload(response.json())
+        return DocumentArtifactRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def dispatch_job(self, *, job_id: str, mode: str) -> DocumentJobRecord:
         response = self._request(
@@ -133,7 +136,7 @@ class DocumentsService(APIService):
             json={"mode": mode},
         )
         self._expect_status(response, {200}, invalid_message="Unable to dispatch document job")
-        return DocumentJobRecord.from_payload(response.json())
+        return DocumentJobRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def launch_local(
         self, *, job_id: str, output_dir: str | None = None
@@ -146,7 +149,9 @@ class DocumentsService(APIService):
         self._expect_status(
             response, {200}, invalid_message="Unable to launch document job locally"
         )
-        return DocumentLocalLaunchRecord.from_payload(response.json())
+        return DocumentLocalLaunchRecord.from_payload(
+            self._decode_json(response, expected_type=dict)
+        )
 
     def submit_event(
         self,
@@ -171,7 +176,7 @@ class DocumentsService(APIService):
         }
         response = self._request("post", f"/v1/documents/jobs/{job_id}/events", json=body)
         self._expect_status(response, {200}, invalid_message="Unable to submit document job event")
-        return DocumentJobRecord.from_payload(response.json())
+        return DocumentJobRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def download_artifact(
         self,

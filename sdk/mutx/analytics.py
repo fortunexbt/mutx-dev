@@ -7,6 +7,8 @@ from typing import Any, Optional
 
 import httpx
 
+from mutx._http import api_path
+
 
 class AnalyticsSummary:
     """Analytics summary for a time period."""
@@ -110,7 +112,7 @@ class Analytics:
             params["period_start"] = period_start
         if period_end:
             params["period_end"] = period_end
-        response = self._client.get("/analytics/summary", params=params)
+        response = self._client.get("analytics/summary", params=params)
         response.raise_for_status()
         return AnalyticsSummary(response.json())
 
@@ -126,7 +128,7 @@ class Analytics:
             params["period_start"] = period_start
         if period_end:
             params["period_end"] = period_end
-        response = await self._client.get("/analytics/summary", params=params)
+        response = await self._client.get("analytics/summary", params=params)
         response.raise_for_status()
         return AnalyticsSummary(response.json())
 
@@ -143,7 +145,9 @@ class Analytics:
             params["period_start"] = period_start
         if period_end:
             params["period_end"] = period_end
-        response = self._client.get(f"/analytics/agents/{agent_id}/summary", params=params)
+        response = self._client.get(
+            api_path("analytics/agents/{agent_id}/summary", agent_id=agent_id), params=params
+        )
         response.raise_for_status()
         return AgentMetricsSummary(response.json())
 
@@ -160,7 +164,9 @@ class Analytics:
             params["period_start"] = period_start
         if period_end:
             params["period_end"] = period_end
-        response = await self._client.get(f"/analytics/agents/{agent_id}/summary", params=params)
+        response = await self._client.get(
+            api_path("analytics/agents/{agent_id}/summary", agent_id=agent_id), params=params
+        )
         response.raise_for_status()
         return AgentMetricsSummary(response.json())
 
@@ -193,7 +199,7 @@ class Analytics:
         if agent_id:
             params["agent_id"] = str(agent_id)
 
-        response = self._client.get("/analytics/timeseries", params=params)
+        response = self._client.get("analytics/timeseries", params=params)
         response.raise_for_status()
         return AnalyticsTimeSeries(response.json())
 
@@ -218,7 +224,7 @@ class Analytics:
         if agent_id:
             params["agent_id"] = str(agent_id)
 
-        response = await self._client.get("/analytics/timeseries", params=params)
+        response = await self._client.get("analytics/timeseries", params=params)
         response.raise_for_status()
         return AnalyticsTimeSeries(response.json())
 
@@ -234,7 +240,7 @@ class Analytics:
             params["period_start"] = period_start
         if period_end:
             params["period_end"] = period_end
-        response = self._client.get("/analytics/costs", params=params)
+        response = self._client.get("analytics/costs", params=params)
         response.raise_for_status()
         return response.json()
 
@@ -250,20 +256,20 @@ class Analytics:
             params["period_start"] = period_start
         if period_end:
             params["period_end"] = period_end
-        response = await self._client.get("/analytics/costs", params=params)
+        response = await self._client.get("analytics/costs", params=params)
         response.raise_for_status()
         return response.json()
 
     def get_budget(self) -> dict[str, Any]:
         """Get current budget information."""
         self._require_sync_client()
-        response = self._client.get("/analytics/budget")
+        response = self._client.get("analytics/budget")
         response.raise_for_status()
         return response.json()
 
     async def aget_budget(self) -> dict[str, Any]:
         """Get current budget information (async)."""
         self._require_async_client()
-        response = await self._client.get("/analytics/budget")
+        response = await self._client.get("analytics/budget")
         response.raise_for_status()
         return response.json()

@@ -19,7 +19,6 @@ import {
   Copy,
   Check,
 } from "lucide-react";
-import { Card } from "@/components/ui/Card";
 import { readJson, writeJson } from "@/components/app/http";
 import {
   getWebhookDeliverySignal,
@@ -28,8 +27,10 @@ import {
 } from "@/components/app/operatorReadiness";
 import {
   LiveAuthRequired,
+  Surface as Card,
   formatRelativeTime,
 } from "@/components/dashboard/livePrimitives";
+import { DashboardDialog } from "@/components/dashboard/DashboardDialog";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 
 type WebhookDelivery = {
@@ -51,6 +52,22 @@ type Webhook = {
   is_active: boolean;
   created_at: string;
 };
+
+type CopyFeedback = {
+  webhookId: string;
+  status: "success" | "error";
+  message: string;
+};
+
+type TestFeedback = {
+  webhookId: string;
+  message: string;
+};
+
+const WEBHOOK_SEARCH_ID = "webhook-search";
+const WEBHOOK_URL_ID = "webhook-url";
+const WEBHOOK_EVENTS_ID = "webhook-events";
+const WEBHOOK_FORM_ERROR_ID = "webhook-form-error";
 
 function normalizeStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -113,6 +130,7 @@ export default function WebhooksPageClient() {
   const [deliverySignals, setDeliverySignals] = useState<Record<string, WebhookDeliverySignal>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingWebhook, setEditingWebhook] = useState<Webhook | null>(null);
   const [viewingDeliveries, setViewingDeliveries] = useState<Webhook | null>(null);
@@ -122,11 +140,14 @@ export default function WebhooksPageClient() {
   const [formData, setFormData] = useState({ url: "", events: "", is_active: true });
   const [submitting, setSubmitting] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [testFeedback, setTestFeedback] = useState<TestFeedback | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Webhook | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<CopyFeedback | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const deliverySignalRequestRef = useRef(0);
-  const [isMac, setIsMac] = useState(false);
+  const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetchWebhooks();
@@ -138,22 +159,12 @@ export default function WebhooksPageClient() {
     }
   }, [viewingDeliveries]);
 
-  // Detect Mac OS
   useEffect(() => {
-    setIsMac(/Mac|iPod|iPhone|iPad/.test(navigator.platform));
-  }, []);
-
-  // Keyboard shortcut: Cmd/Ctrl + K to focus search
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        searchInputRef.current?.focus();
+    return () => {
+      if (copyFeedbackTimeoutRef.current) {
+        clearTimeout(copyFeedbackTimeoutRef.current);
       }
-    }
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   // Filter webhooks based on search query
@@ -267,6 +278,7 @@ export default function WebhooksPageClient() {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
+    setFormError(null);
     try {
       const method = editingWebhook ? "PATCH" : "POST";
       const url = editingWebhook
@@ -288,30 +300,56 @@ export default function WebhooksPageClient() {
       setFormData({ url: "", events: "", is_active: true });
       await fetchWebhooks();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setError(message);
+      setFormError(message);
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Are you sure you want to delete this webhook?")) return;
+  function requestDelete(webhook: Webhook) {
+    if (deletingId) return;
+    setDeleteError(null);
+    setDeleteTarget(webhook);
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget || deletingId) return;
+
+    const webhook = deleteTarget;
+    setDeletingId(webhook.id);
 
     try {
       setError(null);
-      await writeJson<unknown>(`/api/webhooks/${id}`, { method: "DELETE" });
+      setDeleteError(null);
+      await writeJson<unknown>(`/api/webhooks/${webhook.id}`, { method: "DELETE" });
       await fetchWebhooks();
+      setDeleteTarget(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setDeleteError(message);
+      setError(message);
+    } finally {
+      setDeletingId(null);
     }
   }
 
   async function handleTest(id: string) {
+    if (testingId) return;
+
     setTestingId(id);
     setError(null);
+    setTestFeedback(null);
     try {
-      await writeJson<unknown>(`/api/webhooks/${id}/test`, { method: "POST" });
-      alert("Test event sent!");
+      const response = await writeJson<{ message?: string }>(`/api/webhooks/${id}/test`, {
+        method: "POST",
+      });
+      await hydrateDeliverySignals(webhooks);
+      setTestFeedback({
+        webhookId: id,
+        message: response.message || "Test event delivered successfully.",
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -320,12 +358,37 @@ export default function WebhooksPageClient() {
   }
 
   async function handleCopyId(id: string) {
-    await navigator.clipboard.writeText(id);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+    if (copyFeedbackTimeoutRef.current) {
+      clearTimeout(copyFeedbackTimeoutRef.current);
+    }
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API unavailable");
+      }
+
+      await navigator.clipboard.writeText(id);
+      setCopyFeedback({
+        webhookId: id,
+        status: "success",
+        message: "Webhook ID copied to clipboard.",
+      });
+    } catch {
+      setCopyFeedback({
+        webhookId: id,
+        status: "error",
+        message: "Could not copy the webhook ID. Clipboard access was denied.",
+      });
+    }
+
+    copyFeedbackTimeoutRef.current = setTimeout(() => {
+      setCopyFeedback(null);
+      copyFeedbackTimeoutRef.current = null;
+    }, 3000);
   }
 
   function startEdit(webhook: Webhook) {
+    setFormError(null);
     setEditingWebhook(webhook);
     setFormData({
       url: webhook.url,
@@ -345,24 +408,105 @@ export default function WebhooksPageClient() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        className="flex items-center justify-center p-12"
+      >
+        <Loader2 aria-hidden="true" className="h-8 w-8 animate-spin text-muted-foreground" />
+        <span className="sr-only">Loading webhooks</span>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
+      <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {copyFeedback?.message ?? ""}
+      </p>
+      <DashboardDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open && !deletingId) {
+            setDeleteTarget(null);
+            setDeleteError(null);
+          }
+        }}
+        title="Delete webhook"
+        description="Permanently remove this webhook route from MUTX."
+        footer={
+          <>
+            <button
+              type="button"
+              data-autofocus
+              onClick={() => {
+                setDeleteTarget(null);
+                setDeleteError(null);
+              }}
+              disabled={Boolean(deletingId)}
+              className="min-h-11 w-full rounded-md border px-4 py-2 text-sm font-medium transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleDelete()}
+              disabled={Boolean(deletingId)}
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            >
+              {deletingId ? (
+                <>
+                  <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+                  Deleting…
+                </>
+              ) : (
+                "Delete Webhook"
+              )}
+            </button>
+          </>
+        }
+      >
+        <div aria-busy={Boolean(deletingId)} className="space-y-4 text-start">
+          <div className="rounded-md border border-white/10 bg-black/20 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Webhook target
+            </p>
+            <p dir="ltr" className="mt-2 break-all text-start text-sm text-white">
+              {deleteTarget?.url}
+            </p>
+            <p dir="ltr" className="mt-1 break-all text-start font-mono text-xs text-muted-foreground">
+              {deleteTarget?.id}
+            </p>
+          </div>
+          <p className="text-sm leading-6 text-muted-foreground">
+            MUTX will stop sending the configured events to this endpoint. This deletion cannot be undone.
+          </p>
+          {deleteError ? (
+            <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              Webhook deletion failed: {deleteError}
+            </div>
+          ) : null}
+        </div>
+      </DashboardDialog>
       {error && (
-        <div className="flex items-center gap-2 p-4 bg-destructive/10 text-destructive rounded-md">
-          <AlertCircle className="h-4 w-4 flex-shrink-0" />
-          <span className="flex-1">{error}</span>
+        <div
+          id={formError ? WEBHOOK_FORM_ERROR_ID : undefined}
+          role="alert"
+          className="flex items-center gap-2 p-4 bg-destructive/10 text-destructive rounded-md"
+        >
+          <AlertCircle aria-hidden="true" className="h-4 w-4 flex-shrink-0" />
+          <span className="min-w-0 flex-1 break-words">{error}</span>
           <button
-            onClick={() => setError(null)}
-            className="p-1 hover:bg-destructive/20 rounded"
+            type="button"
+            onClick={() => {
+              setError(null);
+              setFormError(null);
+            }}
+            className="flex min-h-8 min-w-8 items-center justify-center rounded hover:bg-destructive/20"
             aria-label="Dismiss error"
           >
-            <X className="h-4 w-4" />
+            <X aria-hidden="true" className="h-4 w-4" />
           </button>
         </div>
       )}
@@ -393,108 +537,131 @@ export default function WebhooksPageClient() {
       )}
 
       {viewingDeliveries && (
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
+        <Card className="min-w-0 p-4 sm:p-6">
+          <div className="mb-4 flex min-w-0 items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">Delivery History</h2>
             <button
+              type="button"
               onClick={() => {
                 setViewingDeliveries(null);
                 setDeliveries([]);
                 setExpandedDelivery(null);
               }}
-              className="p-2 hover:bg-accent rounded-md"
+              className="flex min-h-9 min-w-9 flex-shrink-0 items-center justify-center rounded-md hover:bg-accent"
+              aria-label="Close delivery history"
             >
-              <X className="h-4 w-4" />
+              <X aria-hidden="true" className="h-4 w-4" />
             </button>
           </div>
-          <p className="text-sm text-muted-foreground mb-4">
+          <p className="mb-4 min-w-0 break-all text-sm text-muted-foreground">
             {viewingDeliveries.url}
           </p>
           {loadingDeliveries ? (
-            <div className="flex items-center justify-center p-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <div
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+              className="flex items-center justify-center p-8"
+            >
+              <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin text-muted-foreground" />
+              <span className="sr-only">Loading delivery history</span>
             </div>
           ) : deliveries.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">
               No deliveries yet
             </p>
           ) : (
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {deliveries.map((delivery) => (
-                <div
-                  key={delivery.id}
-                  className="border rounded-md overflow-hidden"
-                >
-                  <button
-                    onClick={() =>
-                      setExpandedDelivery(
-                        expandedDelivery === delivery.id ? null : delivery.id
-                      )
-                    }
-                    className="w-full flex items-center justify-between p-3 hover:bg-accent/50 text-left"
+            <div className="max-h-96 min-w-0 space-y-2 overflow-x-hidden overflow-y-auto">
+              {deliveries.map((delivery, index) => {
+                const deliveryDetailsId = `webhook-delivery-details-${index}`;
+                const isExpanded = expandedDelivery === delivery.id;
+
+                return (
+                  <div
+                    key={delivery.id}
+                    className="min-w-0 overflow-hidden rounded-md border"
                   >
-                    <div className="flex items-center gap-3">
-                      {delivery.success ? (
-                        <CheckCircle2 className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <AlertCircle className="h-4 w-4 text-red-500" />
-                      )}
-                      <span className="font-mono text-sm">{delivery.event}</span>
-                      {delivery.status_code && (
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded ${
-                            delivery.status_code >= 200 && delivery.status_code < 300
-                              ? "bg-green-500/20 text-green-400"
-                              : "bg-red-500/20 text-red-400"
-                          }`}
-                        >
-                          {delivery.status_code}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedDelivery(isExpanded ? null : delivery.id)
+                      }
+                      aria-expanded={isExpanded}
+                      aria-controls={deliveryDetailsId}
+                      aria-label={`${isExpanded ? "Collapse" : "Expand"} ${delivery.event} delivery details`}
+                      className="flex w-full min-w-0 flex-col items-stretch gap-2 p-3 text-left hover:bg-accent/50 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
+                        {delivery.success ? (
+                          <CheckCircle2 aria-hidden="true" className="h-4 w-4 flex-shrink-0 text-green-500" />
+                        ) : (
+                          <AlertCircle aria-hidden="true" className="h-4 w-4 flex-shrink-0 text-red-500" />
+                        )}
+                        <span className="min-w-0 break-all font-mono text-sm">{delivery.event}</span>
+                        {delivery.status_code && (
+                          <span
+                            className={`flex-shrink-0 rounded px-2 py-0.5 text-xs ${
+                              delivery.status_code >= 200 && delivery.status_code < 300
+                                ? "bg-green-500/20 text-green-400"
+                                : "bg-red-500/20 text-red-400"
+                            }`}
+                          >
+                            {delivery.status_code}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex min-w-0 items-center justify-between gap-3 sm:flex-shrink-0 sm:justify-end">
+                        <span className="flex min-w-0 items-center gap-1 break-words text-xs text-muted-foreground">
+                          <Clock aria-hidden="true" className="h-3 w-3 flex-shrink-0" />
+                          {new Date(delivery.created_at).toLocaleString()}
                         </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {new Date(delivery.created_at).toLocaleString()}
-                      </span>
-                      {expandedDelivery === delivery.id ? (
-                        <ChevronUp className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
-                    </div>
-                  </button>
-                  {expandedDelivery === delivery.id && (
-                    <div className="p-3 border-t bg-muted/30">
+                        {isExpanded ? (
+                          <ChevronUp aria-hidden="true" className="h-4 w-4 flex-shrink-0" />
+                        ) : (
+                          <ChevronDown aria-hidden="true" className="h-4 w-4 flex-shrink-0" />
+                        )}
+                      </div>
+                    </button>
+                    <div
+                      id={deliveryDetailsId}
+                      hidden={!isExpanded}
+                      className="min-w-0 border-t bg-muted/30 p-3"
+                    >
                       <p className="text-xs text-muted-foreground mb-2">
                         Payload:
                       </p>
-                      <pre className="text-xs bg-black/50 p-3 rounded overflow-x-auto max-h-64">
+                      <pre className="max-h-64 min-w-0 overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-all rounded bg-black/50 p-3 text-xs">
                         {formatJson(delivery.payload)}
                       </pre>
                       {delivery.error_message && (
-                        <p className="text-xs text-red-400 mt-2">
+                        <p className="mt-2 break-words text-xs text-red-400">
                           Error: {delivery.error_message}
                         </p>
                       )}
                     </div>
-                  )}
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           )}
         </Card>
       )}
 
-            {!showForm && !viewingDeliveries && webhooks.length > 0 && (
+      {!showForm && !viewingDeliveries && webhooks.length > 0 && (
         <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+          <label htmlFor={WEBHOOK_SEARCH_ID} className="sr-only">
+            Search webhooks
+          </label>
+          <Search
+            aria-hidden="true"
+            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500"
+          />
           <input
-            ref={searchInputRef}
-            type="text"
+            id={WEBHOOK_SEARCH_ID}
+            type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={isMac ? "Search webhooks... (⌘K)" : "Search webhooks... (Ctrl+K)"}
+            placeholder="Search webhooks by URL, ID, or event"
             className="w-full rounded-lg border border-white/10 bg-black/40 py-2 pl-10 pr-4 text-sm text-white placeholder:text-slate-600 focus:border-cyan-400 focus:outline-none"
           />
         </div>
@@ -505,10 +672,11 @@ export default function WebhooksPageClient() {
           <button
             onClick={() => {
               setShowForm(true);
+              setFormError(null);
               setEditingWebhook(null);
               setFormData({ url: "", events: "", is_active: true });
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90 sm:w-auto"
           >
             <Plus className="h-4 w-4" />
             Add Webhook
@@ -517,34 +685,42 @@ export default function WebhooksPageClient() {
       )}
 
       {showForm && !viewingDeliveries && (
-        <Card className="p-6">
+        <Card className="min-w-0 p-4 sm:p-6">
           <h2 className="text-lg font-semibold mb-4">
             {editingWebhook ? "Edit Webhook" : "Add New Webhook"}
           </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} aria-busy={submitting} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">URL</label>
+              <label htmlFor={WEBHOOK_URL_ID} className="block text-sm font-medium mb-1">
+                URL
+              </label>
               <input
+                id={WEBHOOK_URL_ID}
                 type="url"
                 value={formData.url}
                 onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                aria-invalid={Boolean(formError)}
+                aria-describedby={formError ? WEBHOOK_FORM_ERROR_ID : undefined}
                 placeholder="https://your-server.com/webhook"
-                className="w-full px-3 py-2 border rounded-md bg-background"
+                className="min-w-0 w-full px-3 py-2 border rounded-md bg-background"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">
+              <label htmlFor={WEBHOOK_EVENTS_ID} className="block text-sm font-medium mb-1">
                 Events (comma-separated)
               </label>
               <input
+                id={WEBHOOK_EVENTS_ID}
                 type="text"
                 value={formData.events}
                 onChange={(e) =>
                   setFormData({ ...formData, events: e.target.value })
                 }
+                aria-invalid={Boolean(formError)}
+                aria-describedby={formError ? WEBHOOK_FORM_ERROR_ID : undefined}
                 placeholder="agent.started, deployment.finished"
-                className="w-full px-3 py-2 border rounded-md bg-background"
+                className="min-w-0 w-full px-3 py-2 border rounded-md bg-background"
               />
             </div>
             {editingWebhook && (
@@ -563,14 +739,17 @@ export default function WebhooksPageClient() {
                 </label>
               </div>
             )}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="submit"
                 disabled={submitting}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
               >
                 {submitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <>
+                    <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+                    <span className="sr-only">Saving webhook</span>
+                  </>
                 ) : (
                   "Save"
                 )}
@@ -579,6 +758,7 @@ export default function WebhooksPageClient() {
                 type="button"
                 onClick={() => {
                   setShowForm(false);
+                  setFormError(null);
                   setEditingWebhook(null);
                 }}
                 className="px-4 py-2 border rounded-md hover:bg-accent"
@@ -596,14 +776,17 @@ export default function WebhooksPageClient() {
           message="Sign in to load webhook routes, test deliveries, and replay history from the live event surface."
         />
       ) : filteredWebhooks.length === 0 && !showForm && !viewingDeliveries ? (
-        <Card className="p-12 text-center">
+        <Card className="min-w-0 p-4 text-center sm:p-12">
           <Webhook className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
           <h3 className="text-lg font-semibold mb-2">No webhooks configured</h3>
           <p className="text-muted-foreground mb-4">
             Add a webhook to receive real-time notifications
           </p>
           <button
-            onClick={() => setShowForm(true)}
+            onClick={() => {
+              setShowForm(true);
+              setFormError(null);
+            }}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
           >
             <Plus className="h-4 w-4 mr-2 inline" />
@@ -615,6 +798,8 @@ export default function WebhooksPageClient() {
           <div className="space-y-4">
             {filteredWebhooks.map((webhook) => {
               const lifecycle = getWebhookLifecycleState(webhook);
+              const currentCopyFeedback =
+                copyFeedback?.webhookId === webhook.id ? copyFeedback : null;
               const deliverySignal =
                 deliverySignals[webhook.id] ??
                 ({
@@ -628,80 +813,116 @@ export default function WebhooksPageClient() {
                 } satisfies WebhookDeliverySignal);
 
               return (
-                <Card key={webhook.id} className="p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <code className="text-sm bg-muted px-2 py-1 rounded">
-                        {webhook.url}
-                      </code>
-                      <StatusBadge status={lifecycle.status} label={lifecycle.label} />
-                      <StatusBadge status={deliverySignal.status} label={deliverySignal.label} />
-                      <button
-                        onClick={() => handleCopyId(webhook.id)}
-                        className="flex items-center gap-1 rounded p-1 text-slate-500 hover:text-cyan-400 transition-colors"
-                        title="Copy webhook ID"
-                      >
-                        {copiedId === webhook.id ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-                      </button>
-                    </div>
-                    <div className="flex gap-1 flex-wrap">
-                      {webhook.events.map((event) => (
-                        <span
-                          key={event}
-                          className="text-xs bg-secondary px-2 py-0.5 rounded"
+                <Card key={webhook.id} className="min-w-0 p-4">
+                  <div className="flex min-w-0 flex-col items-stretch gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <code className="max-w-full min-w-0 whitespace-normal break-all rounded bg-muted px-2 py-1 text-sm">
+                          {webhook.url}
+                        </code>
+                        <StatusBadge status={lifecycle.status} label={lifecycle.label} />
+                        <StatusBadge status={deliverySignal.status} label={deliverySignal.label} />
+                        <button
+                          type="button"
+                          onClick={() => handleCopyId(webhook.id)}
+                          className="flex min-h-8 min-w-8 flex-shrink-0 items-center justify-center rounded text-slate-500 transition-colors hover:bg-accent hover:text-cyan-400"
+                          aria-label={`Copy webhook ID ${webhook.id}`}
+                          title={
+                            currentCopyFeedback?.status === "error"
+                              ? currentCopyFeedback.message
+                              : "Copy webhook ID"
+                          }
                         >
-                          {event}
-                        </span>
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Created {new Date(webhook.created_at).toLocaleString()}
-                      {deliverySignal.lastDeliveryAt
-                        ? ` · last delivery ${formatRelativeTime(deliverySignal.lastDeliveryAt)}`
-                        : ""}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{deliverySignal.detail}</p>
-                    {deliverySignal.lastStatusCode ? (
-                      <p className="text-xs text-muted-foreground">
-                        Latest HTTP status {deliverySignal.lastStatusCode} across {deliverySignal.recentAttempts} sampled attempt
-                        {deliverySignal.recentAttempts === 1 ? "" : "s"}.
+                          {currentCopyFeedback?.status === "success" ? (
+                            <Check aria-hidden="true" className="h-4 w-4 text-emerald-400" />
+                          ) : currentCopyFeedback?.status === "error" ? (
+                            <AlertCircle aria-hidden="true" className="h-4 w-4 text-red-400" />
+                          ) : (
+                            <Copy aria-hidden="true" className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                      <div className="flex gap-1 flex-wrap">
+                        {webhook.events.map((event) => (
+                          <span
+                            key={event}
+                            className="max-w-full break-all rounded bg-secondary px-2 py-0.5 text-xs"
+                          >
+                            {event}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="break-words text-xs text-muted-foreground">
+                        Created {new Date(webhook.created_at).toLocaleString()}
+                        {deliverySignal.lastDeliveryAt
+                          ? ` · last delivery ${formatRelativeTime(deliverySignal.lastDeliveryAt)}`
+                          : ""}
                       </p>
-                    ) : null}
-                  </div>
-                    <div className="flex gap-2">
+                      <p className="break-words text-xs text-muted-foreground">{deliverySignal.detail}</p>
+                      {testFeedback?.webhookId === webhook.id ? (
+                        <div
+                          role="status"
+                          aria-live="polite"
+                          aria-atomic="true"
+                          className="flex items-start gap-2 rounded-md border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-start text-xs text-emerald-200"
+                        >
+                          <CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                          <span className="min-w-0 break-words">{testFeedback.message}</span>
+                        </div>
+                      ) : null}
+                      {deliverySignal.lastStatusCode ? (
+                        <p className="text-xs text-muted-foreground">
+                          Latest HTTP status {deliverySignal.lastStatusCode} across {deliverySignal.recentAttempts} sampled attempt
+                          {deliverySignal.recentAttempts === 1 ? "" : "s"}.
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-shrink-0">
                       <button
+                        type="button"
                         onClick={() => setViewingDeliveries(webhook)}
-                        className="p-2 hover:bg-accent rounded-md"
+                        className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-md border border-white/10 px-2 hover:bg-accent sm:border-transparent"
+                        aria-label="View delivery history"
                         title="View delivery history"
                       >
-                        <Eye className="h-4 w-4" />
+                        <Eye aria-hidden="true" className="h-4 w-4" />
+                        <span className="text-xs sm:sr-only">History</span>
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleTest(webhook.id)}
-                        disabled={testingId === webhook.id}
-                        className="p-2 hover:bg-accent rounded-md disabled:opacity-50"
+                        disabled={testingId !== null}
+                        className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-md border border-white/10 px-2 hover:bg-accent disabled:opacity-50 sm:border-transparent"
+                        aria-label="Test webhook"
                         title="Test webhook"
                       >
                         {testingId === webhook.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
                         ) : (
-                          <Play className="h-4 w-4" />
+                          <Play aria-hidden="true" className="h-4 w-4" />
                         )}
+                        <span className="text-xs sm:sr-only">Test</span>
                       </button>
                       <button
+                        type="button"
                         onClick={() => startEdit(webhook)}
-                        className="p-2 hover:bg-accent rounded-md"
+                        className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-md border border-white/10 px-2 hover:bg-accent sm:border-transparent"
+                        aria-label="Edit webhook"
                         title="Edit webhook"
                       >
-                        <Edit2 className="h-4 w-4" />
+                        <Edit2 aria-hidden="true" className="h-4 w-4" />
+                        <span className="text-xs sm:sr-only">Edit</span>
                       </button>
                       <button
-                        onClick={() => handleDelete(webhook.id)}
-                        className="p-2 hover:bg-accent rounded-md text-destructive"
+                        type="button"
+                        onClick={() => requestDelete(webhook)}
+                        disabled={deletingId !== null}
+                        className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-md border border-white/10 px-2 text-destructive hover:bg-accent disabled:opacity-50 sm:border-transparent"
+                        aria-label="Delete webhook"
                         title="Delete webhook"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 aria-hidden="true" className="h-4 w-4" />
+                        <span className="text-xs sm:sr-only">Delete</span>
                       </button>
                     </div>
                   </div>

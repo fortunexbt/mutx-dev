@@ -1,4 +1,3 @@
-
 name: ${MUTX_COMPOSE_PROJECT:-mutx}
 
 services:

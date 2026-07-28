@@ -1,24 +1,38 @@
-apiVersion: v1
-kind: Service
+{{- if .Values.tests.enabled }}
+apiVersion: batch/v1
+kind: Job
 metadata:
-  name: {{ include "mutx.fullname" . }}-test
+  name: {{ include "mutx.fullname" . }}-test-connection
   labels:
     {{- include "mutx.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 spec:
   backoffLimit: 0
   template:
     metadata:
       labels:
-        {{- include "mutx.selectorLabels" . | nindent 8 }}
+        {{- include "mutx.componentSelectorLabels" (dict "root" . "component" "test") | nindent 8 }}
     spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
       containers:
         - name: curl
-          image: curlimages/curl:latest
-          command:
-            - sh
-            - -c
-            - |
-              echo "Waiting for service..." && \
-              sleep 5 && \
-              curl -v http://{{ include "mutx.fullname" . }}:{{ .Values.service.port }}/health || exit 1
-      restartPolicy: Never
+          image: "{{ .Values.tests.image.repository }}:{{ .Values.tests.image.tag }}"
+          imagePullPolicy: {{ .Values.tests.image.pullPolicy }}
+          command: ["sh", "-ec"]
+          args:
+            - >-
+              curl --fail --show-error --silent
+              http://{{ include "mutx.fullname" . }}-api:{{ .Values.api.service.port }}/ready >/dev/null;
+              curl --fail --show-error --silent
+              http://{{ include "mutx.fullname" . }}-frontend:{{ .Values.frontend.service.port }}/ >/dev/null
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+{{- end }}

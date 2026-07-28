@@ -16,7 +16,7 @@ type AuthTokens = {
   expires_in: number;
 };
 
-type ResourceStatus = "ok" | "auth_error" | "error";
+type ResourceStatus = "ok" | "partial" | "auth_error" | "error";
 
 type ResourceResult = {
   status: ResourceStatus;
@@ -43,6 +43,12 @@ function normalizeCollection(payload: unknown, keys: string[] = ["items", "data"
   }
 
   return [];
+}
+
+function hasCollection(payload: unknown, keys: string[]) {
+  if (Array.isArray(payload)) return true;
+  if (!isRecord(payload)) return false;
+  return keys.some((key) => Array.isArray(payload[key]));
 }
 
 function pickString(record: Record<string, unknown>, keys: string[]) {
@@ -118,8 +124,9 @@ function normalizeAssistant(value: unknown) {
   };
 }
 
-function normalizeSession(session: Record<string, unknown>, index: number) {
-  const id = pickString(session, ["id", "key", "session_key"]) ?? `session-${index + 1}`;
+function normalizeSession(session: Record<string, unknown>) {
+  const id = pickString(session, ["id", "key", "session_key"]);
+  if (!id) return null;
 
   return {
     id,
@@ -136,9 +143,12 @@ function normalizeSession(session: Record<string, unknown>, index: number) {
   };
 }
 
-function normalizeJob(job: Record<string, unknown>, index: number, kind: "document" | "reasoning") {
+function normalizeJob(job: Record<string, unknown>) {
+  const id = pickString(job, ["id"]);
+  if (!id) return null;
+
   return {
-    id: pickString(job, ["id"]) ?? `${kind}-${index + 1}`,
+    id,
     templateId: pickString(job, ["template_id", "templateId"]) ?? "unpublished",
     status: pickString(job, ["status"]) ?? "unknown",
     executionMode: pickString(job, ["execution_mode", "executionMode"]) ?? "unknown",
@@ -269,15 +279,38 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       "Failed to fetch reasoning jobs",
     );
 
-    const sessionItems = normalizeCollection(sessions.data, ["sessions", "items", "data"])
-      .filter(isRecord)
-      .map(normalizeSession);
-    const documentItems = normalizeCollection(documentJobs.data, ["items", "data"])
-      .filter(isRecord)
-      .map((job, index) => normalizeJob(job, index, "document"));
-    const reasoningItems = normalizeCollection(reasoningJobs.data, ["items", "data"])
-      .filter(isRecord)
-      .map((job, index) => normalizeJob(job, index, "reasoning"));
+    const sessionRecords = normalizeCollection(sessions.data, ["sessions", "items", "data"])
+      .filter(isRecord);
+    const documentRecords = normalizeCollection(documentJobs.data, ["items", "data"])
+      .filter(isRecord);
+    const reasoningRecords = normalizeCollection(reasoningJobs.data, ["items", "data"])
+      .filter(isRecord);
+    const missingSessionIds = sessionRecords.filter(
+      (session) => !pickString(session, ["id", "key", "session_key"]),
+    ).length;
+    const missingDocumentIds = documentRecords.filter((job) => !pickString(job, ["id"])).length;
+    const missingReasoningIds = reasoningRecords.filter((job) => !pickString(job, ["id"])).length;
+    const sessionCollectionValid = hasCollection(sessions.data, ["sessions", "items", "data"]);
+    const documentCollectionValid = hasCollection(documentJobs.data, ["items", "data"]);
+    const reasoningCollectionValid = hasCollection(reasoningJobs.data, ["items", "data"]);
+    const sessionItems = sessionRecords.flatMap((session) => {
+      const normalized = normalizeSession(session);
+      return normalized ? [normalized] : [];
+    });
+    const documentItems = documentRecords.flatMap((job) => {
+      const normalized = normalizeJob(job);
+      return normalized ? [normalized] : [];
+    });
+    const reasoningItems = reasoningRecords.flatMap((job) => {
+      const normalized = normalizeJob(job);
+      return normalized ? [normalized] : [];
+    });
+    const sessionComplete =
+      sessions.status === "ok" && sessionCollectionValid && missingSessionIds === 0;
+    const documentsComplete =
+      documentJobs.status === "ok" && documentCollectionValid && missingDocumentIds === 0;
+    const reasoningComplete =
+      reasoningJobs.status === "ok" && reasoningCollectionValid && missingReasoningIds === 0;
     const sourceCounts = new Map<string, number>();
     for (const session of sessionItems) {
       sourceCounts.set(session.source, (sourceCounts.get(session.source) ?? 0) + 1);
@@ -293,18 +326,63 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (sessions.status !== "ok") partials.push(sessions.error ?? "Session memory is unavailable.");
     if (documentJobs.status !== "ok") partials.push(documentJobs.error ?? "Document jobs are unavailable.");
     if (reasoningJobs.status !== "ok") partials.push(reasoningJobs.error ?? "Reasoning jobs are unavailable.");
+    if (sessions.status === "ok" && !sessionCollectionValid) {
+      partials.push("Session memory returned an invalid collection envelope.");
+    }
+    if (documentJobs.status === "ok" && !documentCollectionValid) {
+      partials.push("Document jobs returned an invalid collection envelope.");
+    }
+    if (reasoningJobs.status === "ok" && !reasoningCollectionValid) {
+      partials.push("Reasoning jobs returned an invalid collection envelope.");
+    }
+    if (missingSessionIds > 0) {
+      partials.push(
+        `${missingSessionIds} session record${missingSessionIds === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`,
+      );
+    }
+    if (missingDocumentIds > 0) {
+      partials.push(
+        `${missingDocumentIds} document job record${missingDocumentIds === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`,
+      );
+    }
+    if (missingReasoningIds > 0) {
+      partials.push(
+        `${missingReasoningIds} reasoning job record${missingReasoningIds === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`,
+      );
+    }
 
     const nextResponse = NextResponse.json({
       generatedAt: new Date().toISOString(),
       assistant: normalizeAssistant(assistant),
+      sourceStatus: {
+        assistant: overview.status,
+        sessions:
+          sessions.status === "ok" && (!sessionCollectionValid || missingSessionIds > 0)
+            ? "partial"
+            : sessions.status,
+        documents:
+          documentJobs.status === "ok" && (!documentCollectionValid || missingDocumentIds > 0)
+            ? "partial"
+            : documentJobs.status,
+        reasoning:
+          reasoningJobs.status === "ok" && (!reasoningCollectionValid || missingReasoningIds > 0)
+            ? "partial"
+            : reasoningJobs.status,
+      },
       summary: {
-        sessions: sessionItems.length,
-        activeSessions: sessionItems.filter((session) => session.active).length,
-        sources: sources.length,
-        documentJobs: documentItems.length,
-        documentArtifacts: documentItems.reduce((sum, job) => sum + job.artifacts, 0),
-        reasoningJobs: reasoningItems.length,
-        reasoningArtifacts: reasoningItems.reduce((sum, job) => sum + job.artifacts, 0),
+        sessions: sessionComplete ? sessionItems.length : null,
+        activeSessions: sessionComplete
+          ? sessionItems.filter((session) => session.active).length
+          : null,
+        sources: sessionComplete ? sources.length : null,
+        documentJobs: documentsComplete ? documentItems.length : null,
+        documentArtifacts: documentsComplete
+          ? documentItems.reduce((sum, job) => sum + job.artifacts, 0)
+          : null,
+        reasoningJobs: reasoningComplete ? reasoningItems.length : null,
+        reasoningArtifacts: reasoningComplete
+          ? reasoningItems.reduce((sum, job) => sum + job.artifacts, 0)
+          : null,
       },
       sessions: sessionItems,
       sources,

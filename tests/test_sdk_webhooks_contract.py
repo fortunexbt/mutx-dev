@@ -38,7 +38,7 @@ def test_webhooks_create_uses_trailing_slash_route_and_is_active_contract_field(
         captured["json"] = json.loads(request.content.decode())
         return httpx.Response(201, json=_webhook_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     webhooks = Webhooks(client)
 
     webhooks.create(
@@ -59,7 +59,7 @@ def test_webhooks_update_maps_legacy_active_to_is_active_field() -> None:
         captured["json"] = json.loads(request.content.decode())
         return httpx.Response(200, json=_webhook_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     webhooks = Webhooks(client)
 
     webhooks.update(webhook_id=uuid.uuid4(), active=False)
@@ -103,7 +103,7 @@ def test_webhooks_get_deliveries_uses_live_backend_route_and_filters() -> None:
         captured["params"] = dict(request.url.params)
         return httpx.Response(200, json=[_delivery_payload(webhook_id=str(webhook_id))])
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     webhooks = Webhooks(client)
 
     deliveries = webhooks.get_deliveries(

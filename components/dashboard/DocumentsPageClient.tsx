@@ -1,13 +1,23 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { ApiRequestError, readJson, writeJson } from '@/components/app/http'
+import {
+  ApiRequestError,
+  extractApiErrorMessage,
+  readJson,
+  writeJson,
+} from '@/components/app/http'
+import {
+  dashboardRequestErrorMessage,
+  getDashboardRequestAccessFailure,
+} from '@/components/dashboard/dashboardRequestAccess'
 import {
   LiveAuthRequired,
   LiveEmptyState,
   LiveErrorState,
+  LiveForbidden,
   LiveLoading,
   LivePanel,
   LiveStatCard,
@@ -18,13 +28,22 @@ import {
 import { FeatureHint } from '@/components/dashboard/FeatureHint'
 import { StatusBadge } from '@/components/dashboard/StatusBadge'
 
-type DocumentTemplate = {
+type DocumentTemplateInput = {
+  name: string
+  type: string
+  required: boolean
+  accepts_multiple: boolean
+}
+
+export type DocumentTemplate = {
   id: string
   name: string
   summary: string
   description: string
   supports_managed: boolean
   supports_local: boolean
+  max_upload_bytes: number
+  inputs: DocumentTemplateInput[]
 }
 
 type DocumentArtifact = {
@@ -56,33 +75,78 @@ type DocumentJobHistory = {
 
 type BridgeResult<T> = T & { success?: boolean; error?: string }
 
+type ManagedUpload = {
+  role: string
+  file: File
+}
+
 function isDesktopRuntime() {
   return typeof window !== 'undefined' && Boolean(window.mutxDesktop?.isDesktop)
 }
 
-async function uploadManagedArtifact(jobId: string, file: File, role: string, kind = 'file') {
-  const formData = new FormData()
-  formData.append('file', file)
-  formData.append('role', role)
-  formData.append('kind', kind)
+function formatBytes(value: number) {
+  return value >= 1024 * 1024
+    ? `${Math.floor(value / (1024 * 1024))} MB`
+    : `${Math.ceil(value / 1024)} KB`
+}
 
-  const response = await fetch(`/api/dashboard/documents/jobs/${encodeURIComponent(jobId)}/artifacts`, {
-    method: 'POST',
-    body: formData,
-  })
-  const payload = await response.json().catch(() => ({ detail: 'Failed to upload document artifact' }))
-  if (!response.ok) {
-    throw new ApiRequestError(
-      typeof payload?.detail === 'string' ? payload.detail : 'Failed to upload document artifact',
-      response.status,
-    )
+export function validateManagedDocumentSubmission(
+  template: DocumentTemplate | null,
+  parameters: Record<string, unknown>,
+  uploads: ManagedUpload[],
+) {
+  if (!template) return 'Choose a document workflow template.'
+  if (!template.supports_managed) return `${template.name} does not support managed execution.`
+
+  const roles = uploads.map((item) => item.role)
+  const missing = template.inputs
+    .filter((input) => input.required)
+    .filter((input) => {
+      if (input.type === 'artifact') return !roles.includes(input.name)
+      return !String(parameters[input.name] ?? '').trim()
+    })
+    .map((input) => input.name)
+
+  if (missing.length > 0) {
+    return `Missing required inputs for ${template.name}: ${missing.join(', ')}.`
   }
-  return payload as DocumentArtifact
+
+  const empty = uploads.find((item) => item.file.size === 0)
+  if (empty) return `${empty.file.name} is empty. Choose a document with content.`
+
+  const oversized = uploads.find((item) => item.file.size > template.max_upload_bytes)
+  if (oversized) {
+    return `${oversized.file.name} exceeds the ${formatBytes(template.max_upload_bytes)} per-file limit.`
+  }
+
+  return null
+}
+
+export function describeDocumentRequestError(error: unknown) {
+  if (!(error instanceof ApiRequestError)) {
+    return error instanceof Error
+      ? `Network error: ${error.message}. No execution was confirmed.`
+      : 'Network error while submitting documents. No execution was confirmed.'
+  }
+
+  const detail = error.message
+  if (error.status === 401) return `Authentication required: ${detail}`
+  if (error.status === 403) return `Permission denied: ${detail}`
+  if (error.status === 404) return `Document workflow not found: ${detail}`
+  if (error.status === 409) return `Submission conflict: ${detail}`
+  if (error.status === 413) return `Upload rejected: ${detail}`
+  if (error.status === 429) return `Document quota exceeded: ${detail}`
+  if (error.status === 503) return `Document service unavailable: ${detail}`
+  if (error.status >= 500) {
+    return `Document service error: ${detail}. Review canonical history before retrying.`
+  }
+  return `Document submission rejected: ${detail}`
 }
 
 export function DocumentsPageClient() {
   const [loading, setLoading] = useState(true)
   const [authRequired, setAuthRequired] = useState(false)
+  const [permissionDenied, setPermissionDenied] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [templates, setTemplates] = useState<DocumentTemplate[]>([])
   const [jobs, setJobs] = useState<DocumentJob[]>([])
@@ -94,10 +158,12 @@ export function DocumentsPageClient() {
   const [instructions, setInstructions] = useState('')
   const [redactionPolicy, setRedactionPolicy] = useState('')
   const [submittingManaged, setSubmittingManaged] = useState(false)
+  const [cleaningJobId, setCleaningJobId] = useState<string | null>(null)
   const [desktopFiles, setDesktopFiles] = useState<string[]>([])
   const [desktopBaseFile, setDesktopBaseFile] = useState<string | null>(null)
   const [desktopComparisonFile, setDesktopComparisonFile] = useState<string | null>(null)
   const [desktopBusy, setDesktopBusy] = useState(false)
+  const managedSubmissionKeyRef = useRef<string | null>(null)
 
   const selectedTemplate = useMemo(
     () => templates.find((item) => item.id === selectedTemplateId) ?? null,
@@ -112,6 +178,7 @@ export function DocumentsPageClient() {
     setLoading(true)
     setError(null)
     setAuthRequired(false)
+    setPermissionDenied(false)
 
     try {
       const [templateResponse, jobsResponse] = await Promise.all([
@@ -123,13 +190,13 @@ export function DocumentsPageClient() {
       setSelectedTemplateId((current) => current || templateResponse[0]?.id || 'document_analysis')
       setSelectedJobId(nextJobId ?? jobsResponse.items?.[0]?.id ?? null)
     } catch (loadError) {
-      if (
-        loadError instanceof ApiRequestError &&
-        (loadError.status === 401 || loadError.status === 403)
-      ) {
+      const accessFailure = getDashboardRequestAccessFailure(loadError)
+      if (accessFailure === 'authentication') {
         setAuthRequired(true)
+      } else if (accessFailure === 'permission') {
+        setPermissionDenied(true)
       } else {
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load document workflows')
+        setError(dashboardRequestErrorMessage(loadError, 'Failed to load document workflows'))
       }
     } finally {
       setLoading(false)
@@ -140,57 +207,112 @@ export function DocumentsPageClient() {
     void loadData()
   }, [])
 
+  function resetManagedSubmissionKey() {
+    managedSubmissionKeyRef.current = null
+  }
+
+  function managedUploads(): ManagedUpload[] {
+    if (selectedTemplateId === 'contract_comparison') {
+      return [
+        ...(managedBaseFile ? [{ role: 'base_document', file: managedBaseFile }] : []),
+        ...(managedComparisonFile
+          ? [{ role: 'comparison_document', file: managedComparisonFile }]
+          : []),
+      ]
+    }
+    return managedFiles.map((file) => ({ role: 'documents', file }))
+  }
+
   async function submitManagedJob() {
-    setSubmittingManaged(true)
     setError(null)
+    const parameters: Record<string, unknown> = {}
+    if (instructions.trim()) {
+      parameters.instructions = instructions.trim()
+    }
+    if (selectedTemplateId === 'document_redaction' && redactionPolicy.trim()) {
+      parameters.redaction_policy = redactionPolicy.trim()
+    }
+    const uploads = managedUploads()
+    const validationError = validateManagedDocumentSubmission(
+      selectedTemplate,
+      parameters,
+      uploads,
+    )
+    if (validationError) {
+      setError(validationError)
+      return
+    }
+
+    setSubmittingManaged(true)
     try {
-      const parameters: Record<string, unknown> = {}
-      if (instructions.trim()) {
-        parameters.instructions = instructions.trim()
-      }
-      if (redactionPolicy.trim()) {
-        parameters.redaction_policy = redactionPolicy.trim()
-      }
+      const formData = new FormData()
+      formData.append('template_id', selectedTemplateId)
+      formData.append('parameters', JSON.stringify(parameters))
+      uploads.forEach(({ role, file }) => formData.append(role, file))
 
-      const job = await writeJson<DocumentJob>('/api/dashboard/documents/jobs', {
+      const idempotencyKey = managedSubmissionKeyRef.current ?? crypto.randomUUID()
+      managedSubmissionKeyRef.current = idempotencyKey
+      const response = await fetch('/api/dashboard/documents/jobs/submit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          template_id: selectedTemplateId,
-          execution_mode: 'managed',
-          parameters,
-        }),
+        headers: { 'Idempotency-Key': idempotencyKey },
+        body: formData,
       })
-
-      if (selectedTemplateId === 'contract_comparison') {
-        if (!managedBaseFile || !managedComparisonFile) {
-          throw new Error('Choose both a base document and a comparison document.')
-        }
-        await uploadManagedArtifact(job.id, managedBaseFile, 'base_document')
-        await uploadManagedArtifact(job.id, managedComparisonFile, 'comparison_document')
-      } else {
-        if (managedFiles.length === 0) {
-          throw new Error('Choose at least one document to upload.')
-        }
-        for (const file of managedFiles) {
-          await uploadManagedArtifact(job.id, file, 'documents')
-        }
+      const payload = await response.json().catch(() => ({
+        detail: 'Document service returned an invalid response',
+      }))
+      if (!response.ok) {
+        throw new ApiRequestError(
+          extractApiErrorMessage(payload, 'Failed to submit managed document job'),
+          response.status,
+        )
       }
-
-      await writeJson<DocumentJob>(`/api/dashboard/documents/jobs/${encodeURIComponent(job.id)}/dispatch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'managed' }),
-      })
+      const job = payload as DocumentJob
 
       setManagedFiles([])
       setManagedBaseFile(null)
       setManagedComparisonFile(null)
+      managedSubmissionKeyRef.current = null
       await loadData(job.id)
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Failed to queue managed document job')
+      const message = describeDocumentRequestError(submitError)
+      const accessFailure = getDashboardRequestAccessFailure(submitError)
+      if (accessFailure === 'authentication') {
+        setAuthRequired(true)
+      } else if (accessFailure === 'permission') {
+        setPermissionDenied(true)
+      } else {
+        try {
+          const history = await readJson<DocumentJobHistory>(
+            '/api/dashboard/documents/jobs?limit=20',
+          )
+          setJobs(history.items ?? [])
+          setSelectedJobId(history.items?.[0]?.id ?? null)
+        } catch {
+          // Keep the original, actionable submission error.
+        }
+        setError(message)
+      }
     } finally {
       setSubmittingManaged(false)
+    }
+  }
+
+  async function cleanupFailedJob(job: DocumentJob) {
+    setCleaningJobId(job.id)
+    setError(null)
+    try {
+      await writeJson<DocumentJob>(
+        `/api/dashboard/documents/jobs/${encodeURIComponent(job.id)}/cleanup`,
+        { method: 'POST' },
+      )
+      await loadData(job.id)
+    } catch (cleanupError) {
+      const accessFailure = getDashboardRequestAccessFailure(cleanupError)
+      if (accessFailure === 'authentication') setAuthRequired(true)
+      else if (accessFailure === 'permission') setPermissionDenied(true)
+      else setError(describeDocumentRequestError(cleanupError))
+    } finally {
+      setCleaningJobId(null)
     }
   }
 
@@ -315,6 +437,9 @@ export function DocumentsPageClient() {
       />
     )
   }
+  if (permissionDenied) {
+    return <LiveForbidden title="Document permission required" message="Your account cannot queue or inspect document workflows. Submission and cleanup controls are unavailable." />
+  }
   if (error && templates.length === 0 && jobs.length === 0) {
     return <LiveErrorState title="Document workflows unavailable" message={error} />
   }
@@ -337,8 +462,7 @@ export function DocumentsPageClient() {
           meta={selectedTemplate?.name || 'Select template'}
           action={
             <FeatureHint
-              tone="beta"
-              detail="This hybrid workflow is active, but managed uploads, local execution, and artifact recovery are still being hardened together."
+              detail="Managed submissions validate required inputs before creating canonical history. Repeated submissions reuse an idempotency key until the form changes."
             />
           }
         >
@@ -347,7 +471,10 @@ export function DocumentsPageClient() {
               <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Template</span>
               <select
                 value={selectedTemplateId}
-                onChange={(event) => setSelectedTemplateId(event.target.value)}
+                onChange={(event) => {
+                  setSelectedTemplateId(event.target.value)
+                  resetManagedSubmissionKey()
+                }}
                 className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white"
               >
                 {templates.map((item) => (
@@ -369,7 +496,10 @@ export function DocumentsPageClient() {
               <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Instructions</span>
               <textarea
                 value={instructions}
-                onChange={(event) => setInstructions(event.target.value)}
+                onChange={(event) => {
+                  setInstructions(event.target.value)
+                  resetManagedSubmissionKey()
+                }}
                 className="min-h-24 w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white"
                 placeholder="Optional analyst instructions for the workflow"
               />
@@ -380,7 +510,10 @@ export function DocumentsPageClient() {
                 <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Redaction Policy</span>
                 <textarea
                   value={redactionPolicy}
-                  onChange={(event) => setRedactionPolicy(event.target.value)}
+                  onChange={(event) => {
+                    setRedactionPolicy(event.target.value)
+                    resetManagedSubmissionKey()
+                  }}
                   className="min-h-24 w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white"
                   placeholder="Describe what must be redacted"
                 />
@@ -393,7 +526,10 @@ export function DocumentsPageClient() {
                   <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Base Document</span>
                   <input
                     type="file"
-                    onChange={(event) => setManagedBaseFile(event.target.files?.[0] ?? null)}
+                    onChange={(event) => {
+                      setManagedBaseFile(event.target.files?.[0] ?? null)
+                      resetManagedSubmissionKey()
+                    }}
                     className="block w-full text-sm text-slate-300"
                   />
                 </label>
@@ -401,7 +537,10 @@ export function DocumentsPageClient() {
                   <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Comparison Document</span>
                   <input
                     type="file"
-                    onChange={(event) => setManagedComparisonFile(event.target.files?.[0] ?? null)}
+                    onChange={(event) => {
+                      setManagedComparisonFile(event.target.files?.[0] ?? null)
+                      resetManagedSubmissionKey()
+                    }}
                     className="block w-full text-sm text-slate-300"
                   />
                 </label>
@@ -412,7 +551,10 @@ export function DocumentsPageClient() {
                 <input
                   type="file"
                   multiple
-                  onChange={(event) => setManagedFiles(Array.from(event.target.files ?? []))}
+                  onChange={(event) => {
+                    setManagedFiles(Array.from(event.target.files ?? []))
+                    resetManagedSubmissionKey()
+                  }}
                   className="block w-full text-sm text-slate-300"
                 />
               </label>
@@ -425,7 +567,7 @@ export function DocumentsPageClient() {
                 disabled={submittingManaged}
                 className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/50 disabled:opacity-50"
               >
-                {submittingManaged ? 'Queueing managed job…' : 'Queue managed job'}
+                {submittingManaged ? 'Submitting managed job…' : 'Submit managed job'}
               </button>
 
               {isDesktopRuntime() ? (
@@ -563,6 +705,25 @@ export function DocumentsPageClient() {
                     Open traces surface
                   </Link>
                 </div>
+                {['created', 'uploading', 'failed'].includes(selectedJob.status) ? (
+                  <div className="mt-4 rounded-lg border border-amber-300/20 bg-amber-300/[0.06] p-3">
+                    <p className="text-sm text-amber-100">
+                      {selectedJob.status === 'failed'
+                        ? 'If the original files are still selected, submit again to retry safely; otherwise clean up this failed submission.'
+                        : 'This submission has not been dispatched. You can remove its staged artifacts safely.'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void cleanupFailedJob(selectedJob)}
+                      disabled={cleaningJobId === selectedJob.id}
+                      className="mt-3 rounded-full border border-amber-300/25 px-3 py-1.5 text-xs text-amber-100 disabled:opacity-50"
+                    >
+                      {cleaningJobId === selectedJob.id
+                        ? 'Cleaning up…'
+                        : 'Cancel and clean up'}
+                    </button>
+                  </div>
+                ) : null}
               </div>
 
               <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">

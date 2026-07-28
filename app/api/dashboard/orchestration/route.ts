@@ -18,7 +18,7 @@ type AuthTokens = {
   expires_in: number;
 };
 
-type ResourceStatus = "ok" | "auth_error" | "error";
+type ResourceStatus = "ok" | "partial" | "auth_error" | "error";
 
 type ResourceResult = {
   status: ResourceStatus;
@@ -47,6 +47,12 @@ function normalizeCollection(payload: unknown, keys: string[] = ["items", "data"
   return [];
 }
 
+function hasCollection(payload: unknown, keys: string[]) {
+  if (Array.isArray(payload)) return true;
+  if (!isRecord(payload)) return false;
+  return keys.some((key) => Array.isArray(payload[key]));
+}
+
 function pickString(record: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
     const value = record[key];
@@ -56,6 +62,15 @@ function pickString(record: Record<string, unknown>, keys: string[]) {
   }
 
   return null;
+}
+
+function collectionTotal(payload: unknown, fallback: number) {
+  if (!isRecord(payload)) return fallback;
+
+  const total = payload.total;
+  return typeof total === "number" && Number.isFinite(total)
+    ? Math.max(0, Math.round(total))
+    : fallback;
 }
 
 function toIsoTimestamp(value: unknown) {
@@ -127,12 +142,12 @@ function pickRefreshedTokens(results: Array<{ tokenRefreshed: boolean; refreshed
   return results.find((result) => result.tokenRefreshed)?.refreshedTokens;
 }
 
-async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
+async function readJsonFile<T>(filePath: string): Promise<{ available: boolean; value: T | null }> {
   try {
     const raw = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(raw) as T;
+    return { available: true, value: JSON.parse(raw) as T };
   } catch {
-    return fallback;
+    return { available: false, value: null };
   }
 }
 
@@ -151,18 +166,24 @@ async function readAutonomySnapshot() {
     };
   }
 
-  const repoRoot = process.env.MUTX_REPO_ROOT || "/Users/fortune/MUTX";
+  const repoRoot = process.env.MUTX_REPO_ROOT || process.cwd();
   const autonomyDir = path.join(repoRoot, ".autonomy");
-  const queue = await readJsonFile<{ items?: Array<{ status?: string }> }>(
+  const queueResult = await readJsonFile<{ items?: Array<{ status?: string }> }>(
     path.join(repoRoot, "mutx-engineering-agents/dispatch/action-queue.json"),
-    { items: [] },
   );
-  const daemon = await readJsonFile<{ active_runners?: unknown[] }>(
+  const daemonResult = await readJsonFile<{ active_runners?: unknown[] }>(
     path.join(autonomyDir, "daemon-status.json"),
-    {},
   );
 
-  const items = Array.isArray(queue.items) ? queue.items : [];
+  if (!queueResult.available || !daemonResult.available) {
+    return {
+      available: false,
+      error: "Local autonomy queue or daemon status is unavailable; zero backlog is not assumed.",
+      data: null,
+    };
+  }
+
+  const items = Array.isArray(queueResult.value?.items) ? queueResult.value.items : [];
   const counts = items.reduce<Record<string, number>>((acc, item) => {
     const key = item.status || "unknown";
     acc[key] = (acc[key] || 0) + 1;
@@ -177,7 +198,9 @@ async function readAutonomySnapshot() {
       running: counts.running ?? 0,
       parked: counts.parked ?? 0,
       completed: counts.completed ?? 0,
-      activeRunners: Array.isArray(daemon.active_runners) ? daemon.active_runners.length : 0,
+      activeRunners: Array.isArray(daemonResult.value?.active_runners)
+        ? daemonResult.value.active_runners.length
+        : 0,
     },
   };
 }
@@ -216,24 +239,67 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       readAutonomySnapshot(),
     ]);
 
-    const approvalItems = normalizeCollection(approvals.data, ["items", "data"])
+    const approvalRecords = normalizeCollection(approvals.data, ["items", "data"])
       .filter(isRecord)
-      .map((approval) => ({
-        id: pickString(approval, ["id"]) ?? "approval",
+      .filter(
+        (approval) => (pickString(approval, ["status"]) ?? "PENDING").toUpperCase() === "PENDING",
+      );
+    const runRecords = normalizeCollection(runs.data, ["items", "data"]).filter(isRecord);
+    const failedRunRecords = runRecords.filter((run) =>
+      ["failed", "error"].includes((pickString(run, ["status"]) ?? "unknown").toLowerCase()),
+    );
+    const sessionRecords = normalizeCollection(sessions.data, ["sessions", "items", "data"])
+      .filter(isRecord)
+      .filter((session) => !session.active);
+    const blueprintRecords = normalizeCollection(blueprints.data, ["items", "data"])
+      .filter(isRecord);
+    const missingApprovalIds = approvalRecords.filter(
+      (approval) => !pickString(approval, ["id"]),
+    ).length;
+    const missingRunIds = failedRunRecords.filter((run) => !pickString(run, ["id"])).length;
+    const missingSessionIds = sessionRecords.filter(
+      (session) => !pickString(session, ["id", "session_id", "key"]),
+    ).length;
+    const missingBlueprintIds = blueprintRecords.filter(
+      (blueprint) => !pickString(blueprint, ["id"]),
+    ).length;
+    const approvalCollectionValid = hasCollection(approvals.data, ["items", "data"]);
+    const runCollectionValid = hasCollection(runs.data, ["items", "data"]);
+    const sessionCollectionValid = hasCollection(sessions.data, ["sessions", "items", "data"]);
+    const blueprintCollectionValid = hasCollection(blueprints.data, ["items", "data"]);
+
+    const approvalItems = approvalRecords.flatMap((approval) => {
+      const id = pickString(approval, ["id"]);
+      if (!id) return [];
+      return [{
+        id,
+        ownerId: pickString(approval, ["owner_id"]),
+        reviewerId: pickString(approval, ["reviewer_id"]),
+        canResolve: approval.can_resolve === true,
         agentId: pickString(approval, ["agent_id"]),
         actionType: pickString(approval, ["action_type"]) ?? "approval",
         requester: pickString(approval, ["requester"]) ?? "operator",
         status: pickString(approval, ["status"]) ?? "PENDING",
         createdAt: toIsoTimestamp(approval.created_at),
-      }))
-      .filter((approval) => approval.status.toUpperCase() === "PENDING");
+      }];
+    });
+    const approvalsComplete =
+      approvals.status === "ok" && approvalCollectionValid && missingApprovalIds === 0;
+    const runsComplete = runs.status === "ok" && runCollectionValid && missingRunIds === 0;
+    const sessionsComplete =
+      sessions.status === "ok" && sessionCollectionValid && missingSessionIds === 0;
+    const blueprintsComplete =
+      blueprints.status === "ok" && blueprintCollectionValid && missingBlueprintIds === 0;
+    const pendingApprovalTotal = approvalsComplete
+      ? collectionTotal(approvals.data, approvalItems.length)
+      : null;
 
-    const runRecoveries = normalizeCollection(runs.data, ["items", "data"])
-      .filter(isRecord)
-      .map((run) => {
+    const runRecoveries = failedRunRecords.flatMap((run) => {
+        const id = pickString(run, ["id"]);
+        if (!id) return [];
         const status = pickString(run, ["status"]) ?? "unknown";
-        return {
-          id: pickString(run, ["id"]) ?? "run",
+        return [{
+          id,
           kind: "run" as const,
           title:
             pickString(run, ["subject_label", "agent_id"]) ??
@@ -244,15 +310,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           status,
           createdAt: toIsoTimestamp(run.completed_at ?? run.started_at ?? run.created_at),
           href: "/dashboard/runs",
-        };
-      })
-      .filter((run) => ["failed", "error"].includes(run.status.toLowerCase()));
+        }];
+      });
 
-    const sessionRecoveries = normalizeCollection(sessions.data, ["sessions", "items", "data"])
-      .filter(isRecord)
-      .filter((session) => !session.active)
-      .map((session, index) => ({
-        id: pickString(session, ["id", "session_id", "key"]) ?? `session-${index + 1}`,
+    const sessionRecoveries = sessionRecords.flatMap((session) => {
+      const id = pickString(session, ["id", "session_id", "key"]);
+      if (!id) return [];
+      return [{
+        id,
         kind: "session" as const,
         title:
           pickString(session, ["agent", "assistant", "name"]) ??
@@ -263,7 +328,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         status: "inactive",
         createdAt: toIsoTimestamp(session.last_activity ?? session.lastActivity),
         href: "/dashboard/sessions",
-      }));
+      }];
+    });
 
     const recoveries = [...runRecoveries, ...sessionRecoveries]
       .sort((left, right) => {
@@ -273,10 +339,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       })
       .slice(0, 12);
 
-    const blueprintItems = normalizeCollection(blueprints.data, ["items", "data"])
-      .filter(isRecord)
-      .map((blueprint) => ({
-        id: pickString(blueprint, ["id"]) ?? "blueprint",
+    const blueprintItems = blueprintRecords.flatMap((blueprint) => {
+      const id = pickString(blueprint, ["id"]);
+      if (!id) return [];
+      return [{
+        id,
         name: pickString(blueprint, ["name"]) ?? "Blueprint",
         summary: pickString(blueprint, ["summary"]) ?? "Coordination blueprint",
         recommendedAgents: `${blueprint.recommended_min_agents ?? 1}-${blueprint.recommended_max_agents ?? 1}`,
@@ -286,10 +353,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
               (tag): tag is string => typeof tag === "string" && tag.trim().length > 0,
             )
           : [],
-      }));
+      }];
+    });
 
     const partials: string[] = [
-      "This board is intentionally read-only until MUTX exposes first-class orchestration entities and write controls.",
+      "Recovery and blueprint data are read-only; pending approval requests can be decided from this board.",
     ];
 
     if (approvals.status !== "ok") {
@@ -307,13 +375,64 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (!autonomy.available && autonomy.error) {
       partials.push(autonomy.error);
     }
+    if (approvals.status === "ok" && !approvalCollectionValid) {
+      partials.push("Approval queue returned an invalid collection envelope.");
+    }
+    if (runs.status === "ok" && !runCollectionValid) {
+      partials.push("Run recovery data returned an invalid collection envelope.");
+    }
+    if (sessions.status === "ok" && !sessionCollectionValid) {
+      partials.push("Session recovery data returned an invalid collection envelope.");
+    }
+    if (blueprints.status === "ok" && !blueprintCollectionValid) {
+      partials.push("Blueprint inventory returned an invalid collection envelope.");
+    }
+    if (missingApprovalIds > 0) {
+      partials.push(
+        `${missingApprovalIds} approval record${missingApprovalIds === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`,
+      );
+    }
+    if (missingRunIds > 0) {
+      partials.push(
+        `${missingRunIds} failed run record${missingRunIds === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`,
+      );
+    }
+    if (missingSessionIds > 0) {
+      partials.push(
+        `${missingSessionIds} inactive session record${missingSessionIds === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`,
+      );
+    }
+    if (missingBlueprintIds > 0) {
+      partials.push(
+        `${missingBlueprintIds} blueprint record${missingBlueprintIds === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`,
+      );
+    }
 
     const nextResponse = NextResponse.json({
       generatedAt: new Date().toISOString(),
+      sourceStatus: {
+        approvals:
+          approvals.status === "ok" && (!approvalCollectionValid || missingApprovalIds > 0)
+            ? "partial"
+            : approvals.status,
+        runs:
+          runs.status === "ok" && (!runCollectionValid || missingRunIds > 0)
+            ? "partial"
+            : runs.status,
+        sessions:
+          sessions.status === "ok" && (!sessionCollectionValid || missingSessionIds > 0)
+            ? "partial"
+            : sessions.status,
+        blueprints:
+          blueprints.status === "ok" && (!blueprintCollectionValid || missingBlueprintIds > 0)
+            ? "partial"
+            : blueprints.status,
+        autonomy: autonomy.available ? "ok" : "partial",
+      },
       summary: {
-        pendingApprovals: approvalItems.length,
-        recoveryWatch: recoveries.length,
-        blueprints: blueprintItems.length,
+        pendingApprovals: pendingApprovalTotal,
+        recoveryWatch: runsComplete && sessionsComplete ? recoveries.length : null,
+        blueprints: blueprintsComplete ? blueprintItems.length : null,
         queuedAutonomy: autonomy.data?.queued ?? null,
         runningAutonomy: autonomy.data?.running ?? null,
       },

@@ -35,7 +35,9 @@ def main() -> int:
     queue = load_queue(args.queue)
     task = normalize_task(load_task(args.task))
     items = queue.setdefault("items", [])
-    existing_index = next((index for index, item in enumerate(items) if str(item.get("id")) == str(task["id"])), None)
+    existing_index = next(
+        (index for index, item in enumerate(items) if str(item.get("id")) == str(task["id"])), None
+    )
     if existing_index is not None:
         if not args.replace:
             raise SystemExit(f"Task already exists: {task['id']}")

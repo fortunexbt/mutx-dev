@@ -5,8 +5,8 @@ CLI commands for MUTX runtime-security capabilities.
 
 Commands:
 - mutx security evaluate <tool> <args>   - Dry-run policy evaluation
-- mutx security approve <token>          - Approve deferred action
-- mutx security deny <token>             - Deny deferred action
+- mutx security approve <request-id>     - Approve deferred action
+- mutx security deny <request-id>        - Deny deferred action
 - mutx security audit                   - Run local AARM-alignment gap check
 - mutx security receipts                 - View recent receipts
 - mutx security metrics                 - View governance metrics
@@ -23,6 +23,8 @@ import json
 import click
 
 from cli.config import CLIConfig, get_client
+from cli.errors import CLIServiceError
+from cli.services.observability import SecurityService
 
 
 def _get_config() -> CLIConfig:
@@ -30,9 +32,8 @@ def _get_config() -> CLIConfig:
     return ctx.obj["config"]
 
 
-def _get_client_instance():
-    config = _get_config()
-    return get_client(config)
+def _service() -> SecurityService:
+    return SecurityService(config=_get_config(), client_factory=get_client)
 
 
 @click.group(name="security")
@@ -64,28 +65,22 @@ def evaluate_action(
     Check what the policy decision would be for a given action
     without actually executing it.
     """
-    client = _get_client_instance()
-
     try:
         tool_args = json.loads(args) if args != "{}" else {}
     except json.JSONDecodeError as e:
         click.echo(f"Error parsing --args: {e}", err=True)
         return
 
-    payload = {
-        "tool_name": tool_name,
-        "tool_args": tool_args,
-        "agent_id": agent_id,
-        "session_id": session_id,
-        "trigger": trigger,
-        "runtime": runtime,
-    }
-
     try:
-        response = client._client.post("/v1/security/actions/evaluate", json=payload)
-        response.raise_for_status()
-        result = response.json()
-    except Exception as exc:
+        result = _service().evaluate_action(
+            tool_name=tool_name,
+            tool_args=tool_args,
+            agent_id=agent_id,
+            session_id=session_id,
+            trigger=trigger,
+            runtime=runtime,
+        )
+    except CLIServiceError as exc:
         click.echo(f"Error evaluating action: {exc}", err=True)
         return
 
@@ -123,13 +118,9 @@ def approvals_group():
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON")
 def list_approvals(output_json: bool):
     """List pending approval requests."""
-    client = _get_client_instance()
-
     try:
-        response = client._client.get("/v1/security/approvals")
-        response.raise_for_status()
-        pending = response.json()
-    except Exception as exc:
+        pending = _service().list_approvals()
+    except CLIServiceError as exc:
         click.echo(f"Error fetching approvals: {exc}", err=True)
         return
 
@@ -154,27 +145,14 @@ def list_approvals(output_json: bool):
 
 
 @approvals_group.command(name="approve")
-@click.argument("token")
-@click.option("--reviewer", "-r", required=True, help="Who is approving")
+@click.argument("request_id")
 @click.option("--comment", "-c", default="", help="Optional comment")
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON")
-def approve_action(token: str, reviewer: str, comment: str, output_json: bool):
+def approve_action(request_id: str, comment: str, output_json: bool):
     """Approve a pending request."""
-    client = _get_client_instance()
-
-    payload = {
-        "reviewer": reviewer,
-        "comment": comment,
-    }
-
     try:
-        response = client._client.post(
-            f"/v1/security/approvals/{token}/approve",
-            json=payload,
-        )
-        response.raise_for_status()
-        result = response.json()
-    except Exception as exc:
+        result = _service().approve_request(request_id, comment)
+    except CLIServiceError as exc:
         click.echo(f"Error approving request: {exc}", err=True)
         return
 
@@ -187,27 +165,14 @@ def approve_action(token: str, reviewer: str, comment: str, output_json: bool):
 
 
 @approvals_group.command(name="deny")
-@click.argument("token")
-@click.option("--reviewer", "-r", required=True, help="Who is denying")
+@click.argument("request_id")
 @click.option("--reason", "-c", default="", help="Reason for denial")
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON")
-def deny_action(token: str, reviewer: str, reason: str, output_json: bool):
+def deny_action(request_id: str, reason: str, output_json: bool):
     """Deny a pending request."""
-    client = _get_client_instance()
-
-    payload = {
-        "reviewer": reviewer,
-        "comment": reason,
-    }
-
     try:
-        response = client._client.post(
-            f"/v1/security/approvals/{token}/deny",
-            json=payload,
-        )
-        response.raise_for_status()
-        result = response.json()
-    except Exception as exc:
+        result = _service().deny_request(request_id, reason)
+    except CLIServiceError as exc:
         click.echo(f"Error denying request: {exc}", err=True)
         return
 
@@ -227,13 +192,9 @@ def run_audit(output_json: bool):
 
     Reports current capability gaps. This is not an AARM conformance assessment.
     """
-    client = _get_client_instance()
-
     try:
-        response = client._client.get("/v1/security/compliance")
-        response.raise_for_status()
-        report = response.json()
-    except Exception as exc:
+        report = _service().get_compliance_report()
+    except CLIServiceError as exc:
         click.echo(f"Error running alignment check: {exc}", err=True)
         return
 
@@ -279,23 +240,18 @@ def run_audit(output_json: bool):
 @click.option("--prometheus", is_flag=True, help="Output in Prometheus format")
 def show_metrics(output_json: bool, prometheus: bool):
     """Show governance metrics."""
-    client = _get_client_instance()
-
     try:
         if prometheus:
-            response = client._client.get("/v1/security/metrics/prometheus")
+            metrics_text = _service().get_prometheus_metrics()
         else:
-            response = client._client.get("/v1/security/metrics")
-        response.raise_for_status()
-    except Exception as exc:
+            metrics = _service().get_metrics()
+    except CLIServiceError as exc:
         click.echo(f"Error fetching metrics: {exc}", err=True)
         return
 
     if prometheus:
-        click.echo(response.text)
+        click.echo(metrics_text)
         return
-
-    metrics = response.json()
 
     if output_json:
         click.echo(json.dumps(metrics, indent=2))
@@ -328,24 +284,17 @@ def receipts_group():
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON")
 def list_receipts(session_id: str, limit: int, output_json: bool):
     """List receipts for a session."""
-    client = _get_client_instance()
-
     try:
-        response = client._client.get(
-            f"/v1/security/receipts/session/{session_id}",
-            params={"limit": limit},
-        )
-        response.raise_for_status()
-        data = response.json()
-    except Exception as exc:
+        receipts = _service().get_session_receipts(session_id, limit=limit)
+    except CLIServiceError as exc:
         click.echo(f"Error fetching receipts: {exc}", err=True)
         return
+
+    data = {"session_id": session_id, "count": len(receipts), "receipts": receipts}
 
     if output_json:
         click.echo(json.dumps(data, indent=2))
         return
-
-    receipts = data.get("receipts", [])
 
     if not receipts:
         click.echo(f"No receipts found for session {session_id}.")
@@ -379,16 +328,9 @@ def list_receipts(session_id: str, limit: int, output_json: bool):
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON")
 def show_receipt(receipt_id: str, output_json: bool):
     """Show detailed receipt."""
-    client = _get_client_instance()
-
     try:
-        response = client._client.get(f"/v1/security/receipts/{receipt_id}")
-        if response.status_code == 404:
-            click.echo(f"Receipt not found: {receipt_id}")
-            return
-        response.raise_for_status()
-        receipt = response.json()
-    except Exception as exc:
+        receipt = _service().get_receipt(receipt_id)
+    except CLIServiceError as exc:
         click.echo(f"Error fetching receipt: {exc}", err=True)
         return
 
@@ -429,33 +371,23 @@ def sessions_group():
 @sessions_group.command(name="create")
 @click.option("--session-id", required=True, help="Session ID")
 @click.option("--agent-id", required=True, help="Agent ID")
-@click.option("--user-id", help="User ID")
 @click.option("--intent", default="", help="Stated user intent")
 @click.option("--request", default="", help="Original user request")
 def create_session(
     session_id: str,
     agent_id: str,
-    user_id: str,
     intent: str,
     request: str,
 ):
     """Create a new session context."""
-    client = _get_client_instance()
-
-    params = {
-        "session_id": session_id,
-        "agent_id": agent_id,
-        "stated_intent": intent,
-        "original_request": request,
-    }
-    if user_id:
-        params["user_id"] = user_id
-
     try:
-        response = client._client.post("/v1/security/sessions", params=params)
-        response.raise_for_status()
-        result = response.json()
-    except Exception as exc:
+        result = _service().create_session(
+            session_id=session_id,
+            agent_id=agent_id,
+            original_request=request,
+            stated_intent=intent,
+        )
+    except CLIServiceError as exc:
         click.echo(f"Error creating session: {exc}", err=True)
         return
 
@@ -466,16 +398,9 @@ def create_session(
 @click.argument("session_id")
 def show_session(session_id: str):
     """Show session summary."""
-    client = _get_client_instance()
-
     try:
-        response = client._client.get(f"/v1/security/sessions/{session_id}")
-        if response.status_code == 404:
-            click.echo(f"Session not found: {session_id}")
-            return
-        response.raise_for_status()
-        session = response.json()
-    except Exception as exc:
+        session = _service().get_session(session_id)
+    except CLIServiceError as exc:
         click.echo(f"Error fetching session: {exc}", err=True)
         return
 
@@ -495,15 +420,9 @@ def show_session(session_id: str):
 @click.argument("session_id")
 def close_session(session_id: str):
     """Close a session."""
-    client = _get_client_instance()
-
     try:
-        response = client._client.delete(f"/v1/security/sessions/{session_id}")
-        if response.status_code == 404:
-            click.echo(f"Session not found: {session_id}")
-            return
-        response.raise_for_status()
-    except Exception as exc:
+        _service().close_session(session_id)
+    except CLIServiceError as exc:
         click.echo(f"Error closing session: {exc}", err=True)
         return
 

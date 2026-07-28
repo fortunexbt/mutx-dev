@@ -23,7 +23,7 @@ def _close_async_client(client: MutxAsyncClient) -> None:
 def test_mutx_async_client_emits_deprecation_warning() -> None:
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        client = MutxAsyncClient(api_key="test-key", base_url="https://api.test")
+        client = MutxAsyncClient(api_key="test-key", base_url="https://api.test/v1/")
         try:
             assert any("MutxAsyncClient is deprecated" in str(item.message) for item in caught)
         finally:
@@ -50,7 +50,7 @@ def test_mutx_async_client_sync_resource_methods_reject_async_transport(
 ) -> None:
     with warnings.catch_warnings(record=True):
         warnings.simplefilter("always")
-        client = MutxAsyncClient(api_key="test-key", base_url="https://api.test")
+        client = MutxAsyncClient(api_key="test-key", base_url="https://api.test/v1/")
 
     try:
         resource = getattr(client, resource_name)

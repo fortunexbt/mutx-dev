@@ -1,45 +1,204 @@
-image:
-  repository: mutx/mutx
-  tag: latest
-  pullPolicy: IfNotPresent
+nameOverride: ""
+fullnameOverride: ""
 
-replicaCount: 1
+imagePullSecrets: []
 
-service:
-  type: ClusterIP
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: false
+
+podAnnotations: {}
+podLabels: {}
+podSecurityContext:
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+api:
+  replicaCount: 1
+  image:
+    repository: mutx-api
+    tag: "1.4.0"
+    pullPolicy: IfNotPresent
   port: 8000
+  existingSecret: ""
+  secretEnv: {}
+  env:
+    ENVIRONMENT: development
+    LOG_LEVEL: INFO
+    DATABASE_REQUIRED_ON_STARTUP: "false"
+    DATABASE_SSL_MODE: disable
+    FORWARDED_ALLOW_IPS: 127.0.0.1
+  service:
+    type: ClusterIP
+    port: 8000
+    annotations: {}
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  probes:
+    startup:
+      failureThreshold: 30
+      periodSeconds: 5
+    liveness:
+      initialDelaySeconds: 10
+      periodSeconds: 15
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      initialDelaySeconds: 2
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+frontend:
+  replicaCount: 1
+  image:
+    repository: mutx-frontend
+    tag: "1.4.0"
+    pullPolicy: IfNotPresent
+  port: 3000
+  existingSecret: ""
+  secretEnv: {}
+  env:
+    NODE_ENV: production
+  service:
+    type: ClusterIP
+    port: 3000
+    annotations: {}
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  probes:
+    startup:
+      failureThreshold: 30
+      periodSeconds: 5
+    liveness:
+      initialDelaySeconds: 10
+      periodSeconds: 15
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      initialDelaySeconds: 2
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 75
+
+features:
+  documents: false
+  reasoning: false
+
+workers:
+  monitor:
+    enabled: true
+    replicaCount: 1
+    heartbeatMaxAgeSeconds: 30
+    maxConsecutiveFailures: 3
+    probes:
+      startup:
+        failureThreshold: 30
+        periodSeconds: 5
+        timeoutSeconds: 3
+      liveness:
+        failureThreshold: 3
+        periodSeconds: 10
+        timeoutSeconds: 3
+      readiness:
+        failureThreshold: 3
+        periodSeconds: 10
+        timeoutSeconds: 3
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+  document:
+    enabled: false
+    replicaCount: 1
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+  reasoning:
+    enabled: false
+    replicaCount: 1
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+migrations:
+  enabled: false
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  serviceAccountName: default
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+persistence:
+  enabled: false
+  existingClaim: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  retain: true
+  annotations: {}
+  mountPath: /var/lib/mutx
 
 ingress:
   enabled: false
-  className: nginx
+  className: ""
+  annotations: {}
   host: mutx.local
   tls:
-    enabled: true
-    secretName: mutx-tls
+    enabled: false
+    secretName: ""
 
-resources:
-  limits:
-    cpu: 1000m
-    memory: 1Gi
-  requests:
-    cpu: 100m
-    memory: 256Mi
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
 
-env:
-  {}
-  # Example:
-  # REDIS_URL: "redis://localhost:6379/0"
-  # LOG_LEVEL: "INFO"
-
-secretEnv:
-  {}
-  # Example:
-  # DATABASE_URL: "postgresql://user:pass@localhost:5432/mutx"
-  # JWT_SECRET: "replace-me"
-  # SECRET_ENCRYPTION_KEY: "replace-me"
-
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 75
+tests:
+  enabled: true
+  image:
+    repository: curlimages/curl
+    tag: 8.12.1
+    pullPolicy: IfNotPresent

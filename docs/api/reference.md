@@ -26,6 +26,20 @@ Regenerate the TypeScript types that power the app surface:
 npm run generate-types
 ```
 
+After backend routes settle, refresh both committed contract artifacts in one pass:
+
+```bash
+PYTHON_BIN=.venv/bin/python npm run generate:contracts
+```
+
+The generator derives security per operation from FastAPI route dependencies and
+the application-level managed-key middleware contract. It keeps public
+operations anonymous, distinguishes Bearer from `X-API-Key` alternatives, and
+preserves explicit operation-level security overrides. It also uses FastAPI's
+shared validation shape for response wrappers whose Pydantic serializer only
+sanitizes values; this prevents those structured models from degrading to `{}`
+and `unknown` in generated clients. Computed response fields remain read-only.
+
 Quick route inventory check:
 
 ```bash
@@ -35,14 +49,16 @@ jq -r '.paths | keys[]' docs/api/openapi.json | sort
 ## Hosted Surfaces
 
 - Marketing site: `https://mutx.dev`
-- Docs site: `https://docs.mutx.dev`
+- Docs site: `https://mutx.dev/docs`
 - Operator app: `https://app.mutx.dev`
 - Direct API base: `https://api.mutx.dev`
 
 ## Route Inventory
 
-All public routes mount under `/v1/*` via `PUBLIC_ROUTE_REGISTRATIONS` in `src/api/main.py`.
-The private `audit` route also mounts at `/v1/audit` but requires internal credentials.
+All registered control-plane routers mount under `/v1/*` via the route registries
+in `src/api/main.py`; operational probes remain at the root. The separately
+registered `audit` router mounts at `/v1/audit` and requires persisted `ADMIN` or
+`AUDIT_ADMIN`.
 
 | Route Group | Prefix | Has Docs? |
 | --- | --- | --- |
@@ -75,19 +91,20 @@ The private `audit` route also mounts at `/v1/audit` but requires internal crede
 | `telemetry` | `/v1/telemetry` | — |
 | `budgets` | `/v1/budgets` | — |
 | `governance_credentials` | `/v1/governance/credentials` | — |
-| `governance_supervision` | `/v1/governance/supervision` | — |
+| `governance_supervision` | `/v1/runtime/governance/supervised` | — |
 | `policies` | `/v1/policies` | — |
-| `approvals` | `/v1/approvals` | — |
+| `approvals` | `/v1/approvals` | [approvals.md](./approvals.md) |
 | `audit` (private) | `/v1/audit` | — |
 
 ## Reference Artifacts
 
 - API overview: [index.md](./index.md)
-- OpenAPI JSON: [`openapi.json`](./openapi.json)
+- OpenAPI JSON: [`openapi.json`](https://github.com/mutx-dev/mutx-dev/blob/main/docs/api/openapi.json)
 - Authentication: [authentication.md](./authentication.md)
 - API keys: [api-keys.md](./api-keys.md)
 - Agents: [agents.md](./agents.md)
 - Analytics: [analytics.md](./analytics.md)
+- Approvals: [approvals.md](./approvals.md)
 - Deployments: [deployments.md](./deployments.md)
 - Webhooks and ingestion: [webhooks.md](./webhooks.md)
 - Leads: [leads.md](./leads.md)

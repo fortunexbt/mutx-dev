@@ -10,7 +10,8 @@ Use the canonical page in [`../../api/authentication.md`](../../api/authenticati
 ## Current Truth
 
 - auth routes live under `/v1/auth/*`
-- `register`, `login`, `refresh`, and `local-bootstrap` return token pairs
+- `login`, `refresh`, and `local-bootstrap` return token pairs
+- `register` returns a token pair only when email verification is disabled; the secure default returns no tokens until the address is verified
 - token lifetimes are server-configured, so clients should trust `expires_in`
 
 Canonical auth endpoints:

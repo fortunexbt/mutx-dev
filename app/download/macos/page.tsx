@@ -9,6 +9,7 @@ import { OperationalVisual } from "@/components/site/marketing/OperationalVisual
 import styles from "@/components/site/marketing/MarketingCore.module.css";
 import {
   MUTX_GITHUB_RELEASES_URL,
+  MUTX_RELEASE_NOTES_URL,
   buildReleaseNotesUrl,
   fetchLatestStableDesktopRelease,
 } from "@/lib/desktopRelease";
@@ -19,11 +20,11 @@ export const revalidate = 900;
 export const metadata: Metadata = {
   title: "Download for macOS | MUTX",
   description:
-    "Download the latest signed and notarized MUTX macOS release for Apple Silicon or Intel, with checksums and release notes.",
+    "Check MUTX desktop availability for Apple Silicon and Intel, with release notes and verification details.",
   ...buildPageMetadata({
     title: "Download for macOS | MUTX",
     description:
-      "Download the latest signed and notarized MUTX macOS release for Apple Silicon or Intel, with checksums and release notes.",
+      "Check MUTX desktop availability for Apple Silicon and Intel, with release notes and verification details.",
     path: "/download/macos",
   }),
 };
@@ -31,16 +32,16 @@ export const metadata: Metadata = {
 const structuredData = buildWebPageStructuredData({
   name: "Download for macOS | MUTX",
   path: "/download/macos",
-  description: "Download the latest signed and notarized MUTX macOS release for Apple Silicon or Intel, with checksums and release notes.",
+  description: "Check MUTX desktop availability for Apple Silicon and Intel, with release notes and verification details.",
 });
 
 export default async function MacDownloadPage() {
   const release = await fetchLatestStableDesktopRelease();
-  const releaseLabel = release ? `v${release.version}` : "the latest stable GitHub release";
-  const checksumsHref = release?.assets.checksums ?? release?.htmlUrl ?? MUTX_GITHUB_RELEASES_URL;
-  const docsReleaseNotesHref = release ? buildReleaseNotesUrl(release.version) : "/download/macos/release-notes";
-  const arm64Href = release?.assets.arm64Dmg ?? "/download/macos/arm64";
-  const intelHref = release?.assets.x64Dmg ?? "/download/macos/intel";
+  const releaseLabel = release ? `v${release.version}` : "Unavailable";
+  const docsReleaseNotesHref = release
+    ? buildReleaseNotesUrl(release.version)
+    : MUTX_RELEASE_NOTES_URL;
+  const githubReleaseHref = release?.htmlUrl ?? MUTX_GITHUB_RELEASES_URL;
 
   const cards: ReadonlyArray<{
     title: string;
@@ -49,31 +50,57 @@ export default async function MacDownloadPage() {
     icon: typeof BookOpenText;
     label: string;
     external?: boolean;
-  }> = [
-    {
-      title: "Release summary",
-      body: "Current version, public download lane, notes, and checksums in one place.",
-      href: "/releases",
-      icon: BookOpenText,
-      label: "Open release summary",
-    },
-    {
-      title: "Docs notes",
-      body: "Docs-backed notes for the current desktop build.",
-      href: docsReleaseNotesHref,
-      icon: BookOpenText,
-      label: "Read docs notes",
-      external: true,
-    },
-    {
-      title: "Checksums",
-      body: "SHA-256 file for rollout verification.",
-      href: checksumsHref,
-      icon: ShieldCheck,
-      label: "View checksums",
-      external: true,
-    },
-  ];
+  }> = release
+    ? [
+        {
+          title: "Release summary",
+          body: "Current version, public download lane, notes, and checksums in one place.",
+          href: "/releases",
+          icon: BookOpenText,
+          label: "Open release summary",
+        },
+        {
+          title: "Docs notes",
+          body: "Docs-backed notes for the current desktop build.",
+          href: docsReleaseNotesHref,
+          icon: BookOpenText,
+          label: "Read docs notes",
+          external: true,
+        },
+        {
+          title: "Checksums",
+          body: "Exact four-package SHA-256 manifest from the same GitHub release tag.",
+          href: release.assets.checksums,
+          icon: ShieldCheck,
+          label: "View checksums",
+          external: true,
+        },
+      ]
+    : [
+        {
+          title: "Release summary",
+          body: "See the current desktop availability status without placeholder downloads.",
+          href: "/releases",
+          icon: BookOpenText,
+          label: "Open release summary",
+        },
+        {
+          title: "Docs release notes",
+          body: "Read product notes independently of desktop artifact availability.",
+          href: docsReleaseNotesHref,
+          icon: BookOpenText,
+          label: "Read docs notes",
+          external: true,
+        },
+        {
+          title: "GitHub release notes",
+          body: "Review published source releases and their notes directly on GitHub.",
+          href: MUTX_GITHUB_RELEASES_URL,
+          icon: BookOpenText,
+          label: "View GitHub releases",
+          external: true,
+        },
+      ];
 
   return (
     <PublicSurface className={`${styles.page} ${styles.publicPage} ${styles.downloadPage}`}>
@@ -83,7 +110,7 @@ export default async function MacDownloadPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
 
-      <main id="main-content" className={styles.main}>
+      <main id="main-content" tabIndex={-1} className={styles.main}>
         <section className={styles.routeDarkSection} data-route-surface="dark">
           <div className={styles.shell}>
             <div className={styles.routeDownloadStage}>
@@ -91,48 +118,90 @@ export default async function MacDownloadPage() {
                 <div className={styles.intro}>
                   <p className={`${styles.eyebrow} ${styles.eyebrowOnDark}`}>Desktop release</p>
                   <h1 className={`${styles.displayTitle} ${styles.darkText}`}>
-                    Download MUTX for macOS.
+                    {release
+                      ? "Download MUTX for macOS."
+                      : "MUTX desktop for macOS is currently unavailable."}
                   </h1>
                   <p className={`${styles.bodyText} ${styles.bodyTextOnDark}`}>
-                    Signed for Apple Silicon and Intel. Install, then open the control plane.
+                    {release
+                      ? "Published for Apple Silicon and Intel with DMG and ZIP packages covered by one exact checksum manifest."
+                      : "No complete desktop artifact set is published. Downloads remain disabled until both architectures, archives, and checksums are available together."}
                   </p>
                 </div>
 
                 <div className={styles.ctaRow}>
-                  <a
-                    href={arm64Href}
-                    target={release?.assets.arm64Dmg ? "_blank" : undefined}
-                    rel={release?.assets.arm64Dmg ? "noreferrer" : undefined}
-                    className={styles.buttonPrimary}
-                  >
-                    Download for Apple Silicon
-                    <ArrowRight className="h-4 w-4" />
-                  </a>
-                  <a
-                    href={intelHref}
-                    target={release?.assets.x64Dmg ? "_blank" : undefined}
-                    rel={release?.assets.x64Dmg ? "noreferrer" : undefined}
-                    className={styles.buttonGhost}
-                  >
-                    Download for Intel Mac
-                  </a>
+                  {release ? (
+                    <>
+                      <a
+                        href={release.assets.arm64Dmg}
+                        className={styles.buttonPrimary}
+                      >
+                        Download for Apple Silicon
+                        <ArrowRight className="rtl-directional-icon h-4 w-4" />
+                      </a>
+                      <a
+                        href={release.assets.x64Dmg}
+                        className={styles.buttonGhost}
+                      >
+                        Download for Intel Mac
+                      </a>
+                    </>
+                  ) : (
+                    <>
+                      <a
+                        href={MUTX_GITHUB_RELEASES_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={styles.buttonPrimary}
+                      >
+                        View GitHub release notes
+                        <ArrowRight className="rtl-directional-icon h-4 w-4" />
+                        <span className="sr-only"> (opens in a new tab)</span>
+                      </a>
+                      <a
+                        href={docsReleaseNotesHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={styles.buttonGhost}
+                      >
+                        Read docs notes
+                        <span className="sr-only"> (opens in a new tab)</span>
+                      </a>
+                    </>
+                  )}
                 </div>
 
                 <div className={styles.routeDownloadMeta}>
-                  <p className={styles.routeDownloadMetaItem}>
-                    Signed and notarized release: <span>{releaseLabel}</span>
+                  <p
+                    className={styles.routeDownloadMetaItem}
+                    role={release ? undefined : "status"}
+                    data-testid={release ? undefined : "desktop-release-unavailable"}
+                  >
+                    {release ? "Complete stable release: " : "Desktop downloads: "}
+                    <span>{releaseLabel}</span>
                   </p>
                   <Link href="/releases" className={styles.inlineLink}>
                     Release summary
                   </Link>
                   <a href={docsReleaseNotesHref} target="_blank" rel="noopener noreferrer" className={styles.inlineLink}>
                     Docs notes
+                    <span className="sr-only"> (opens in a new tab)</span>
                   </a>
-                  <a href={checksumsHref} target="_blank" rel="noopener noreferrer" className={styles.inlineLink}>
-                    Checksums
-                  </a>
-                  <a href={release?.htmlUrl ?? MUTX_GITHUB_RELEASES_URL} target="_blank" rel="noopener noreferrer" className={styles.inlineLink}>
-                    GitHub release
+                  {release ? (
+                    <a
+                      href={release.assets.checksums}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.inlineLink}
+                      data-testid="desktop-release-manifest"
+                    >
+                      Checksums
+                      <span className="sr-only"> (opens in a new tab)</span>
+                    </a>
+                  ) : null}
+                  <a href={githubReleaseHref} target="_blank" rel="noopener noreferrer" className={styles.inlineLink}>
+                    GitHub release notes
+                    <span className="sr-only"> (opens in a new tab)</span>
                   </a>
                 </div>
               </div>
@@ -145,23 +214,31 @@ export default async function MacDownloadPage() {
             <div className={`${styles.routeReleaseBand} ${styles.routeHeroPanel}`}>
               <div className={styles.routeReleaseBandCopy}>
                 <div className={styles.intro}>
-                  <p className={styles.eyebrow}>Stable macOS release</p>
-                  <h2 className={styles.sectionTitle}>Mac app first.</h2>
+                  <p className={styles.eyebrow}>{release ? "Stable macOS release" : "Desktop status"}</p>
+                  <h2 className={styles.sectionTitle}>{release ? "Mac app first." : "Artifact set incomplete."}</h2>
                   <p className={styles.bodyText}>
-                    Downloads, notes, and checksums stay in one place.
+                    {release
+                      ? "Downloads, notes, and checksums stay in one place."
+                      : "Release notes remain accessible while binary downloads are unavailable."}
                   </p>
                 </div>
               </div>
 
               <div className={styles.routeReleaseSignalGrid}>
                 <p className={`${styles.surfaceListItem} ${styles.surfaceListItemDark}`}>
-                  Signed builds for Apple Silicon and Intel.
+                  {release
+                    ? "GitHub reports all five expected release files as uploaded and non-empty."
+                    : "No architecture download redirects to a generic release page."}
                 </p>
                 <p className={`${styles.surfaceListItem} ${styles.surfaceListItemDark}`}>
-                  Release summary, notes, and checksums stay aligned.
+                  {release
+                    ? "The checksum manifest names exactly both DMGs and both ZIPs from this tag."
+                    : "Partial, draft, and prerelease artifact sets are not offered."}
                 </p>
                 <p className={`${styles.surfaceListItem} ${styles.surfaceListItemDark}`}>
-                  Install once, then move into the dashboard.
+                  {release
+                    ? "Install once, then move into the dashboard."
+                    : "GitHub and docs release notes remain available separately."}
                 </p>
               </div>
 
@@ -172,21 +249,17 @@ export default async function MacDownloadPage() {
                 <Link href="/login" className={styles.inlineLink}>
                   Sign in
                 </Link>
-                <a href={release?.htmlUrl ?? MUTX_GITHUB_RELEASES_URL} target="_blank" rel="noopener noreferrer" className={styles.inlineLink}>
-                  GitHub release
+                <a href={githubReleaseHref} target="_blank" rel="noopener noreferrer" className={styles.inlineLink}>
+                  GitHub release notes
+                  <span className="sr-only"> (opens in a new tab)</span>
                 </a>
               </div>
             </div>
 
             <div className={styles.routeDownloadCards}>
-              {cards.map((card) => (
-                <a
-                  key={card.title}
-                  href={card.href}
-                  target={card.external ? "_blank" : undefined}
-                  rel={card.external ? "noreferrer" : undefined}
-                  className={`${styles.panel} ${styles.panelDark} ${styles.panelPadded} ${styles.routeCard} ${styles.routeDownloadCard}`}
-                >
+              {cards.map((card) => {
+                const cardClassName = `${styles.panel} ${styles.panelDark} ${styles.panelPadded} ${styles.routeCard} ${styles.routeDownloadCard}`;
+                const cardContent = <>
                   <div className={styles.routeCardIcon}>
                     <card.icon className="h-4 w-4" />
                   </div>
@@ -194,10 +267,27 @@ export default async function MacDownloadPage() {
                   <p className={styles.bodyText}>{card.body}</p>
                   <span className={styles.inlineLink}>
                     {card.label}
-                    <ArrowRight className="h-4 w-4" />
+                    <ArrowRight className="rtl-directional-icon h-4 w-4" />
+                    {card.external ? <span className="sr-only"> (opens in a new tab)</span> : null}
                   </span>
-                </a>
-              ))}
+                </>;
+
+                return card.external ? (
+                  <a
+                    key={card.title}
+                    href={card.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cardClassName}
+                  >
+                    {cardContent}
+                  </a>
+                ) : (
+                  <Link key={card.title} href={card.href} className={cardClassName}>
+                    {cardContent}
+                  </Link>
+                );
+              })}
             </div>
           </div>
         </section>

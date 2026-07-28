@@ -29,12 +29,14 @@ class DeploymentsService(APIService):
 
         response = self._request("get", "/v1/deployments", params=params)
         self._expect_status(response, {200})
-        return [DeploymentRecord.from_payload(item) for item in response.json()]
+        payload = self._decode_json(response, expected_type=(dict, list))
+        items = payload.get("items", []) if isinstance(payload, dict) else payload
+        return [DeploymentRecord.from_payload(item) for item in items if isinstance(item, dict)]
 
     def get_deployment(self, deployment_id: str) -> DeploymentRecord:
         response = self._request("get", f"/v1/deployments/{deployment_id}")
         self._expect_status(response, {200}, not_found_message="Deployment not found")
-        return DeploymentRecord.from_payload(response.json())
+        return DeploymentRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def create_deployment(self, *, agent_id: str, replicas: int = 1) -> DeploymentRecord:
         response = self._request(
@@ -44,11 +46,11 @@ class DeploymentsService(APIService):
         )
         self._expect_status(
             response,
-            {200, 201},
+            {201},
             not_found_message="Agent not found",
             invalid_message="Cannot create deployment",
         )
-        return DeploymentRecord.from_payload(response.json())
+        return DeploymentRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def get_events(
         self,
@@ -67,7 +69,7 @@ class DeploymentsService(APIService):
 
         response = self._request("get", f"/v1/deployments/{deployment_id}/events", params=params)
         self._expect_status(response, {200}, not_found_message="Deployment not found")
-        return DeploymentEventHistory.from_payload(response.json())
+        return DeploymentEventHistory.from_payload(self._decode_json(response, expected_type=dict))
 
     def restart_deployment(self, deployment_id: str) -> DeploymentRecord:
         response = self._request("post", f"/v1/deployments/{deployment_id}/restart")
@@ -77,12 +79,14 @@ class DeploymentsService(APIService):
             not_found_message="Deployment not found",
             invalid_message="Cannot restart deployment",
         )
-        return DeploymentRecord.from_payload(response.json())
+        return DeploymentRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def get_versions(self, deployment_id: str) -> DeploymentVersionHistory:
         response = self._request("get", f"/v1/deployments/{deployment_id}/versions")
         self._expect_status(response, {200}, not_found_message="Deployment not found")
-        return DeploymentVersionHistory.from_payload(response.json())
+        return DeploymentVersionHistory.from_payload(
+            self._decode_json(response, expected_type=dict)
+        )
 
     def rollback_deployment(self, deployment_id: str, *, version: int) -> DeploymentRecord:
         response = self._request(
@@ -96,7 +100,7 @@ class DeploymentsService(APIService):
             not_found_message="Deployment not found",
             invalid_message="Cannot rollback deployment",
         )
-        return DeploymentRecord.from_payload(response.json())
+        return DeploymentRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def get_logs(
         self,
@@ -112,7 +116,9 @@ class DeploymentsService(APIService):
 
         response = self._request("get", f"/v1/deployments/{deployment_id}/logs", params=params)
         self._expect_status(response, {200}, not_found_message="Deployment not found")
-        return [LogEntry.from_payload(item) for item in response.json()]
+        payload = self._decode_json(response, expected_type=(dict, list))
+        items = payload.get("items", []) if isinstance(payload, dict) else payload
+        return [LogEntry.from_payload(item) for item in items if isinstance(item, dict)]
 
     def get_metrics(
         self,
@@ -127,7 +133,9 @@ class DeploymentsService(APIService):
             params={"limit": limit, "skip": skip},
         )
         self._expect_status(response, {200}, not_found_message="Deployment not found")
-        return [MetricPoint.from_payload(item) for item in response.json()]
+        payload = self._decode_json(response, expected_type=(dict, list))
+        items = payload.get("items", []) if isinstance(payload, dict) else payload
+        return [MetricPoint.from_payload(item) for item in items if isinstance(item, dict)]
 
     def scale_deployment(self, deployment_id: str, *, replicas: int) -> DeploymentRecord:
         response = self._request(
@@ -141,7 +149,7 @@ class DeploymentsService(APIService):
             not_found_message="Deployment not found",
             invalid_message="Cannot scale deployment",
         )
-        return DeploymentRecord.from_payload(response.json())
+        return DeploymentRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def delete_deployment(self, deployment_id: str) -> None:
         response = self._request("delete", f"/v1/deployments/{deployment_id}")

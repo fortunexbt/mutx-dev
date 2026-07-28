@@ -7,6 +7,8 @@ import {
   hasAuthSession,
 } from '@/app/api/_lib/controlPlane'
 import { badRequest, unauthorized, withErrorHandling } from '@/app/api/_lib/errors'
+import { malformedTutorUpstream, tutorProxyError } from '@/app/api/pico/tutor/contract'
+import { normalizeTutorConnectionPayload } from '@/lib/pico/tutor'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,8 +30,16 @@ async function proxyConnectionRequest(
     },
   )
 
-  const payload = await response.json().catch(() => ({ detail: fallbackMessage }))
-  const nextResponse = NextResponse.json(payload, { status: response.status })
+  const payload = await response.json().catch(() => null)
+  let nextResponse: NextResponse
+  if (!response.ok) {
+    nextResponse = tutorProxyError(response.status, payload, fallbackMessage)
+  } else {
+    const connection = normalizeTutorConnectionPayload(payload)
+    nextResponse = connection
+      ? NextResponse.json(connection, { status: response.status })
+      : malformedTutorUpstream('Tutor provider status could not be verified.')
+  }
   if (tokenRefreshed && refreshedTokens) {
     applyAuthCookies(nextResponse, request, refreshedTokens)
   }
@@ -48,6 +58,10 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   return withErrorHandling(async () => {
+    if (!hasAuthSession(request)) {
+      return unauthorized()
+    }
+
     const body = await request.json().catch(() => ({}))
     const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : ''
     if (!apiKey) {

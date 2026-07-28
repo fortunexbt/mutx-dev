@@ -10,6 +10,11 @@ import uuid
 from src.api.models.models import UsageEvent
 
 
+@pytest.fixture(autouse=True)
+def developer_principal(test_user):
+    test_user.roles = ["DEVELOPER"]
+
+
 class TestCreateUsageEvent:
     """Tests for POST /usage/events."""
 

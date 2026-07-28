@@ -11,6 +11,9 @@ const {
   verifyDmgArtifact,
   verifyZipArtifact,
 } = require("./release-artifact-utils");
+const {
+  prepareStandaloneNativeDependencies,
+} = require("./prepare-standalone-native-deps");
 
 function parseArgs(argv) {
   const args = {
@@ -119,15 +122,20 @@ function createDmg(artifact) {
 }
 
 function verifySourceArtifacts(artifact) {
-  verifyAppArtifact(artifact.appPath, `${artifact.arch} app`);
+  verifyAppArtifact(
+    artifact.appPath,
+    `${artifact.arch} app`,
+    undefined,
+    artifact.executableArch,
+  );
   console.log(`[desktop:package:release] Verified signed ${artifact.arch} app ${artifact.appPath}`);
 
-  verifyZipArtifact(artifact.zipPath);
+  verifyZipArtifact(artifact.zipPath, undefined, undefined, artifact.executableArch);
   console.log(`[desktop:package:release] Verified extracted ${artifact.arch} ZIP ${artifact.zipPath}`);
 }
 
 function verifyDmgOutput(artifact) {
-  verifyDmgArtifact(artifact.dmgPath);
+  verifyDmgArtifact(artifact.dmgPath, undefined, undefined, artifact.executableArch);
   console.log(`[desktop:package:release] Verified mounted ${artifact.arch} DMG ${artifact.dmgPath}`);
 }
 
@@ -137,6 +145,7 @@ function main() {
 
   const artifacts = getReleaseArtifacts(args.archs);
   cleanCurrentArtifacts(artifacts);
+  prepareStandaloneNativeDependencies(args.archs);
 
   args.archs.forEach((arch) => buildElectronZip(arch));
   artifacts.forEach((artifact) => verifySourceArtifacts(artifact));

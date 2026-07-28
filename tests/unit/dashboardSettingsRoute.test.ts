@@ -122,4 +122,44 @@ describe('dashboard settings route', () => {
       },
     })
   })
+
+  it('keeps the plan unknown and the interface essential when no entitlement can be verified', async () => {
+    hasAuthSession.mockReturnValue(true)
+    authenticatedFetch
+      .mockResolvedValueOnce({
+        response: {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: 'user_789',
+            email: 'unknown@mutx.dev',
+            name: 'Unknown Plan',
+          }),
+        },
+        tokenRefreshed: false,
+      })
+      .mockResolvedValueOnce({
+        response: {
+          ok: false,
+          status: 503,
+          json: async () => ({ detail: 'Payments unavailable' }),
+        },
+        tokenRefreshed: false,
+      })
+
+    const { GET } = await import('../../app/api/dashboard/settings/route')
+    const response = await GET(mockRequest())
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      interfaceMode: 'essential',
+      orgName: 'Unknown Plan',
+      subscription: null,
+      user: {
+        id: 'user_789',
+        email: 'unknown@mutx.dev',
+        name: 'Unknown Plan',
+      },
+    })
+  })
 })

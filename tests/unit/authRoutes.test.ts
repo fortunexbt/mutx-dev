@@ -39,10 +39,12 @@ jest.mock("../../app/api/_lib/controlPlane", () => ({
 function mockRequest(
   cookies: Record<string, string> = {},
   url = "https://app.mutx.dev/api/auth/me",
+  headers: HeadersInit = {},
 ) {
   return {
     url,
     nextUrl: new URL(url),
+    headers: new Headers(headers),
     cookies: {
       get: (name: string) =>
         cookies[name] ? { value: cookies[name] } : undefined,
@@ -354,7 +356,7 @@ describe("auth route handlers", () => {
       expect(setCookieHeader).toContain("refresh_token=");
     });
 
-    it("uses the active pico host as the verification origin", async () => {
+    it("uses the active pico host and preserves the verification return path", async () => {
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: true,
         status: 201,
@@ -371,6 +373,7 @@ describe("auth route handlers", () => {
             email: "newuser@mutx.dev",
             password: "securepassword123",
             name: "New User",
+            return_path: "/dashboard/runs?status=held",
           },
           "https://pico.mutx.dev/api/auth/register",
         ),
@@ -386,6 +389,7 @@ describe("auth route handlers", () => {
             password: "securepassword123",
             name: "New User",
             verification_origin: "https://pico.mutx.dev",
+            return_path: "/dashboard/runs?status=held",
           }),
           cache: "no-store",
         },
@@ -872,6 +876,7 @@ describe("auth route handlers", () => {
         json: async () => ({
           authorization_url:
             "https://accounts.google.com/o/oauth2/v2/auth?state=test",
+          state: "server-bound-state",
         }),
       });
       const { GET } =
@@ -898,7 +903,9 @@ describe("auth route handlers", () => {
         "https://accounts.google.com/o/oauth2/v2/auth?state=test",
       );
       const setCookieHeader = response.headers.get("set-cookie");
-      expect(setCookieHeader).toContain("mutx_oauth_state=");
+      expect(setCookieHeader).toContain(
+        "mutx_oauth_state=server-bound-state",
+      );
       expect(setCookieHeader).toContain("mutx_oauth_next=");
       expect(setCookieHeader).toContain("mutx_oauth_intent=");
       expect(setCookieHeader).toContain("SameSite=none");
@@ -912,6 +919,7 @@ describe("auth route handlers", () => {
           status: 200,
           json: async () => ({
             authorization_url: `https://provider.example/${provider}`,
+            state: `server-bound-state-${provider}`,
           }),
         });
         const { GET } =
@@ -938,7 +946,7 @@ describe("auth route handlers", () => {
   });
 
   describe("GET /api/auth/oauth/[provider]/callback", () => {
-    it("exchanges the provider code, applies auth cookies, and clears oauth cookies", async () => {
+    it("ignores spoofed forwarded hosts when exchanging and redirecting", async () => {
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: true,
         status: 200,
@@ -959,6 +967,11 @@ describe("auth route handlers", () => {
             mutx_oauth_intent: "register",
           },
           "https://app.mutx.dev/api/auth/oauth/google/callback?code=provider-code&state=state-123",
+          {
+            host: "evil.example",
+            "x-forwarded-host": "evil.example",
+            "x-forwarded-proto": "http",
+          },
         ),
         { params: Promise.resolve({ provider: "google" }) },
       );
@@ -971,6 +984,7 @@ describe("auth route handlers", () => {
           body: JSON.stringify({
             code: "provider-code",
             redirect_uri: "https://app.mutx.dev/api/auth/oauth/google/callback",
+            state: "state-123",
           }),
           cache: "no-store",
         },
@@ -985,7 +999,7 @@ describe("auth route handlers", () => {
       expect(setCookieHeader).toContain("mutx_oauth_state=;");
     });
 
-    it("redirects back to the auth page when oauth state is invalid", async () => {
+    it("ignores spoofed forwarded hosts on callback failures", async () => {
       const { GET } =
         await import("../../app/api/auth/oauth/[provider]/callback/route");
 
@@ -993,10 +1007,15 @@ describe("auth route handlers", () => {
         mockRequest(
           {
             mutx_oauth_state: "different-state",
-            mutx_oauth_next: "/dashboard",
+            mutx_oauth_next: "/\\evil.example/steal",
             mutx_oauth_intent: "login",
           },
           "https://app.mutx.dev/api/auth/oauth/google/callback?code=provider-code&state=state-123",
+          {
+            host: "evil.example",
+            "x-forwarded-host": "evil.example",
+            "x-forwarded-proto": "http",
+          },
         ),
         { params: Promise.resolve({ provider: "google" }) },
       );
@@ -1075,6 +1094,7 @@ describe("auth route handlers", () => {
           body: JSON.stringify({
             code: "apple-code",
             redirect_uri: "https://pico.mutx.dev/api/auth/oauth/apple/callback",
+            state: "state-123",
           }),
           cache: "no-store",
         },

@@ -1,25 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertCircle, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
 
 import { extractApiErrorMessage } from "@/components/app/http";
-import { PicoAuthPreviewIntro } from "@/components/auth/PicoAuthPreviewIntro";
 import { AuthSurface } from "@/components/site/AuthSurface";
 import styles from "@/components/site/marketing/MarketingCore.module.css";
 import { buildOAuthStartHref, oauthProviders } from "@/lib/auth/oauth";
 import { resolveRedirectPath } from "@/lib/auth/redirects";
 
 type AuthMode = "login" | "register";
-type AuthPageHostVariant = "default" | "pico";
+type AuthErrorTarget = "email" | "password" | "confirmPassword" | "form" | null;
 
 type AuthPageProps = {
   mode: AuthMode;
   nextPath?: string | null;
   fallbackPath?: string;
-  hostVariant?: AuthPageHostVariant;
   initialError?: string | null;
   initialEmail?: string | null;
 };
@@ -67,48 +65,6 @@ const authContent = {
       loadingLabel: "Creating account",
     },
   },
-  pico: {
-    login: {
-      eyebrow: "Pico sign-in",
-      title: "Come back to your work.",
-      description:
-        "Sign in to restore your lessons, setup, and progress across Pico.",
-      asideEyebrow: "Your workspace",
-      asideTitle: "Pico remembers where you stopped.",
-      asideBody:
-        "Your current lesson, saved proof, setup state, and support context return with your account.",
-      highlights: [
-        "Resume lessons and saved proof.",
-        "Keep setup progress across devices.",
-        "Return to the same support context.",
-      ],
-      heading: "Enter the current Pico build",
-      subheading:
-        "Use a provider or email to open the preview and save your place.",
-      submitLabel: "Enter Pico",
-      loadingLabel: "Opening Pico",
-    },
-    register: {
-      eyebrow: "Create Pico account",
-      title: "Give your work somewhere to live.",
-      description:
-        "Save your setup, lessons, and progress to one Pico account.",
-      asideEyebrow: "Why an account",
-      asideTitle: "So you never restart from zero.",
-      asideBody:
-        "Your current route, saved proof, and support history stay attached as you move through the product.",
-      highlights: [
-        "One account for onboarding and Academy.",
-        "Verification returns you to Pico.",
-        "Your progress persists between sessions.",
-      ],
-      heading: "Create your Pico preview account",
-      subheading:
-        "Sign up once, save your place, and keep following the product as it improves.",
-      submitLabel: "Create preview account",
-      loadingLabel: "Creating preview account",
-    },
-  },
 } as const;
 
 function buildAuthHref(mode: AuthMode, nextPath: string) {
@@ -119,47 +75,65 @@ export function AuthPage({
   mode,
   nextPath,
   fallbackPath = "/dashboard",
-  hostVariant = "default",
   initialError,
   initialEmail,
 }: AuthPageProps) {
   const router = useRouter();
-  const content = authContent[hostVariant][mode];
+  const content = authContent.default[mode];
   const isRegister = mode === "register";
-  const isPicoPreview = hostVariant === "pico";
   const redirectPath = resolveRedirectPath(nextPath, fallbackPath);
+  const errorId = `auth-${mode}-error`;
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState(initialEmail ?? "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState(initialError ?? "");
+  const [errorTarget, setErrorTarget] = useState<AuthErrorTarget>(
+    initialError ? "form" : null,
+  );
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const confirmPasswordRef = useRef<HTMLInputElement>(null);
 
   const verificationError = /verification/i.test(error);
+
+  function clearFieldError(field: Exclude<AuthErrorTarget, "form" | null>) {
+    if (errorTarget !== field) return;
+    setError("");
+    setErrorTarget(null);
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (isRegister && password !== confirmPassword) {
       setError("Passwords do not match");
+      setErrorTarget("confirmPassword");
+      confirmPasswordRef.current?.focus();
       return;
     }
 
     if (isRegister && password.length < 8) {
       setError("Password must be at least 8 characters");
+      setErrorTarget("password");
+      passwordRef.current?.focus();
       return;
     }
 
     setLoading(true);
     setError("");
+    setErrorTarget(null);
     setNotice("");
 
     try {
       const payload =
-        mode === "login" ? { email, password } : { email, password, name };
+        mode === "login"
+          ? { email, password }
+          : { email, password, name, return_path: redirectPath };
 
       const response = await fetch(
         mode === "login" ? "/api/auth/login" : "/api/auth/register",
@@ -189,6 +163,9 @@ export function AuthPage({
           email,
           next: redirectPath,
         });
+        if (responsePayload.verification_email_sent === false) {
+          verificationParams.set("delivery", "failed");
+        }
         router.replace(`/verify-email?${verificationParams.toString()}`);
         router.refresh();
         return;
@@ -197,6 +174,7 @@ export function AuthPage({
       router.replace(redirectPath);
       router.refresh();
     } catch (submitError) {
+      setErrorTarget("form");
       setError(
         submitError instanceof Error
           ? submitError.message
@@ -212,17 +190,21 @@ export function AuthPage({
   async function handleResendVerification() {
     if (!email) {
       setError("Enter your email address first");
+      setErrorTarget("email");
+      emailRef.current?.focus();
       return;
     }
 
     setResendingVerification(true);
+    setError("");
+    setErrorTarget(null);
     setNotice("");
 
     try {
       const response = await fetch("/api/auth/resend-verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, return_path: redirectPath }),
       });
 
       const payload = await response.json().catch(() => ({
@@ -240,6 +222,7 @@ export function AuthPage({
 
       setNotice(payload.message || "Verification email sent");
     } catch (resendError) {
+      setErrorTarget("email");
       setError(
         resendError instanceof Error
           ? resendError.message
@@ -251,22 +234,8 @@ export function AuthPage({
   }
 
   return (
-    <AuthSurface {...content} variant="access" hostVariant={hostVariant}>
-      {isPicoPreview ? <PicoAuthPreviewIntro nextPath={redirectPath} /> : null}
+    <AuthSurface {...content} variant="access">
       <div className={styles.formWrap}>
-        {isPicoPreview ? (
-          <div className="rounded-[26px] border border-[rgba(159,255,78,0.18)] bg-[linear-gradient(180deg,rgba(11,20,9,0.98),rgba(6,13,6,0.96))] px-4 py-4 text-[#f3faee] shadow-[0_24px_54px_rgba(4,10,3,0.3)] sm:px-5">
-            <p className="font-[family:var(--font-mono)] text-[11px] font-semibold uppercase tracking-[0.22em] text-[rgba(223,255,154,0.8)]">
-              Pico preview note
-            </p>
-            <p className="mt-3 text-sm leading-7 text-[rgba(243,250,238,0.82)]">
-              Pico is still being built. This login is here so the preview can
-              remember your progress and let you come back to the same place
-              later.
-            </p>
-          </div>
-        ) : null}
-
         <div>
           <h2 className={styles.sectionTitle}>{content.heading}</h2>
           <p className={styles.bodyText}>{content.subheading}</p>
@@ -281,36 +250,26 @@ export function AuthPage({
               className={`${styles.buttonSecondary} w-full`}
             >
               {provider.buttonLabel}
-              <ArrowRight className="h-4 w-4" />
+              <ArrowRight className="rtl-directional-icon h-4 w-4" />
             </Link>
           ))}
         </div>
 
         <div
-          className={
-            isPicoPreview
-              ? "flex items-center gap-3 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[rgba(113,145,103,0.72)]"
-              : "flex items-center gap-3 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[rgba(77,58,45,0.58)]"
-          }
+          className="flex items-center gap-3 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[#675b53]"
+          data-auth-divider="default"
         >
-          <span
-            className={
-              isPicoPreview
-                ? "h-px flex-1 bg-[rgba(159,255,78,0.18)]"
-                : "h-px flex-1 bg-[rgba(58,38,25,0.16)]"
-            }
-          />
+          <span className="h-px flex-1 bg-[rgba(58,38,25,0.16)]" data-auth-divider-line />
           Or use email
-          <span
-            className={
-              isPicoPreview
-                ? "h-px flex-1 bg-[rgba(159,255,78,0.18)]"
-                : "h-px flex-1 bg-[rgba(58,38,25,0.16)]"
-            }
-          />
+          <span className="h-px flex-1 bg-[rgba(58,38,25,0.16)]" data-auth-divider-line />
         </div>
 
-        <form onSubmit={handleSubmit} className={styles.formWrap}>
+        <form
+          onSubmit={handleSubmit}
+          className={styles.formWrap}
+          aria-describedby={error && errorTarget === "form" ? errorId : undefined}
+          aria-busy={loading}
+        >
           {isRegister ? (
             <div className={styles.field}>
               <label htmlFor="name" className={styles.fieldLabel}>
@@ -318,12 +277,14 @@ export function AuthPage({
               </label>
               <input
                 id="name"
+                name="name"
                 type="text"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="Your name"
                 required
                 autoComplete="name"
+                maxLength={100}
                 className={styles.input}
               />
             </div>
@@ -335,12 +296,20 @@ export function AuthPage({
             </label>
             <input
               id="email"
+              name="email"
+              ref={emailRef}
               type="email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                clearFieldError("email");
+              }}
               placeholder="you@company.com"
               required
               autoComplete="email"
+              dir="ltr"
+              aria-invalid={error && errorTarget === "email" ? true : undefined}
+              aria-describedby={error && errorTarget === "email" ? errorId : undefined}
               className={styles.input}
             />
           </div>
@@ -351,12 +320,19 @@ export function AuthPage({
             </label>
             <input
               id="password"
+              name="password"
+              ref={passwordRef}
               type="password"
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(event) => {
+                setPassword(event.target.value);
+                clearFieldError("password");
+              }}
               placeholder="••••••••"
               required
               autoComplete={isRegister ? "new-password" : "current-password"}
+              aria-invalid={error && errorTarget === "password" ? true : undefined}
+              aria-describedby={error && errorTarget === "password" ? errorId : undefined}
               className={styles.input}
             />
           </div>
@@ -368,12 +344,19 @@ export function AuthPage({
               </label>
               <input
                 id="confirmPassword"
+                name="confirm_password"
+                ref={confirmPasswordRef}
                 type="password"
                 value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
+                onChange={(event) => {
+                  setConfirmPassword(event.target.value);
+                  clearFieldError("confirmPassword");
+                }}
                 placeholder="••••••••"
                 required
                 autoComplete="new-password"
+                aria-invalid={error && errorTarget === "confirmPassword" ? true : undefined}
+                aria-describedby={error && errorTarget === "confirmPassword" ? errorId : undefined}
                 className={styles.input}
               />
             </div>
@@ -387,7 +370,13 @@ export function AuthPage({
           ) : null}
 
           {error ? (
-            <div className={styles.error} role="alert">
+            <div
+              id={errorId}
+              className={styles.error}
+              role="alert"
+              aria-live="assertive"
+              aria-atomic="true"
+            >
               <AlertCircle className="h-4 w-4" />
               {error}
             </div>
@@ -406,7 +395,7 @@ export function AuthPage({
             ) : (
               <>
                 {content.submitLabel}
-                <ArrowRight className="h-4 w-4" />
+                <ArrowRight className="rtl-directional-icon h-4 w-4" />
               </>
             )}
           </button>
@@ -415,7 +404,10 @@ export function AuthPage({
         <div className={styles.utilityLinks}>
           {mode === "login" ? (
             <>
-              <Link href="/forgot-password" className={styles.inlineLink}>
+              <Link
+                href={`/forgot-password?next=${encodeURIComponent(redirectPath)}`}
+                className={styles.inlineLink}
+              >
                 Forgot password?
               </Link>
               {verificationError ? (

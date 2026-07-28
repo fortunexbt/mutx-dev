@@ -114,13 +114,13 @@ Pick one, explain the top reason, mention one tradeoff. Do not end in a tie.
 - Six terminal backends: local, Docker, SSH, Daytona, Singularity, Modal.
 
 ### OpenClaw
-- Node 24 preferred (22.14+ works). Happy path: install → `openclaw onboard --install-daemon` → dashboard.
+- Node 24.15+ preferred (22.22.3+ and 25.9+ are also supported). Happy path: pinned install → `openclaw onboard --install-daemon` → dashboard.
 - Config at `~/.openclaw/openclaw.json`. Strict validation.
 - Control UI at `http://127.0.0.1:18789/`.
 
 ### NanoClaw
 - Node 20+, Claude Code, container runtime (Docker or Apple Container).
-- `/setup` runs inside Claude Code, not normal shell.
+- NanoClaw v2 starts with `bash nanoclaw.sh` in a normal shell; keep the older v1 `/setup` flow out of current guidance.
 - Skills are git-branch based.
 
 ### PicoClaw

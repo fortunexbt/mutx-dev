@@ -6,9 +6,60 @@ integrate correctly with LangChain callbacks and emit OTel spans/events.
 
 from __future__ import annotations
 
+import asyncio
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+class CallbackStreamingExecutor:
+    """Executor that emits real callback lifecycle events in a known order."""
+
+    async def ainvoke(
+        self,
+        inputs: dict[str, Any],
+        config: dict[str, Any],
+    ) -> dict[str, str]:
+        callback = config["callbacks"][0]
+        callback.on_llm_start({"name": "test-model"}, ["hello"], run_id="llm-1")
+        llm_result = MagicMock()
+        llm_result.llm_output = {
+            "token_usage": {
+                "prompt_tokens": 1,
+                "completion_tokens": 2,
+                "total_tokens": 3,
+            }
+        }
+        callback.on_llm_end(llm_result, run_id="llm-1")
+        callback.on_tool_start({"name": "search"}, "MUTX", run_id="tool-1")
+        callback.on_tool_end("found", run_id="tool-1")
+
+        action = MagicMock(tool="search", tool_input="MUTX", log="Calling search")
+        callback.on_agent_action(action, run_id="agent-1")
+        finish = MagicMock(log="done", return_values={"output": "done"})
+        callback.on_agent_finish(finish, run_id="agent-1")
+        return {"output": "done"}
+
+
+class BlockingStreamingExecutor:
+    """Executor used to prove an abandoned stream cancels its background run."""
+
+    def __init__(self) -> None:
+        self.cancelled = False
+
+    async def ainvoke(
+        self,
+        inputs: dict[str, Any],
+        config: dict[str, Any],
+    ) -> dict[str, str]:
+        callback = config["callbacks"][0]
+        callback.on_llm_start({"name": "test-model"}, ["hello"], run_id="llm-1")
+        try:
+            await asyncio.get_running_loop().create_future()
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
 
 
 class TestMutxLangChainCallbackHandler:
@@ -239,7 +290,7 @@ class TestMutxLangChainCallbackHandler:
 
         handler._http.post.assert_called_once()
         call_args = handler._http.post.call_args
-        assert call_args[0][0] == "/v1/events"
+        assert call_args[0][0] == "events"
 
         event_payload = call_args[1]["json"]
         assert event_payload["event_type"] == "agent_action"
@@ -268,7 +319,7 @@ class TestMutxLangChainCallbackHandler:
 
         handler._http.post.assert_called_once()
         call_args = handler._http.post.call_args
-        assert call_args[0][0] == "/v1/events"
+        assert call_args[0][0] == "events"
 
         event_payload = call_args[1]["json"]
         assert event_payload["event_type"] == "agent_finish"
@@ -435,8 +486,8 @@ class TestMutxAgentKit:
 
         mock_middleware.check_output_text.assert_called_once_with("test response")
 
-    def test_stream_events_yields_events(self):
-        """Test that stream_events yields event dictionaries."""
+    def test_stream_events_requires_executor(self):
+        """A stream without an executor fails explicitly instead of fabricating events."""
         from mutx.adapters.langchain import MutxAgentKit
 
         kit = MutxAgentKit(
@@ -445,9 +496,65 @@ class TestMutxAgentKit:
             api_key="test-key",
         )
 
-        events = list(kit.stream_events())
+        async def collect() -> list[dict[str, Any]]:
+            return [event async for event in kit.stream_events("hello")]
 
-        assert len(events) == 1
-        assert events[0]["event_type"] == "stream_start"
-        assert events[0]["agent_name"] == "test-agent"
-        assert "timestamp" in events[0]
+        with pytest.raises(RuntimeError, match="No agent executor set"):
+            asyncio.run(collect())
+
+        assert kit._callback_handler._event_listeners == []
+
+    def test_stream_events_yields_real_callbacks_in_order(self):
+        """The stream forwards observed callback events without synthetic starts."""
+        from mutx.adapters.langchain import MutxAgentKit
+
+        kit = MutxAgentKit(
+            mutx_api_url="https://api.mutx.dev",
+            agent_name="test-agent",
+            api_key="test-key",
+        )
+        kit._callback_handler._http.post = MagicMock()
+        kit.set_agent_executor(CallbackStreamingExecutor())
+
+        async def collect() -> list[dict[str, Any]]:
+            return [event async for event in kit.stream_events("hello")]
+
+        events = asyncio.run(collect())
+
+        assert [event["event_type"] for event in events] == [
+            "llm_start",
+            "llm_end",
+            "tool_start",
+            "tool_end",
+            "agent_action",
+            "agent_finish",
+        ]
+        assert all(event["agent_name"] == "test-agent" for event in events)
+        assert all("timestamp" in event for event in events)
+        assert kit._callback_handler._event_listeners == []
+        assert kit._stream_active is False
+
+    def test_stream_events_closes_listener_and_cancels_background_run(self):
+        """Closing the consumer cleans up both callback and task lifecycle state."""
+        from mutx.adapters.langchain import MutxAgentKit
+
+        kit = MutxAgentKit(
+            mutx_api_url="https://api.mutx.dev",
+            agent_name="test-agent",
+            api_key="test-key",
+        )
+        executor = BlockingStreamingExecutor()
+        kit.set_agent_executor(executor)
+
+        async def consume_one() -> dict[str, Any]:
+            stream = kit.stream_events("hello")
+            event = await stream.__anext__()
+            await stream.aclose()
+            return event
+
+        event = asyncio.run(consume_one())
+
+        assert event["event_type"] == "llm_start"
+        assert executor.cancelled is True
+        assert kit._callback_handler._event_listeners == []
+        assert kit._stream_active is False

@@ -8,9 +8,9 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.auth.ownership import get_owned_agent
+from src.api.auth.ownership import get_owned_agent as _get_owned_agent
 from src.api.database import get_db
-from src.api.auth.dependencies import get_current_user
+from src.api.auth.dependencies import require_roles
 from src.api.models import (
     Agent,
     AgentLog,
@@ -42,10 +42,29 @@ from src.api.models.schemas import (
     OpenClawAgentConfig,
     OpenAIAgentConfig,
 )
+from src.api.models.numeric import reject_non_finite_floats
 from src.api.time_utils import utc_now_naive
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 logger = logging.getLogger(__name__)
+
+
+async def get_owned_agent(
+    agent_id: uuid.UUID,
+    db: AsyncSession,
+    current_user: User,
+    **kwargs: Any,
+) -> Agent:
+    """Resolve ownership without revealing whether another tenant owns the id."""
+    try:
+        return await _get_owned_agent(agent_id, db, current_user, **kwargs)
+    except HTTPException as exc:
+        if exc.status_code != 403:
+            raise
+        raise HTTPException(
+            status_code=404,
+            detail=kwargs.get("not_found_detail", "Agent not found"),
+        ) from None
 
 
 AGENT_CONFIG_MODEL_MAP: dict[AgentType, type[AgentConfigBase]] = {
@@ -168,6 +187,10 @@ def _validate_agent_config(
 ) -> tuple[str, dict[str, Any]]:
     """Validate and normalize agent configuration based on its type."""
     config_dict = _parse_agent_config_payload(config)
+    try:
+        reject_non_finite_floats(config_dict, path="$.config")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     if name and not config_dict.get("name"):
         config_dict["name"] = name
@@ -176,18 +199,18 @@ def _validate_agent_config(
 
     config_model = AGENT_CONFIG_MODEL_MAP.get(agent_type)
     if config_model is None:
-        return json.dumps(config_dict), config_dict
+        return json.dumps(config_dict, allow_nan=False), config_dict
 
     try:
         validated = config_model.model_validate(config_dict)
     except ValidationError as exc:
         raise HTTPException(
-            status_code=400,
+            status_code=422,
             detail=f"Configuration validation failed: {exc}",
         ) from exc
 
     normalized = validated.model_dump(exclude_none=True)
-    return json.dumps(normalized), normalized
+    return json.dumps(normalized, allow_nan=False), normalized
 
 
 def _serialize_deployment(deployment: Deployment):
@@ -259,7 +282,7 @@ def _serialize_agent(agent: Agent, include_deployments: bool = False):
 async def create_agent(
     agent_data: AgentCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     config_json, _normalized_config = _validate_agent_config(
         agent_data.type,
@@ -300,7 +323,7 @@ async def list_agents(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     # Ownership enforcement: always filter by authenticated user's ID.
     # Client-supplied user_id query params are ignored - ownership is derived
@@ -330,7 +353,7 @@ async def list_agents(
 async def get_agent(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     agent = await get_owned_agent(
         agent_id,
@@ -346,7 +369,7 @@ async def get_agent(
 async def get_agent_config(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     agent = await get_owned_agent(
         agent_id,
@@ -362,7 +385,7 @@ async def update_agent_config(
     agent_id: uuid.UUID,
     request: AgentConfigUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     agent = await get_owned_agent(
         agent_id,
@@ -389,7 +412,7 @@ async def update_agent_config(
 async def delete_agent(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     agent = await get_owned_agent(
         agent_id,
@@ -417,7 +440,7 @@ class AgentStopResponse(BaseModel):
 async def deploy_agent(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     try:
         agent = await get_owned_agent(
@@ -472,7 +495,7 @@ async def deploy_agent(
 async def stop_agent(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     agent = await get_owned_agent(
         agent_id,
@@ -520,7 +543,7 @@ async def get_agent_logs(
     limit: int = Query(100, ge=1, le=500),
     level: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     await get_owned_agent(
         agent_id,
@@ -555,7 +578,7 @@ async def get_agent_metrics(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     await get_owned_agent(
         agent_id,
@@ -599,7 +622,7 @@ async def create_agent_resource_usage(
     agent_id: uuid.UUID,
     request: AgentResourceUsageCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     """Record resource usage for an agent (tokens, API calls, cost)."""
     await get_owned_agent(
@@ -617,7 +640,9 @@ async def create_agent_resource_usage(
         api_calls=request.api_calls,
         cost_usd=request.cost_usd,
         model=request.model,
-        extra_metadata=(json.dumps(request.extra_metadata) if request.extra_metadata else None),
+        extra_metadata=(
+            json.dumps(request.extra_metadata, allow_nan=False) if request.extra_metadata else None
+        ),
         period_start=request.period_start,
         period_end=request.period_end,
     )
@@ -637,7 +662,7 @@ async def list_agent_resource_usage(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     """List resource usage records for an agent."""
     await get_owned_agent(

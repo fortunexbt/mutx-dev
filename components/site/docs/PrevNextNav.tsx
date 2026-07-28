@@ -31,7 +31,7 @@ export function PrevNextNav({ currentRoute }: PrevNextNavProps) {
         {prev ? (
           <Link href={prev.route} className="docs-prev-next-link docs-prev-link">
             <span className="docs-prev-next-label">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <svg className="docs-directional-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
                 <path d="M9 11L5 7l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
               Previous
@@ -46,7 +46,7 @@ export function PrevNextNav({ currentRoute }: PrevNextNavProps) {
           <Link href={next.route} className="docs-prev-next-link docs-next-link">
             <span className="docs-prev-next-label">
               Next
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <svg className="docs-directional-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
                 <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </span>

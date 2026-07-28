@@ -8,12 +8,18 @@ from uuid import UUID
 
 import httpx
 
+from mutx._http import api_path
+from mutx.pagination import Page, parse_page
+
 
 class ApprovalRequest:
     """Represents an approval request returned by the API.
 
     Attributes:
         id: Unique identifier for the approval request.
+        owner_id: Authenticated owner that created the request.
+        reviewer_id: Explicit reviewer assignment, if any.
+        can_resolve: Server-computed resolution capability for the current caller.
         agent_id: ID of the agent that triggered the approval.
         session_id: ID of the session during which the approval was requested.
         action_type: Type of action requiring approval (e.g. "deploy", "delete").
@@ -28,6 +34,10 @@ class ApprovalRequest:
 
     def __init__(self, data: dict[str, Any]):
         self.id: UUID = UUID(data["id"])
+        self.owner_id: UUID = UUID(data["owner_id"])
+        reviewer_id = data["reviewer_id"]
+        self.reviewer_id: Optional[UUID] = UUID(reviewer_id) if reviewer_id else None
+        self.can_resolve: bool = data["can_resolve"]
         self.agent_id: str = data["agent_id"]
         self.session_id: str = data["session_id"]
         self.action_type: str = data["action_type"]
@@ -47,6 +57,20 @@ class ApprovalRequest:
             f"ApprovalRequest(id={self.id}, agent_id={self.agent_id!r}, "
             f"action_type={self.action_type!r}, status={self.status!r})"
         )
+
+
+class EligibleReviewer:
+    """A discoverable active user eligible for explicit assignment."""
+
+    def __init__(self, data: dict[str, Any]):
+        self.id: UUID = UUID(data["id"])
+        self.email: str = data["email"]
+        self.name: str = data["name"]
+        self.roles: list[str] = list(data.get("roles", []))
+        self._data = data
+
+    def __repr__(self) -> str:
+        return f"EligibleReviewer(id={self.id}, email={self.email!r})"
 
 
 class Approvals:
@@ -70,7 +94,7 @@ class Approvals:
 
         >>> import httpx
         >>> async_client = httpx.AsyncClient(
-        ...     base_url="https://api.mutx.dev",
+        ...     base_url="https://api.mutx.dev/v1",
         ...     headers={"Authorization": "Bearer ..."},
         ... )
         >>> approvals = Approvals(async_client)
@@ -107,6 +131,8 @@ class Approvals:
         session_id: str,
         action_type: str,
         payload: Optional[dict[str, Any]] = None,
+        reviewer_id: str | UUID | None = None,
+        idempotency_key: Optional[str] = None,
     ) -> ApprovalRequest:
         """
         Submit a new approval request (sync).
@@ -114,47 +140,64 @@ class Approvals:
         Returns the created ``ApprovalRequest`` in ``PENDING`` status.
         """
         self._require_sync_client()
-        response = self._client.post(
-            "/v1/approvals",
-            json={
-                "agent_id": agent_id,
-                "session_id": session_id,
-                "action_type": action_type,
-                "payload": payload or {},
-            },
-        )
+        request_body = {
+            "agent_id": agent_id,
+            "session_id": session_id,
+            "action_type": action_type,
+            "payload": payload or {},
+        }
+        if reviewer_id is not None:
+            request_body["reviewer_id"] = str(reviewer_id)
+        headers = {"Idempotency-Key": idempotency_key} if idempotency_key is not None else None
+        response = self._client.post("approvals", json=request_body, headers=headers)
         response.raise_for_status()
         return ApprovalRequest(response.json())
 
     def get(self, request_id: str) -> ApprovalRequest:
         """Fetch a single approval request by ID."""
         self._require_sync_client()
-        response = self._client.get(f"/v1/approvals/{request_id}")
+        response = self._client.get(api_path("approvals/{request_id}", request_id=request_id))
         response.raise_for_status()
         return ApprovalRequest(response.json())
+
+    def list_reviewers(self) -> list[EligibleReviewer]:
+        """List active users eligible for reviewer assignment."""
+        self._require_sync_client()
+        response = self._client.get("approvals/reviewers")
+        response.raise_for_status()
+        return [EligibleReviewer(item) for item in response.json()]
 
     def list(
         self,
         status: Optional[str] = None,
         agent_id: Optional[str] = None,
-    ) -> list[ApprovalRequest]:
+        skip: int = 0,
+        limit: int = 50,
+    ) -> Page[ApprovalRequest]:
         """
         List approval requests.
 
         Args:
             status: Filter by status (e.g. "PENDING", "APPROVED").
             agent_id: Filter by agent ID.
+            skip: Number of records to skip.
+            limit: Maximum number of records to return.
         """
         self._require_sync_client()
-        params: dict[str, Any] = {}
+        params: dict[str, Any] = {"skip": skip, "limit": limit}
         if status is not None:
             params["status"] = status
         if agent_id is not None:
             params["agent_id"] = agent_id
 
-        response = self._client.get("/v1/approvals", params=params)
+        response = self._client.get("approvals", params=params)
         response.raise_for_status()
-        return [ApprovalRequest(r) for r in response.json()]
+        return parse_page(
+            response.json(),
+            ApprovalRequest,
+            requested_skip=skip,
+            requested_limit=limit,
+        )
 
     def approve(
         self,
@@ -168,7 +211,7 @@ class Approvals:
         """
         self._require_sync_client()
         response = self._client.post(
-            f"/v1/approvals/{request_id}/approve",
+            api_path("approvals/{request_id}/approve", request_id=request_id),
             json={"comment": comment},
         )
         response.raise_for_status()
@@ -186,7 +229,7 @@ class Approvals:
         """
         self._require_sync_client()
         response = self._client.post(
-            f"/v1/approvals/{request_id}/reject",
+            api_path("approvals/{request_id}/reject", request_id=request_id),
             json={"comment": comment},
         )
         response.raise_for_status()
@@ -202,44 +245,61 @@ class Approvals:
         session_id: str,
         action_type: str,
         payload: Optional[dict[str, Any]] = None,
+        reviewer_id: str | UUID | None = None,
+        idempotency_key: Optional[str] = None,
     ) -> ApprovalRequest:
         """Submit a new approval request (async)."""
         self._require_async_client()
-        response = await self._client.post(
-            "/v1/approvals",
-            json={
-                "agent_id": agent_id,
-                "session_id": session_id,
-                "action_type": action_type,
-                "payload": payload or {},
-            },
-        )
+        request_body = {
+            "agent_id": agent_id,
+            "session_id": session_id,
+            "action_type": action_type,
+            "payload": payload or {},
+        }
+        if reviewer_id is not None:
+            request_body["reviewer_id"] = str(reviewer_id)
+        headers = {"Idempotency-Key": idempotency_key} if idempotency_key is not None else None
+        response = await self._client.post("approvals", json=request_body, headers=headers)
         response.raise_for_status()
         return ApprovalRequest(response.json())
 
     async def aget(self, request_id: str) -> ApprovalRequest:
         """Fetch a single approval request by ID (async)."""
         self._require_async_client()
-        response = await self._client.get(f"/v1/approvals/{request_id}")
+        response = await self._client.get(api_path("approvals/{request_id}", request_id=request_id))
         response.raise_for_status()
         return ApprovalRequest(response.json())
+
+    async def alist_reviewers(self) -> list[EligibleReviewer]:
+        """List active users eligible for reviewer assignment (async)."""
+        self._require_async_client()
+        response = await self._client.get("approvals/reviewers")
+        response.raise_for_status()
+        return [EligibleReviewer(item) for item in response.json()]
 
     async def alist(
         self,
         status: Optional[str] = None,
         agent_id: Optional[str] = None,
-    ) -> list[ApprovalRequest]:
+        skip: int = 0,
+        limit: int = 50,
+    ) -> Page[ApprovalRequest]:
         """List approval requests (async)."""
         self._require_async_client()
-        params: dict[str, Any] = {}
+        params: dict[str, Any] = {"skip": skip, "limit": limit}
         if status is not None:
             params["status"] = status
         if agent_id is not None:
             params["agent_id"] = agent_id
 
-        response = await self._client.get("/v1/approvals", params=params)
+        response = await self._client.get("approvals", params=params)
         response.raise_for_status()
-        return [ApprovalRequest(r) for r in response.json()]
+        return parse_page(
+            response.json(),
+            ApprovalRequest,
+            requested_skip=skip,
+            requested_limit=limit,
+        )
 
     async def aapprove(
         self,
@@ -249,7 +309,7 @@ class Approvals:
         """Approve a pending request (async)."""
         self._require_async_client()
         response = await self._client.post(
-            f"/v1/approvals/{request_id}/approve",
+            api_path("approvals/{request_id}/approve", request_id=request_id),
             json={"comment": comment},
         )
         response.raise_for_status()
@@ -263,7 +323,7 @@ class Approvals:
         """Reject a pending request (async)."""
         self._require_async_client()
         response = await self._client.post(
-            f"/v1/approvals/{request_id}/reject",
+            api_path("approvals/{request_id}/reject", request_id=request_id),
             json={"comment": comment},
         )
         response.raise_for_status()

@@ -104,7 +104,7 @@ class TestMutxAutoGenCallbackSpans:
 
             callback._http.post.assert_called_once()
             call_args = callback._http.post.call_args
-            assert call_args[0][0] == "/v1/events"
+            assert call_args[0][0] == "events"
             event = call_args[1]["json"]
             assert event["event_type"] == "autogen_message_received"
             assert event["agent_name"] == "test-agent"

@@ -1,24 +1,24 @@
-import { Clock3, Sparkles } from "lucide-react";
+import { CircleGauge, ShieldAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-export type FeatureHintTone = "beta" | "comingSoon";
+export type FeatureHintTone = "status" | "boundary";
 
 export interface FeatureHintProps {
   tone?: FeatureHintTone;
   label?: string;
   title?: string;
   detail: string;
-  align?: "left" | "right";
+  align?: "start" | "end";
   className?: string;
 }
 
 function getFeatureHintCopy(tone: FeatureHintTone) {
-  if (tone === "comingSoon") {
+  if (tone === "boundary") {
     return {
-      label: "Coming Soon",
-      title: "Coming soon",
-      icon: Clock3,
+      label: "Boundary",
+      title: "Current boundary",
+      icon: ShieldAlert,
       summaryClassName:
         "border-amber-400/28 bg-amber-400/10 text-amber-100 hover:border-amber-300/40",
       detailClassName: "border-amber-400/28 bg-[#120d08] text-amber-100",
@@ -27,9 +27,9 @@ function getFeatureHintCopy(tone: FeatureHintTone) {
   }
 
   return {
-    label: "Beta",
-    title: "Beta",
-    icon: Sparkles,
+    label: "Status",
+    title: "Current status",
+    icon: CircleGauge,
     summaryClassName:
       "border-sky-400/28 bg-sky-400/10 text-sky-100 hover:border-sky-300/40",
     detailClassName: "border-sky-400/28 bg-[#09111c] text-sky-100",
@@ -38,18 +38,18 @@ function getFeatureHintCopy(tone: FeatureHintTone) {
 }
 
 export function FeatureHint({
-  tone = "beta",
+  tone = "status",
   label,
   title,
   detail,
-  align = "right",
+  align = "end",
   className,
 }: FeatureHintProps) {
   const copy = getFeatureHintCopy(tone);
   const Icon = copy.icon;
 
   return (
-    <details className={cn("group relative", className)}>
+    <details className={cn("group relative max-sm:w-full", className)}>
       <summary
         className={cn(
           "inline-flex min-h-11 list-none cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] transition-colors [&::-webkit-details-marker]:hidden",
@@ -62,8 +62,8 @@ export function FeatureHint({
 
       <div
         className={cn(
-          "absolute top-[calc(100%+0.5rem)] z-30 hidden w-[min(20rem,calc(100vw-2rem))] rounded-[18px] border p-4 shadow-[0_20px_50px_rgba(2,2,5,0.34)] group-open:block",
-          align === "left" ? "left-0" : "right-0",
+          "z-30 mt-2 hidden w-full rounded-[18px] border p-4 shadow-[0_20px_50px_rgba(2,2,5,0.34)] group-open:block sm:absolute sm:top-[calc(100%+0.5rem)] sm:mt-0 sm:w-[min(20rem,calc(100vw-2rem))]",
+          align === "start" ? "start-0" : "end-0",
           copy.detailClassName,
         )}
       >

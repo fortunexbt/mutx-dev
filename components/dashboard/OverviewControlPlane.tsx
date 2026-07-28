@@ -322,7 +322,7 @@ export function ControlPlaneOverview({
 
 export function ControlPlaneOverviewSkeleton() {
   return (
-    <section className="space-y-3 animate-pulse">
+    <section className="space-y-3 motion-safe:animate-pulse motion-reduce:animate-none">
       <div className="h-28 rounded-xl border border-[#1a2943] bg-[#07132a]" />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {Array.from({ length: 5 }).map((_, index) => (

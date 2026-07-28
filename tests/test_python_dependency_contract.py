@@ -2,6 +2,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+PYTHON_BASE = (
+    "python:3.11-slim-bookworm@sha256:"
+    "b18992999dbe963a45a8a4da40ac2b1975be1a776d939d098c647482bcad5cba"
+)
 
 
 def read_text(relative_path: str) -> str:
@@ -26,7 +30,38 @@ def test_requirements_compat_script_checks_test_requirements_too() -> None:
     compat_script = read_text("scripts/check_requirements_compat.py")
 
     assert 'repo_root / "test-requirements.txt"' in compat_script
+    assert 'repo_root / "requirements-runtime.lock"' in compat_script
+    assert 'repo_root / "requirements-ci.lock"' in compat_script
+    assert "--hash=sha256:" in compat_script
     assert "test-requirements drift detected" in compat_script
+
+
+def test_python_locks_are_hash_pinned_and_cover_runtime_sources() -> None:
+    runtime_lock = read_text("requirements-runtime.lock")
+    ci_lock = read_text("requirements-ci.lock")
+
+    assert "--generate-hashes" in runtime_lock.splitlines()[1]
+    assert "--generate-hashes" in ci_lock.splitlines()[1]
+    assert "--hash=sha256:" in runtime_lock
+    assert "--hash=sha256:" in ci_lock
+    for dependency in ("fastapi==0.135.3", "email-validator==2.3.0", "openai==2.46.0"):
+        assert dependency in runtime_lock
+        assert dependency in ci_lock
+    assert "ruff==0.15.22" in ci_lock
+
+
+def test_api_images_install_the_hash_pinned_runtime_lock_from_one_base() -> None:
+    for dockerfile_path in (
+        "infrastructure/docker/Dockerfile.api",
+        "infrastructure/docker/Dockerfile.api.production",
+        "infrastructure/docker/Dockerfile.backend",
+    ):
+        dockerfile = read_text(dockerfile_path)
+        assert f"FROM {PYTHON_BASE}" in dockerfile
+        assert "COPY requirements-runtime.lock ." in dockerfile
+        assert "--require-hashes" in dockerfile
+        assert "--only-binary=:all:" in dockerfile
+        assert "pip install --upgrade" not in dockerfile
 
 
 def test_langchain_runtime_uses_current_v1_ecosystem() -> None:

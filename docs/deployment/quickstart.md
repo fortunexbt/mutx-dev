@@ -181,7 +181,7 @@ mutx setup local --install-openclaw --open-tui
 Once the starter assistant is deployed, these pages usually come next:
 
 * [Architecture Overview](/docs/architecture/overview) for the system map behind the app, API, CLI, SDK, and infrastructure
-* [API Reference](/docs/api/reference) for the public `/v1/*` contract
+* [API Reference](../api/reference.md) for the public `/v1/*` contract
 * [AI Agent Cost Management](/ai-agent-cost) for spend attribution and budget controls
 * [AI Agent Approvals](/ai-agent-approvals) for human approval gates on risky operations
 

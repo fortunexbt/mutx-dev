@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { CSSProperties } from 'react'
 
 import { PublicFooter } from '@/components/site/PublicFooter'
 import { PublicNav } from '@/components/site/PublicNav'
@@ -12,8 +13,189 @@ import {
   type OperationalStoryItem,
 } from './operationalStories'
 
-const runTimecodes = ['00:00.000', '00:00.118', '00:00.641', '00:01.247'] as const
-const workflowStates = ['DEFINED', 'ENFORCED', 'RECORDED', 'REVIEWABLE'] as const
+const workflowStates = ['DEFINED', 'EVALUATED', 'RECORDED', 'REVIEWABLE'] as const
+
+type ArtifactTone = 'live' | 'muted' | 'signal' | 'trace'
+
+type StoryArtifactConfig = {
+  readonly caption: string
+  readonly kind: string
+  readonly metric: string
+  readonly metricLabel: string
+  readonly rows: readonly {
+    readonly detail: string
+    readonly label: string
+    readonly level: number
+    readonly tone: ArtifactTone
+  }[]
+  readonly stamp: string
+}
+
+const STORY_ARTIFACTS = {
+  '/ai-agent-approvals': {
+    kind: 'gate',
+    caption: 'Approval gate / governed decision envelope',
+    metric: '01',
+    metricLabel: 'operator decision pending',
+    stamp: 'AUTH ROUTE / P1',
+    rows: [
+      { label: 'Scope match', detail: 'prod.release', level: 100, tone: 'live' },
+      { label: 'Policy threshold', detail: 'human required', level: 86, tone: 'signal' },
+      { label: 'Operator route', detail: 'configured webhook', level: 68, tone: 'trace' },
+      { label: 'Handler', detail: 'not invoked', level: 6, tone: 'muted' },
+    ],
+  },
+  '/ai-agent-audit-logs': {
+    kind: 'chain',
+    caption: 'Evidence chain / sealed execution record',
+    metric: '4/4',
+    metricLabel: 'hash links verified',
+    stamp: 'EXPORT / VERIFIED',
+    rows: [
+      { label: 'Intent', detail: 'b91e…0a4c', level: 100, tone: 'trace' },
+      { label: 'Policy', detail: '294a…b910', level: 92, tone: 'signal' },
+      { label: 'Operator', detail: 'a014…71df', level: 84, tone: 'live' },
+      { label: 'Outcome', detail: 'e772…cc03', level: 76, tone: 'trace' },
+    ],
+  },
+  '/ai-agent-control-plane': {
+    kind: 'topology',
+    caption: 'Control plane / runtime visibility map',
+    metric: '12',
+    metricLabel: 'sample agents reporting',
+    stamp: 'PLANE / HEALTHY',
+    rows: [
+      { label: 'Ingress', detail: '3 active channels', level: 92, tone: 'trace' },
+      { label: 'Policy plane', detail: '24 rules loaded', level: 78, tone: 'signal' },
+      { label: 'Runtime fleet', detail: '12 / 12 online', level: 100, tone: 'live' },
+      { label: 'Evidence sink', detail: 'governed calls', level: 100, tone: 'trace' },
+    ],
+  },
+  '/ai-agent-cost': {
+    kind: 'spend',
+    caption: 'Usage ledger / recorded credit profile',
+    metric: '28.0',
+    metricLabel: 'credits recorded',
+    stamp: 'BUDGET / REPORTED',
+    rows: [
+      { label: 'Agent runs', detail: '16 credits', level: 66, tone: 'signal' },
+      { label: 'Deployments', detail: '8 credits', level: 26, tone: 'trace' },
+      { label: 'RAG', detail: '4 credits', level: 9, tone: 'muted' },
+      { label: 'Runtime cutoff', detail: 'operator-owned', level: 2, tone: 'live' },
+    ],
+  },
+  '/ai-agent-deployment': {
+    kind: 'rollout',
+    caption: 'Deployment record / lifecycle history',
+    metric: 'v3',
+    metricLabel: 'record version selected',
+    stamp: 'PROVIDER / OPERATOR-OWNED',
+    rows: [
+      { label: 'Desired replicas', detail: '3', level: 100, tone: 'live' },
+      { label: 'Lifecycle state', detail: 'ready reported', level: 100, tone: 'live' },
+      { label: 'Version record', detail: 'current · v3', level: 100, tone: 'live' },
+      { label: 'Provider rollout', detail: 'verify separately', level: 42, tone: 'muted' },
+    ],
+  },
+  '/ai-agent-governance': {
+    kind: 'policy',
+    caption: 'Policy evaluation / effective ruleset',
+    metric: 'v24',
+    metricLabel: 'policy bundle active',
+    stamp: 'POLICY / 09:42 UTC',
+    rows: [
+      { label: 'Identity', detail: 'role matched', level: 100, tone: 'live' },
+      { label: 'Environment', detail: 'production', level: 84, tone: 'trace' },
+      { label: 'Data scope', detail: 'internal only', level: 68, tone: 'signal' },
+      { label: 'Decision', detail: 'approval required', level: 48, tone: 'signal' },
+    ],
+  },
+  '/ai-agent-guardrails': {
+    kind: 'boundary',
+    caption: 'Boundary check / proposed action envelope',
+    metric: '0',
+    metricLabel: 'prohibited writes executed',
+    stamp: 'BOUNDARY / HELD',
+    rows: [
+      { label: 'Requested scope', detail: 'team.internal', level: 58, tone: 'trace' },
+      { label: 'Proposed scope', detail: '+23 external', level: 94, tone: 'signal' },
+      { label: 'Allowed scope', detail: 'internal only', level: 58, tone: 'live' },
+      { label: 'Action state', detail: 'not executed', level: 4, tone: 'muted' },
+    ],
+  },
+  '/ai-agent-infrastructure': {
+    kind: 'topology',
+    caption: 'Runtime topology / reported infrastructure',
+    metric: '03',
+    metricLabel: 'sample signals visible',
+    stamp: 'INTEGRATION / REPORTED',
+    rows: [
+      { label: 'Control', detail: 'mutx-core-01', level: 88, tone: 'signal' },
+      { label: 'Runtime', detail: '12 workers', level: 100, tone: 'live' },
+      { label: 'Telemetry', detail: 'OTLP connected', level: 92, tone: 'trace' },
+      { label: 'Provider state', detail: 'verify external', level: 76, tone: 'muted' },
+    ],
+  },
+  '/ai-agent-monitoring': {
+    kind: 'trace',
+    caption: 'Trace waterfall / one submitted tool path',
+    metric: '1.24s',
+    metricLabel: 'end-to-end duration',
+    stamp: 'TRACE / 7F2A91',
+    rows: [
+      { label: 'Plan', detail: '118ms', level: 18, tone: 'trace' },
+      { label: 'Policy', detail: '76ms', level: 10, tone: 'signal' },
+      { label: 'Tool call', detail: '814ms', level: 72, tone: 'live' },
+      { label: 'Receipt', detail: '232ms', level: 28, tone: 'trace' },
+    ],
+  },
+  '/ai-agent-reliability': {
+    kind: 'health',
+    caption: 'Readiness envelope / reported health',
+    metric: '120s',
+    metricLabel: 'stale heartbeat threshold',
+    stamp: 'HEALTH / CONTROL PLANE',
+    rows: [
+      { label: 'Agent signal', detail: 'heartbeat fresh', level: 100, tone: 'live' },
+      { label: 'API readiness', detail: 'database ready', level: 100, tone: 'live' },
+      { label: 'Owned alerts', detail: 'queryable', level: 91, tone: 'trace' },
+      { label: 'Webhook circuit', detail: 'delivery only', level: 3, tone: 'muted' },
+    ],
+  },
+} as const satisfies Record<string, StoryArtifactConfig>
+
+function StoryArtifact({ story }: { story: OperationalStory }) {
+  const config = STORY_ARTIFACTS[story.path as keyof typeof STORY_ARTIFACTS]
+    ?? STORY_ARTIFACTS['/ai-agent-control-plane']
+
+  return (
+    <figure className={styles.storyArtifact} data-kind={config.kind}>
+      <figcaption className={styles.artifactCaption}>
+        <span>{config.caption}</span>
+        <strong>SAMPLE / {config.stamp}</strong>
+      </figcaption>
+      <div className={styles.artifactMetric}>
+        <strong>{config.metric}</strong>
+        <span>{config.metricLabel}</span>
+      </div>
+      <ol className={styles.artifactRows}>
+        {config.rows.map((row) => (
+          <li key={row.label} data-tone={row.tone}>
+            <div className={styles.artifactRowCopy}>
+              <span>{row.label}</span>
+              <code>{row.detail}</code>
+            </div>
+            <span className={styles.artifactTrack} aria-hidden="true">
+              <i
+                style={{ '--artifact-level': `${row.level}%` } as CSSProperties}
+              />
+            </span>
+          </li>
+        ))}
+      </ol>
+    </figure>
+  )
+}
 
 function StoryAction({ action, primary = false }: {
   action: OperationalStoryAction
@@ -67,7 +249,7 @@ export function OperationalLedgerPage({ story }: { story: OperationalStory }) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <main id="main-content" className={styles.main}>
+      <main id="main-content" tabIndex={-1} className={styles.main}>
         <section className={styles.hero} aria-labelledby={heroTitleId}>
           <div className={`${styles.shell} ${styles.heroGrid}`}>
             <div className={styles.heroCopy}>
@@ -86,14 +268,14 @@ export function OperationalLedgerPage({ story }: { story: OperationalStory }) {
               </div>
             </div>
 
-            <aside className={styles.recorder} aria-label={`${story.hero.eyebrow} flight recorder`}>
+            <aside className={styles.recorder} aria-label={`${story.hero.eyebrow} illustrative flight recorder`}>
               <div className={styles.recorderMast}>
                 <div>
-                  <p>Flight recorder</p>
+                  <p>Illustrative flight recorder</p>
                   <strong>{story.record.id}</strong>
                 </div>
                 <span className={styles.liveState}>
-                  <span aria-hidden="true" /> Live record
+                  <span aria-hidden="true" /> Product example
                 </span>
               </div>
 
@@ -108,22 +290,11 @@ export function OperationalLedgerPage({ story }: { story: OperationalStory }) {
                 </div>
               </dl>
 
-              <ol className={styles.runRail} aria-label="Timecoded execution record">
-                {story.workflow.items.map((item, index) => (
-                  <li key={item.title} className={styles.runEvent}>
-                    <span className={styles.timecode}>{runTimecodes[index]}</span>
-                    <span className={styles.eventMarker} aria-hidden="true" />
-                    <span className={styles.eventCopy}>
-                      <strong>{item.title}</strong>
-                      <span>{workflowStates[index]}</span>
-                    </span>
-                  </li>
-                ))}
-              </ol>
+              <StoryArtifact story={story} />
 
               <div className={styles.recorderFoot}>
-                <span>Trace integrity</span>
-                <strong>SHA-256 / VERIFIED</strong>
+                <span>Example integrity field</span>
+                <strong>SHA-256 / SAMPLE</strong>
               </div>
             </aside>
           </div>

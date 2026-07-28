@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 import re
@@ -10,6 +11,7 @@ from typing import Any, Literal
 from urllib.parse import urlparse
 
 import httpx
+from fastapi import HTTPException, status
 from opentelemetry.trace import Status, StatusCode
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +21,9 @@ from src.api.models.pico_tutor import (
     PicoTutorCommand,
     PicoTutorConfidence,
     PicoTutorDocLink,
+    PicoTutorEntitlement,
+    PicoTutorGenerationProof,
+    PicoTutorGuidance,
     PicoTutorIntent,
     PicoTutorLessonLink,
     PicoTutorRequest,
@@ -28,7 +33,10 @@ from src.api.models.pico_tutor import (
     PicoTutorStructuredReply,
 )
 from src.api.telemetry.telemetry import get_tracer
-from src.api.services.pico_tutor_openai import resolve_pico_tutor_api_key
+from src.api.services.pico_tutor_openai import (
+    require_pico_tutor_access,
+    resolve_pico_tutor_api_key,
+)
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -45,6 +53,14 @@ try:
     from openai import AsyncOpenAI
 except ModuleNotFoundError:
     AsyncOpenAI = _MissingAsyncOpenAI
+
+
+@dataclass(frozen=True)
+class PicoTutorGenerationFailure:
+    status_code: int
+    code: str
+    message: str
+
 
 KNOWLEDGE_ROOT = Path(__file__).resolve().parents[1] / "knowledge" / "pico_ops"
 TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_./+-]*")
@@ -750,10 +766,15 @@ async def _generate_with_model(
     retrieved_lessons: list[RetrievalMatch],
     retrieved_docs: list[RetrievalMatch],
     official_evidence: list[OfficialEvidence],
-    fallback_reply: PicoTutorResponse,
-) -> PicoTutorResponse | None:
+    fallback_reply: PicoTutorGuidance,
+    entitlement: PicoTutorEntitlement,
+) -> PicoTutorResponse | PicoTutorGenerationFailure:
     if not api_key:
-        return None
+        return PicoTutorGenerationFailure(
+            status_code=status.HTTP_409_CONFLICT,
+            code="TUTOR_PROVIDER_REQUIRED",
+            message="No validated model provider is available for live Tutor.",
+        )
 
     tracer = get_tracer()
     model_name = settings.pico_tutor_model.replace("openai/", "", 1)
@@ -793,16 +814,44 @@ async def _generate_with_model(
                 ],
             )
             content = response.choices[0].message.content or ""
-            parsed = PicoTutorResponse.model_validate_json(content)
-            span.set_attribute("citation_count", len(parsed.structured.sources))
-            span.set_attribute("answer.confidence", parsed.confidence)
+            parsed = PicoTutorGuidance.model_validate_json(content)
+            response_id = getattr(response, "id", None)
+            if not isinstance(response_id, str) or not response_id.strip():
+                raise ValueError("OpenAI response did not include a response identifier")
+            if api_key_source not in {"user", "platform"}:
+                raise ValueError("Tutor generation did not use a proven provider source")
+            generated = PicoTutorResponse(
+                **parsed.model_dump(),
+                entitlement=entitlement,
+                generation=PicoTutorGenerationProof(
+                    source=api_key_source,
+                    model=model_name,
+                    responseId=response_id,
+                    completedAt=datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+            span.set_attribute("citation_count", len(generated.structured.sources))
+            span.set_attribute("answer.confidence", generated.confidence)
+            span.set_attribute("llm.response_id", response_id)
             span.set_status(Status(StatusCode.OK))
-            return parsed
+            return generated
         except Exception as exc:
             span.record_exception(exc)
             span.set_status(Status(StatusCode.ERROR, str(exc)))
-            logger.warning("Pico tutor model generation failed, falling back: %s", exc)
-            return None
+            upstream_status = getattr(exc, "status_code", None)
+            if upstream_status == status.HTTP_429_TOO_MANY_REQUESTS:
+                logger.info("Pico tutor model rate limited: %s", exc)
+                return PicoTutorGenerationFailure(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    code="TUTOR_RATE_LIMITED",
+                    message="The Tutor model is rate limited. Wait a moment and try again.",
+                )
+            logger.warning("Pico tutor model generation failed: %s", exc)
+            return PicoTutorGenerationFailure(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                code="TUTOR_MODEL_UNAVAILABLE",
+                message="The Tutor model could not complete this request. Your Academy guidance is still available.",
+            )
 
 
 async def generate_pico_tutor_reply(
@@ -812,6 +861,12 @@ async def generate_pico_tutor_reply(
     current_user: User | None = None,
     trace_id: str | None = None,
 ) -> PicoTutorResponse:
+    if current_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "UNAUTHORIZED", "message": "Authentication is required."},
+        )
+    entitlement = require_pico_tutor_access(current_user)
     question = request.question.strip()
     lesson = get_lesson_by_slug(request.lessonSlug)
     intent = classify_intent(question, request.lessonSlug)
@@ -837,6 +892,16 @@ async def generate_pico_tutor_reply(
             user=current_user,
         )
         span.set_attribute("model_auth_source", api_key_source)
+        if not api_key or api_key_source not in {"user", "platform"}:
+            span.set_status(Status(StatusCode.ERROR, "Tutor provider unavailable"))
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "TUTOR_PROVIDER_REQUIRED",
+                    "message": "No validated model provider is available for live Tutor.",
+                    "canConnect": entitlement.byokAccess,
+                },
+            )
         with tracer.start_as_current_span("mutx.pico.tutor.retrieve") as retrieve_span:
             lesson_matches = retrieve_lessons(question, request.lessonSlug)
             knowledge_matches = retrieve_knowledge_docs(
@@ -941,7 +1006,7 @@ async def generate_pico_tutor_reply(
         elif confidence == "low":
             escalation_reason = "Evidence is thin. Ask for the smallest decisive signal before changing more of the system."
 
-        fallback_reply = PicoTutorResponse(
+        fallback_reply = PicoTutorGuidance(
             title=(
                 lesson.title
                 if lesson
@@ -982,8 +1047,19 @@ async def generate_pico_tutor_reply(
             retrieved_docs=knowledge_matches,
             official_evidence=official_evidence,
             fallback_reply=fallback_reply,
+            entitlement=entitlement,
         )
-        final_reply = generated_reply or fallback_reply
+        if isinstance(generated_reply, PicoTutorGenerationFailure):
+            span.set_status(Status(StatusCode.ERROR, generated_reply.message))
+            raise HTTPException(
+                status_code=generated_reply.status_code,
+                detail={
+                    "code": generated_reply.code,
+                    "message": generated_reply.message,
+                    "retryable": generated_reply.status_code in {429, 503},
+                },
+            )
+        final_reply = generated_reply
         span.set_attribute("used_official_fallback", final_reply.usedOfficialFallback)
         span.set_attribute("citation_count", len(final_reply.structured.sources))
         span.set_attribute("answer.confidence", final_reply.confidence)

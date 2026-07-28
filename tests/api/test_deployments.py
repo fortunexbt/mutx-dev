@@ -5,6 +5,7 @@ Tests for /deployments endpoints.
 from datetime import datetime, timezone
 import uuid
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +18,13 @@ from src.api.models.models import (
     DeploymentEvent,
     DeploymentVersion,
 )
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def developer_principals(db_session, test_user, other_user):
+    test_user.roles = ["DEVELOPER"]
+    other_user.roles = ["DEVELOPER"]
+    await db_session.commit()
 
 
 class TestListDeployments:
@@ -41,6 +49,12 @@ class TestListDeployments:
         assert data["total"] == 1
         assert len(data["items"]) == 1
         assert data["items"][0]["id"] == str(test_deployment.id)
+        assert data["items"][0]["allowed_actions"] == [
+            "stop",
+            "restart",
+            "scale",
+            "terminate",
+        ]
 
     @pytest.mark.asyncio
     async def test_list_deployments_pagination(
@@ -105,7 +119,7 @@ class TestListDeployments:
     ):
         """Test filtering by another user's agent is forbidden."""
         response = await other_user_client.get(f"/v1/deployments?agent_id={test_agent.id}")
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     @pytest.mark.asyncio
     async def test_list_deployments_by_status(
@@ -141,6 +155,7 @@ class TestGetDeployment:
         data = response.json()
         assert data["id"] == str(test_deployment.id)
         assert data["status"] == test_deployment.status
+        assert data["allowed_actions"] == ["stop", "restart", "scale", "terminate"]
 
     @pytest.mark.asyncio
     async def test_get_deployment_not_found(self, client: AsyncClient):
@@ -154,7 +169,18 @@ class TestGetDeployment:
     ):
         """Test other users cannot read deployments they do not own."""
         response = await other_user_client.get(f"/v1/deployments/{test_deployment.id}")
-        assert response.status_code == 403
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_nested_agent_deployments_use_same_capability_contract(
+        self, client: AsyncClient, test_agent, test_deployment
+    ):
+        response = await client.get(f"/v1/agents/{test_agent.id}")
+
+        assert response.status_code == 200
+        deployment = response.json()["deployments"][0]
+        assert deployment["id"] == str(test_deployment.id)
+        assert deployment["allowed_actions"] == ["stop", "restart", "scale", "terminate"]
 
 
 class TestScaleDeployment:
@@ -185,15 +211,15 @@ class TestScaleDeployment:
         self, client: AsyncClient, test_deployment, db_session: AsyncSession
     ):
         """Test scaling a non-running deployment fails."""
-        # Change to stopped status
-        test_deployment.status = "stopped"
+        test_deployment.status = "failed"
         await db_session.commit()
 
         response = await client.post(
             f"/v1/deployments/{test_deployment.id}/scale",
             json={"replicas": 5},
         )
-        assert response.status_code == 400
+        assert response.status_code == 409
+        assert response.json() == {"detail": "Cannot scale deployment with status 'failed'"}
 
     @pytest.mark.asyncio
     async def test_scale_deployment_other_user_forbidden(
@@ -204,7 +230,83 @@ class TestScaleDeployment:
             f"/v1/deployments/{test_deployment.id}/scale",
             json={"replicas": 5},
         )
-        assert response.status_code == 403
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_scale_zero_stops_and_preserves_desired_replicas(
+        self,
+        client: AsyncClient,
+        test_deployment,
+        test_agent,
+        db_session: AsyncSession,
+    ):
+        test_deployment.replicas = 3
+        test_agent.status = AgentStatus.RUNNING.value
+        await db_session.commit()
+
+        response = await client.post(
+            f"/v1/deployments/{test_deployment.id}/scale",
+            json={"replicas": 0},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "stopped"
+        assert data["replicas"] == 3
+        assert data["ended_at"] is not None
+        assert data["allowed_actions"] == ["start", "terminate"]
+        assert any(
+            event["event_type"] == "stop" and event["status"] == "stopped"
+            for event in data["events"]
+        )
+        await db_session.refresh(test_agent)
+        assert test_agent.status == AgentStatus.STOPPED.value
+
+    @pytest.mark.asyncio
+    async def test_positive_scale_starts_stopped_deployment(
+        self,
+        client: AsyncClient,
+        test_deployment,
+        test_agent,
+        db_session: AsyncSession,
+    ):
+        test_deployment.status = "stopped"
+        test_deployment.replicas = 2
+        test_deployment.ended_at = datetime.now(timezone.utc)
+        test_agent.status = AgentStatus.STOPPED.value
+        await db_session.commit()
+
+        response = await client.post(
+            f"/v1/deployments/{test_deployment.id}/scale",
+            json={"replicas": 4},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "deploying"
+        assert data["replicas"] == 4
+        assert data["ended_at"] is None
+        assert data["allowed_actions"] == ["stop", "terminate"]
+        assert any(
+            event["event_type"] == "start" and event["status"] == "deploying"
+            for event in data["events"]
+        )
+        await db_session.refresh(test_agent)
+        assert test_agent.status == AgentStatus.RUNNING.value
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("replicas", [-1, 11])
+    async def test_scale_rejects_replica_counts_outside_contract(
+        self,
+        client: AsyncClient,
+        test_deployment,
+        replicas: int,
+    ):
+        response = await client.post(
+            f"/v1/deployments/{test_deployment.id}/scale",
+            json={"replicas": replicas},
+        )
+        assert response.status_code == 422
 
 
 class TestDeploymentEvents:
@@ -331,7 +433,7 @@ class TestDeploymentEvents:
         self, other_user_client: AsyncClient, test_deployment
     ):
         response = await other_user_client.get(f"/v1/deployments/{test_deployment.id}/events")
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 class TestDeploymentLogs:
@@ -376,7 +478,7 @@ class TestDeploymentLogs:
         self, other_user_client: AsyncClient, test_deployment
     ):
         response = await other_user_client.get(f"/v1/deployments/{test_deployment.id}/logs")
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 class TestDeploymentMetrics:
@@ -419,7 +521,7 @@ class TestDeploymentMetrics:
         self, other_user_client: AsyncClient, test_deployment
     ):
         response = await other_user_client.get(f"/v1/deployments/{test_deployment.id}/metrics")
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 class TestKillDeployment:
@@ -450,7 +552,7 @@ class TestKillDeployment:
     ):
         """Test other users cannot kill deployments they do not own."""
         response = await other_user_client.delete(f"/v1/deployments/{test_deployment.id}")
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     @pytest.mark.asyncio
     async def test_kill_deployment_stops_agent(
@@ -473,6 +575,49 @@ class TestKillDeployment:
         await db_session.refresh(test_agent)
         assert test_agent.status == AgentStatus.STOPPED.value
 
+        detail_response = await client.get(f"/v1/deployments/{test_deployment.id}")
+        assert detail_response.status_code == 200
+        assert detail_response.json()["allowed_actions"] == []
+
+    @pytest.mark.asyncio
+    async def test_kill_keeps_agent_running_when_another_deployment_is_active(
+        self,
+        client: AsyncClient,
+        test_deployment,
+        test_agent,
+        db_session: AsyncSession,
+    ):
+        test_agent.status = AgentStatus.RUNNING.value
+        db_session.add(
+            Deployment(
+                agent_id=test_agent.id,
+                status="ready",
+                replicas=2,
+            )
+        )
+        await db_session.commit()
+
+        response = await client.delete(f"/v1/deployments/{test_deployment.id}")
+
+        assert response.status_code == 204
+        await db_session.refresh(test_agent)
+        assert test_agent.status == AgentStatus.RUNNING.value
+
+    @pytest.mark.asyncio
+    async def test_kill_rejects_already_terminated_deployment(
+        self,
+        client: AsyncClient,
+        test_deployment,
+        db_session: AsyncSession,
+    ):
+        test_deployment.status = "killed"
+        await db_session.commit()
+
+        response = await client.delete(f"/v1/deployments/{test_deployment.id}")
+
+        assert response.status_code == 409
+        assert response.json() == {"detail": "Deployment is already terminated"}
+
 
 class TestCreateDeployment:
     """Tests for POST /deployments endpoint."""
@@ -486,7 +631,7 @@ class TestCreateDeployment:
             "/v1/deployments",
             json={"agent_id": str(test_agent.id), "replicas": 1},
         )
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     @pytest.mark.asyncio
     async def test_create_deployment_records_create_event_and_sets_agent_running(
@@ -616,9 +761,10 @@ class TestRestartDeployment:
 
         data = response.json()
         assert data["id"] == str(test_deployment.id)
-        assert data["status"] == "pending"
+        assert data["status"] == "deploying"
         assert data["ended_at"] is None
         assert data["error_message"] is None
+        assert data["allowed_actions"] == ["stop", "terminate"]
         assert test_deployment.started_at is not None
         assert test_deployment.started_at.tzinfo is None
 
@@ -629,19 +775,37 @@ class TestRestartDeployment:
         events_data = events_response.json()
         assert events_data["total"] == 1
         assert events_data["items"][0]["event_type"] == "restart"
-        assert events_data["items"][0]["status"] == "pending"
+        assert events_data["items"][0]["status"] == "deploying"
 
         await db_session.refresh(test_agent)
         assert test_agent.status == AgentStatus.RUNNING.value
 
     @pytest.mark.asyncio
-    async def test_restart_deployment_rejects_running_deployments(
+    async def test_restart_deployment_rejects_stopped_deployments(
+        self, client: AsyncClient, test_deployment, db_session: AsyncSession
+    ):
+        """Stopped deployments must use start rather than restart."""
+        test_deployment.status = "stopped"
+        await db_session.commit()
+
+        response = await client.post(f"/v1/deployments/{test_deployment.id}/restart")
+        assert response.status_code == 409
+        assert "Cannot restart deployment with status 'stopped'" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_restart_running_deployment_enters_deploying_state(
         self, client: AsyncClient, test_deployment
     ):
-        """Running deployments cannot be restarted via the restart contract."""
         response = await client.post(f"/v1/deployments/{test_deployment.id}/restart")
-        assert response.status_code == 400
-        assert "Cannot restart deployment with status 'running'" in response.json()["detail"]
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "deploying"
+        assert data["allowed_actions"] == ["stop", "terminate"]
+        assert any(
+            event["event_type"] == "restart" and event["status"] == "deploying"
+            for event in data["events"]
+        )
 
     @pytest.mark.asyncio
     async def test_restart_deployment_other_user_forbidden(
@@ -652,7 +816,7 @@ class TestRestartDeployment:
         await db_session.commit()
 
         response = await other_user_client.post(f"/v1/deployments/{test_deployment.id}/restart")
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 class TestRollbackDeployment:

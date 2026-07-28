@@ -4,8 +4,9 @@ Receipt Generator.
 Cryptographically signed records binding action, context, policy decision,
 and outcome. Enables forensic reconstruction and compliance audit trails.
 
-AARM alignment: contributes to current R5 tamper-evident receipts. Signing is
-optional and the full current R5 receipt schema is not yet demonstrated.
+AARM alignment: contributes to current R5 tamper-evident receipts. Production
+persistence requires platform signing, while the full current R5 receipt schema
+is not yet demonstrated.
 
 AARM documentation reference: MIT License, Copyright (c) 2023 Mintlify.
 https://github.com/aarm-dev/docs/tree/8eff208b98786b2c9a578b26cb7eaca440ec4020
@@ -14,6 +15,7 @@ https://github.com/aarm-dev/docs/tree/8eff208b98786b2c9a578b26cb7eaca440ec4020
 import hashlib
 import json
 import uuid
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -21,6 +23,39 @@ from typing import Any, Optional
 from src.security.mediator import NormalizedAction
 from src.security.context import SessionContext
 from src.security.policy import PolicyDecisionResult
+
+
+TrustedPublicKeys = Mapping[str, bytes | str]
+
+
+class ReceiptSigningError(RuntimeError):
+    """A required receipt could not be signed by the configured platform key."""
+
+
+def _validate_key_id(key_id: str) -> str:
+    """Validate an immutable, log-safe receipt signer identifier."""
+    if not isinstance(key_id, str) or not key_id or len(key_id) > 128:
+        raise ValueError("Receipt signing key ID must contain between 1 and 128 characters")
+    allowed = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:/-")
+    if any(character not in allowed for character in key_id):
+        raise ValueError(
+            "Receipt signing key ID may contain only letters, numbers, '.', '_', ':', '/', or '-'"
+        )
+    return key_id
+
+
+def _decode_ed25519_key(value: bytes | str, *, label: str) -> bytes:
+    """Decode an exact-length raw Ed25519 key without reflecting key material in errors."""
+    if isinstance(value, str):
+        try:
+            value = bytes.fromhex(value)
+        except ValueError as exc:
+            raise ValueError(f"{label} must be a hex-encoded Ed25519 key") from exc
+    if not isinstance(value, bytes):
+        raise ValueError(f"{label} must be raw bytes or a hex-encoded Ed25519 key")
+    if len(value) != 32:
+        raise ValueError(f"{label} must encode exactly 32 bytes")
+    return value
 
 
 @dataclass
@@ -34,7 +69,8 @@ class ActionReceipt:
     - The policy decision
     - The actual outcome (executed, blocked, error, etc.)
 
-    Receipts can be optionally signed with Ed25519 for tamper detection.
+    New receipts identify an Ed25519 signer by key ID. Public verification key
+    material is deliberately not carried by or trusted from the receipt.
     """
 
     receipt_id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -64,12 +100,14 @@ class ActionReceipt:
 
     signature: Optional[str] = None
     signed_by: Optional[str] = None
+    signer_key_id: Optional[str] = None
 
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def is_signed(self) -> bool:
-        return self.signature is not None
+        """Return whether the receipt has complete signature metadata."""
+        return bool(self.signature and (self.signer_key_id or self.signed_by))
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
@@ -80,6 +118,28 @@ class ActionReceipt:
     def to_json(self) -> str:
         """Serialize to JSON string."""
         return json.dumps(self.to_dict(), sort_keys=True)
+
+    def to_signing_json(self) -> str:
+        """Serialize the fields bound by a receipt signature."""
+        payload = self.to_dict()
+        payload.pop("signature")
+        return json.dumps(payload, sort_keys=True)
+
+    def _to_unbound_signer_signing_json(self) -> str:
+        """Serialize the earlier Ed25519 payload that did not bind signer metadata."""
+        payload = self.to_dict()
+        payload.pop("signature")
+        payload.pop("signed_by")
+        payload.pop("signer_key_id")
+        return json.dumps(payload, sort_keys=True)
+
+    def _to_legacy_signing_json(self) -> str:
+        """Serialize the pre-exclusion Ed25519 payload for verification compatibility."""
+        payload = self.to_dict()
+        payload.pop("signer_key_id")
+        payload["signature"] = None
+        payload["signed_by"] = None
+        return json.dumps(payload, sort_keys=True)
 
     def compute_hash(self) -> str:
         """
@@ -168,15 +228,77 @@ class ReceiptGenerator:
         )
 
         # Sign receipt
-        generator.sign(receipt, private_key)
+        generator.sign(receipt, private_key, "platform-key-2026-01")
 
         # Store for audit
         storage.store(receipt)
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        signing_private_key: bytes | str | None = None,
+        signing_key_id: str | None = None,
+        trusted_public_keys: TrustedPublicKeys | None = None,
+        signing_required: bool = False,
+    ) -> None:
         self._chains: dict[str, ReceiptChain] = {}
         self._receipts: dict[str, ActionReceipt] = {}
+        self._signing_required = signing_required
+        self._signing_private_key = (
+            _decode_ed25519_key(signing_private_key, label="Receipt signing private key")
+            if signing_private_key is not None
+            else None
+        )
+        self._signing_key_id = (
+            _validate_key_id(signing_key_id) if signing_key_id is not None else None
+        )
+        if (self._signing_private_key is None) != (self._signing_key_id is None):
+            raise ValueError("Receipt signing private key and key ID must be configured together")
+
+        self._trusted_public_keys = {
+            _validate_key_id(key_id): _decode_ed25519_key(
+                public_key,
+                label=f"Trusted public key for receipt signer {key_id!r}",
+            )
+            for key_id, public_key in (trusted_public_keys or {}).items()
+        }
+        if self._signing_private_key is not None and self._signing_key_id is not None:
+            trusted_public_key = self._trusted_public_keys.get(self._signing_key_id)
+            if trusted_public_key is None:
+                raise ValueError(
+                    "Configured receipt signing key ID must exist in the trusted public key registry"
+                )
+            if trusted_public_key != self.public_key_bytes(self._signing_private_key):
+                raise ValueError(
+                    "Configured receipt signing key does not match its trusted public key"
+                )
+
+    @property
+    def signing_required(self) -> bool:
+        """Return whether persistence must fail closed without a platform signature."""
+        return self._signing_required
+
+    @staticmethod
+    def public_key_bytes(private_key: bytes | str) -> bytes:
+        """Derive raw Ed25519 public key bytes for configuration validation."""
+        try:
+            from cryptography.hazmat.primitives import serialization
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        except ImportError as exc:
+            raise RuntimeError(
+                "Ed25519 signing unavailable: the cryptography package is required"
+            ) from exc
+
+        private_key_bytes = _decode_ed25519_key(
+            private_key,
+            label="Receipt signing private key",
+        )
+        key = Ed25519PrivateKey.from_private_bytes(private_key_bytes)
+        return key.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
 
     def generate(
         self,
@@ -254,8 +376,10 @@ class ReceiptGenerator:
     def sign(
         self,
         receipt: ActionReceipt,
-        private_key: bytes,
-        public_key_id: str = "",
+        private_key: bytes | str,
+        key_id: str | None = None,
+        *,
+        public_key_id: str | None = None,
     ) -> str:
         """
         Sign a receipt with Ed25519.
@@ -263,33 +387,78 @@ class ReceiptGenerator:
         Args:
             receipt: Receipt to sign
             private_key: Ed25519 private key bytes
-            public_key_id: Identifier for the signing key
+            key_id: Identifier resolved through a verifier-controlled trusted key registry
+            public_key_id: Legacy public-key identifier alias; retained only as a bound key ID
 
         Returns:
             The signature as a hex string
+
+        Raises:
+            RuntimeError: If Ed25519 support is unavailable
+            ValueError: If the signing key metadata is invalid or does not match
         """
         try:
             from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        except ImportError as exc:
+            raise RuntimeError(
+                "Ed25519 signing unavailable: the cryptography package is required"
+            ) from exc
 
-            if isinstance(private_key, str):
-                private_key = bytes.fromhex(private_key)
+        private_key_bytes = _decode_ed25519_key(
+            private_key,
+            label="Receipt signing private key",
+        )
+        derived_public_key = self.public_key_bytes(private_key_bytes)
+        if key_id is not None and public_key_id:
+            raise ValueError("Specify either key_id or legacy public_key_id, not both")
+        if key_id is None:
+            if public_key_id:
+                supplied_public_key = _decode_ed25519_key(
+                    public_key_id,
+                    label="Legacy receipt public key ID",
+                )
+                if supplied_public_key != derived_public_key:
+                    raise ValueError(
+                        "Legacy receipt public key ID does not match the supplied private key"
+                    )
+            signer = derived_public_key.hex()
+        else:
+            signer = _validate_key_id(key_id)
+        trusted_public_key = self._trusted_public_keys.get(signer)
+        if trusted_public_key is not None and trusted_public_key != derived_public_key:
+            raise ValueError("Receipt signing key does not match its trusted public key")
 
-            key = Ed25519PrivateKey.from_private_bytes(private_key[:32])
-            signature = key.sign(receipt.to_json().encode())
+        key = Ed25519PrivateKey.from_private_bytes(private_key_bytes)
+        original_signature = receipt.signature
+        original_signed_by = receipt.signed_by
+        original_signer_key_id = receipt.signer_key_id
+        receipt.signature = None
+        receipt.signed_by = signer
+        receipt.signer_key_id = signer
+        try:
+            signature = key.sign(receipt.to_signing_json().encode())
+        except Exception:
+            receipt.signature = original_signature
+            receipt.signed_by = original_signed_by
+            receipt.signer_key_id = original_signer_key_id
+            raise
+        encoded_signature = signature.hex()
+        receipt.signature = encoded_signature
 
-            receipt.signature = signature.hex()
-            receipt.signed_by = public_key_id
+        return encoded_signature
 
-            return signature.hex()
-
-        except ImportError:
-            import hmac
-
-            key = hashlib.sha256(private_key).digest()
-            signature = hmac.new(key, receipt.to_json().encode(), hashlib.sha256).hexdigest()
-            receipt.signature = signature
-            receipt.signed_by = public_key_id or "hmac-fallback"
-            return signature
+    def sign_for_persistence(self, receipt: ActionReceipt) -> str | None:
+        """Sign with the configured platform key, failing closed when required."""
+        if self._signing_private_key is None or self._signing_key_id is None:
+            if self._signing_required:
+                raise ReceiptSigningError(
+                    "A platform Ed25519 receipt signing key is required before persistence"
+                )
+            return None
+        try:
+            return self.sign(receipt, self._signing_private_key, self._signing_key_id)
+        except (RuntimeError, ValueError) as exc:
+            raise ReceiptSigningError("The platform receipt could not be signed") from exc
 
     def verify(self, receipt: ActionReceipt) -> tuple[bool, str]:
         """
@@ -301,59 +470,64 @@ class ReceiptGenerator:
         Returns:
             Tuple of (is_valid, error_message)
         """
-        if receipt.signature and receipt.signed_by:
-            if receipt.signed_by == "hmac-fallback":
-                computed = self._compute_hmac_signature(receipt, receipt.signed_by)
-                if computed != receipt.signature:
-                    return False, "HMAC signature mismatch"
-                return True, ""
+        if (
+            receipt.signature is None
+            and receipt.signed_by is None
+            and receipt.signer_key_id is None
+        ):
+            return False, "Receipt is unsigned and cannot be cryptographically verified"
+        if not receipt.signature:
+            return False, "Receipt signature is missing"
+        key_id = receipt.signer_key_id or receipt.signed_by
+        if not key_id:
+            return False, "Receipt signer key ID is missing"
+        if receipt.signer_key_id and receipt.signed_by != receipt.signer_key_id:
+            return False, "Receipt signer key identifiers do not match"
+        if key_id == "hmac-fallback":
+            return False, "Legacy HMAC fallback receipts are insecure and unverifiable"
 
-            try:
-                from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        try:
+            key_id = _validate_key_id(key_id)
+        except ValueError:
+            return False, "Receipt signer key ID is malformed"
+        public_key_bytes = self._trusted_public_keys.get(key_id)
+        if public_key_bytes is None:
+            return False, "Receipt signer key is not trusted"
 
-                public_key_bytes = bytes.fromhex(receipt.signed_by)
-                key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
-                expected_sig = receipt.signature
+        try:
+            from cryptography.exceptions import InvalidSignature
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        except ImportError:
+            return False, "Ed25519 verification unavailable: the cryptography package is required"
 
-                receipt_for_verify = ActionReceipt(
-                    receipt_id=receipt.receipt_id,
-                    action_id=receipt.action_id,
-                    action_hash=receipt.action_hash,
-                    session_id=receipt.session_id,
-                    tool_name=receipt.tool_name,
-                    tool_args=receipt.tool_args,
-                    agent_id=receipt.agent_id,
-                    user_id=receipt.user_id,
-                    policy_decision=receipt.policy_decision,
-                    policy_rule_id=receipt.policy_rule_id,
-                    policy_rule_name=receipt.policy_rule_name,
-                    decision_reason=receipt.decision_reason,
-                    outcome=receipt.outcome,
-                    outcome_detail=receipt.outcome_detail,
-                    timestamp=receipt.timestamp,
-                    duration_ms=receipt.duration_ms,
-                    session_snapshot=receipt.session_snapshot,
-                    prior_action_hashes=receipt.prior_action_hashes,
-                    metadata=receipt.metadata,
-                )
+        try:
+            signature = bytes.fromhex(receipt.signature)
+        except (TypeError, ValueError):
+            return False, "Receipt signature is malformed"
 
-                key.verify(
-                    bytes.fromhex(expected_sig),
-                    receipt_for_verify.to_json().encode(),
-                )
-                return True, ""
+        if len(signature) != 64:
+            return False, "Receipt signature must encode exactly 64 bytes"
 
-            except Exception as e:
-                return False, f"Signature verification failed: {e}"
+        try:
+            key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
+            key.verify(signature, receipt.to_signing_json().encode())
+        except InvalidSignature:
+            if receipt.signer_key_id is not None:
+                return False, "Receipt signature mismatch"
+            for legacy_payload in (
+                receipt._to_unbound_signer_signing_json(),
+                receipt._to_legacy_signing_json(),
+            ):
+                try:
+                    key.verify(signature, legacy_payload.encode())
+                    return True, ""
+                except InvalidSignature:
+                    continue
+            return False, "Receipt signature mismatch"
+        except (TypeError, ValueError):
+            return False, "Receipt signature or signing key is malformed"
 
         return True, ""
-
-    def _compute_hmac_signature(self, receipt: ActionReceipt, key_id: str) -> str:
-        """Compute HMAC signature (fallback when cryptography unavailable)."""
-        import hmac
-
-        key = hashlib.sha256(key_id.encode()).digest()
-        return hmac.new(key, receipt.to_json().encode(), hashlib.sha256).hexdigest()
 
     def get_receipt(self, receipt_id: str) -> Optional[ActionReceipt]:
         """Get a receipt by ID."""

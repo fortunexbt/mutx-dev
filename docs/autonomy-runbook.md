@@ -42,7 +42,9 @@ python scripts/autonomy/select_agent.py \
 
 Expected output: agent ID `my-new-specialist` and lane assignment.
 
-6. Open a test issue labeled `area:my-new-area` and `autonomy:ready` and confirm the dispatch workflow picks it up within 15 minutes.
+6. Open a test issue labeled `area:my-new-area` and `autonomy:ready`, run the
+   issue sync/queue feeder from the trusted operator host, and confirm the local
+   daemon assigns it to the expected lane.
 
 ## Creating a Backlog Item That Triggers a Specialist
 
@@ -73,7 +75,9 @@ Run `pytest tests/api/test_usage.py -v` and confirm no more than 2 queries fire
 for a request with 10 line items.
 ```
 
-4. Once labeled, the dispatch workflow (`.github/workflows/autonomous-dispatch.yml`) will pick up the issue within the next poll cycle.
+4. From the trusted operator host, run `scripts/autonomy/sync_github_issues.py`
+   (or the configured queue feeder). The local daemon will pick the queued item
+   up on its next poll cycle.
 
 ## Verifying a Lane Completed Its Work
 
@@ -101,9 +105,10 @@ If `gh` is missing or not authenticated, the run still completes locally and rec
 
 4. For `runtime-openclaw` lane specifically:
    - Verify the OpenClaw health endpoint responds: `curl http://localhost:8080/health`
-   - Confirm Node version requirement in `package.json` or runtime config matches the declared runtime (Node 22.14+)
+   - Confirm Node version requirement in `package.json` or runtime config matches the declared runtime (Node 24.15+ recommended)
 
-5. Merge if all checks pass. The dispatch workflow will close the issue automatically when the PR is merged.
+5. Merge if all checks pass, then confirm the linked issue is closed by the PR
+   reference or close it explicitly with the validation evidence.
 
 ## Local Always-On Autonomy Daemon Operations
 
@@ -165,43 +170,30 @@ PY
 
 ## Disable / Enable Always-On Processes
 
-Each always-on process is controlled by a GitHub Actions secret or repo variable.
-
-| Process | Config Variable | Values |
-|---------|-----------------|--------|
-| executive scheduler | `AUTONOMY_SCHEDULER_ENABLED` | `true` / `false` |
-| backlog sync | `AUTONOMY_BACKLOG_SYNC_ENABLED` | `true` / `false` |
-| release watchdog | `AUTONOMY_RELEASE_WATCHDOG_ENABLED` | `true` / `false` |
-| runtime health watchdog | `AUTONOMY_HEALTH_WATCHDOG_ENABLED` | `true` / `false` |
-
-To disable:
+The checked-in autonomy process is local and operator controlled. GitHub
+Actions variables do not start or stop it.
 
 ```bash
-# Via GitHub CLI
-gh variable set AUTONOMY_SCHEDULER_ENABLED --body false
+scripts/autonomy/daemon-launcher.sh stop
+scripts/autonomy/daemon-launcher.sh start
+scripts/autonomy/daemon-launcher.sh status
 ```
 
-To enable:
-
-```bash
-gh variable set AUTONOMY_SCHEDULER_ENABLED --body true
-```
-
-To list current state:
-
-```bash
-gh variable list
-```
+Disable the host's cron or service-manager entry for
+`scripts/autonomy/daemon-watchdog.sh` before planned maintenance so it does not
+restart a deliberately stopped daemon.
 
 ## Diagnosing Why a Specialist Agent Failed
 
-1. Check the dispatch workflow run for the claimed issue:
-   - Navigate to the issue -> Actions -> workflow run linked in the comment
-   - Look for `autonomy-dispatch.yml` runs with the issue number in the title
+1. Check the local run record for the claimed issue:
+   - inspect `.autonomy/daemon-status.json`
+   - inspect the latest entries in `reports/autonomy-status.jsonl`
+   - inspect the issue's linked branch or pull request in GitHub
 
 2. Common failure modes:
 
-   **Agent timed out**: Increase `AUTONOMY_MAX_RUNTIME_MINUTES` (default 30) or simplify the work item scope.
+   **Agent timed out**: inspect the lane runner timeout and simplify the work
+   item scope before increasing it.
 
    **Guardrail exceeded**: The agent generated a patch larger than `AUTONOMY_MAX_PATCH_BYTES` or changed more than `AUTONOMY_MAX_CHANGED_FILES`. Split the work into smaller issues.
 
@@ -210,13 +202,13 @@ gh variable list
    **CI failing unrelated to the change**: Check if `scripts/test.sh` is truthful. CI failures on `main` that are not caused by the PR indicate fixture drift -- fix the fixture, not the PR.
 
 3. Check the executor logs:
-   - The dispatch workflow uploads `autonomy-work-order.json` as an artifact
-   - Look for `autonomy/briefs/{issue-number}/` for the brief written to disk
-   - The executor stdout/stderr is in the workflow run log
+   - inspect the run directory under `.autonomy/runs/`
+   - look for `.autonomy/briefs/{issue-number}/` for the brief written to disk
+   - inspect `reports/autonomy-daemon.log` and the lane-specific run artifacts
 
-4. If the agent left a stale claim (issue is `autonomy:claimed` but no PR exists):
-   - Wait for `AUTONOMY_STALE_CLAIM_MINUTES` (default 120) for automatic release
-   - Or manually release: remove `autonomy:claimed` label, re-add `autonomy:ready`
+4. If the agent left a stale GitHub label (the issue is `autonomy:claimed` but
+   no PR exists), verify no local runner owns it, then remove
+   `autonomy:claimed` and re-add `autonomy:ready` manually.
 
 ## Emergency Rollback Procedures
 
@@ -224,40 +216,39 @@ gh variable list
 
 ```bash
 # Find the merge commit SHA
-gh pr view <pr-number> --json mergeCommitSHA
+gh pr view <pr-number> --json mergeCommit --jq '.mergeCommit.oid'
 
-# Revert via GitHub
-gh pr create --revert <pr-number>
-
-# Or manually
-git revert -m 1 <merge-commit-sha>
-git push origin main
+# Revert on a review branch (use `git revert -m 1` only for a true merge commit)
+git switch -c revert/pr-<pr-number> origin/main
+git revert <merge-commit-sha>
+git push -u origin revert/pr-<pr-number>
+gh pr create --base main --fill
 ```
 
 ### Disable All Autonomous Shipping Immediately
 
-Set all four always-on process flags to `false`:
+Stop the daemon and disable its host-level watchdog service or cron entry:
 
 ```bash
-gh variable set AUTONOMY_SCHEDULER_ENABLED --body false
-gh variable set AUTONOMY_BACKLOG_SYNC_ENABLED --body false
-gh variable set AUTONOMY_RELEASE_WATCHDOG_ENABLED --body false
-gh variable set AUTONOMY_HEALTH_WATCHDOG_ENABLED --body false
+scripts/autonomy/daemon-launcher.sh stop
+scripts/autonomy/daemon-launcher.sh status
 ```
+
+No GitHub Actions variable controls the local daemon. If credentials may be
+compromised, revoke the operator token and model-provider token before restart.
 
 Then manually triage the queue:
 - Remove `autonomy:claimed` from any stuck issues
 - Set `autonomy:blocked` on any issues that should not be actioned
 
-### Kill a Running Dispatch Workflow
+### Stop Active Autonomous Dispatch
 
 ```bash
-# Find the run
-gh run list --workflow=autonomous-dispatch.yml --status=in_progress
-
-# Cancel it
-gh run cancel <run-id>
+scripts/autonomy/daemon-launcher.sh stop
 ```
+
+Then verify no lane runner remains active before changing queue state. The CI
+workflow has no autonomous authoring or dispatch capability.
 
 ### Restore OpenClaw Runtime If Health Watchdog Detects Failure
 
@@ -295,97 +286,50 @@ This rebuilds the queue from live GitHub issue data.
 
 ---
 
-## Node Runtime Separation
+## Node Runtime Alignment
 
-MUTX and OpenClaw require different Node versions and must be kept on separate PATHs.
+MUTX and OpenClaw share Node 24.15+ as their recommended runtime lane. Use that lane for both unless you are deliberately testing one of OpenClaw's other supported majors.
 
 ### Requirements
 
 | Component | Node Version |
 |-----------|-------------|
-| MUTX (CLI, SDK, dashboard build) | Node 20 LTS |
-| OpenClaw (runtime substrate) | Node 22.14+ or Node 24 |
+| MUTX (CLI, SDK, dashboard build) | Node 24.15+ |
+| OpenClaw (runtime substrate) | Node 24.15+ recommended; 22.22.3+ and 25.9+ supported |
 
-OpenClaw uses ESM-native features and native Addons that are not available in Node 20.
+Node 24.15+ is the shared supported intersection and the repo's CI baseline.
 
-### Separation Strategy
+### Default Shared Toolchain
 
-Use explicit absolute paths or shell aliases. Never rely on a single `node` binary in PATH.
-
-#### Option A: Absolute Paths in Scripts
+Keep `node` and `npm` on the same installation prefix:
 
 ```bash
-# MUTX tools
-/node20/bin/node --version   # 20.x.x
-/node20/bin/npm --version
-
-# OpenClaw runtime
-/node22/bin/node --version   # 22.14+ or 24.x.x
-/node22/bin/npm --version
+/node24/bin/node --version   # 24.15+ recommended
+/node24/bin/npm --version    # 11.18.0+ for this repo
 ```
 
-#### Option B: Shell Aliases
+With `nvm`:
 
 ```bash
-# ~/.bashrc or ~/.zshrc
-alias node-mutx='/usr/local/bin/node20'
-alias npm-mutx='/usr/local/bin/npm20'
-alias node-openclaw='/usr/local/bin/node22'
-alias npm-openclaw='/usr/local/bin/npm22'
-```
-
-#### Option C: nvm with Explicit Version Calls
-
-```bash
-# Load nvm
 export NVM_DIR="$HOME/.nvm"
-
-# MUTX
-nvm use 20
-node --version  # 20.x.x
-
-# OpenClaw
-nvm use 22.14
-node --version  # 22.14.x
+nvm install 24.15
+nvm use 24.15
+node --version  # 24.15.x or newer 24.x
+npm --version
 ```
 
-#### Option D: Docker Containers (Recommended for Production)
+### Optional Isolation
 
-Run OpenClaw in a container with Node 22, MUTX CLI in a separate container with Node 20.
+If you test OpenClaw on Node 22.22.3+ or 25.9+, isolate that runtime with `nvm`, `mise`, or a container. Do not mix a `node` executable from one prefix with `npm` from another.
 
-```yaml
-# docker-compose.yml excerpt
-services:
-  mutx-cli:
-    image: node:20-slim
-    working_dir: /app
-    volumes:
-      - .:/app
-    command: ["node", "src/cli/index.js"]
-
-  openclaw-runtime:
-    image: node:22-slim
-    working_dir: /app
-    volumes:
-      - ./openclaw:/app
-    command: ["node", "src/openclaw/index.js"]
-```
-
-### Verifying Separation
+### Verification
 
 ```bash
-# Verify MUTX Node version
-node-mutx --version   # Must be 20.x.x
-
-# Verify OpenClaw Node version
-node-openclaw --version  # Must be 22.14+ or 24.x.x
-
-# In CI (GitHub Actions), check with:
-node --version  # This is the default runner node (currently Node 20)
+node --version  # 24.15+ for the shared lane
+npm --version   # 11.18.0+ and lower than 12 for MUTX
+npm run typecheck
 ```
 
-### CI特别注意
+### CI Note
 
-The GitHub-hosted `ubuntu-latest` runner has Node 20 pre-installed. The dispatch workflow uses the hosted runner for MUTX operations (which is correct). OpenClaw runtime health checks must use an explicit Node 22 path or a separate runner/self-hosted runner.
-
-If OpenClaw health checks run on the hosted runner and fail due to Node version mismatch, that is expected -- do not try to "fix" the hosted runner Node version. Use a separate self-hosted runner or container for OpenClaw runtime health checks.
+Repository workflows provision Node 24 explicitly with `actions/setup-node`; do not rely on the runner's preinstalled version. Jobs that exercise a different OpenClaw major must select that version explicitly and remain isolated from the MUTX build job.

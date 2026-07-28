@@ -12,7 +12,7 @@ Use the repo-owned API docs in [`../api/reference.md`](../api/reference.md) inst
 ## Canonical Contract Order
 
 1. `src/api/main.py` and `src/api/routes/*.py`
-2. [`../api/openapi.json`](../api/openapi.json)
+2. [`docs/api/openapi.json`](https://github.com/mutx-dev/mutx-dev/blob/main/docs/api/openapi.json)
 3. `docs/api/*.md`
 
 ## Generated Artifacts

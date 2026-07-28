@@ -15,8 +15,12 @@ export function BrowserDashboardRedirect({
   }, [href, router]);
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-5 text-sm text-slate-400">
-      Redirecting…
+    <div
+      role="status"
+      aria-live="polite"
+      className="rounded-[6px] border border-[#34342e] bg-[#11120f] px-4 py-5 text-sm text-[#999284]"
+    >
+      Redirecting to <a href={href} className="text-[#ff8355] underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847]">{href}</a>…
     </div>
   );
 }

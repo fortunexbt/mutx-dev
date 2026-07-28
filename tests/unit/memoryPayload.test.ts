@@ -5,29 +5,53 @@ describe('memory dashboard payload normalization', () => {
     expect(normalizeMemoryPayload({})).toEqual({
       generatedAt: '',
       assistant: null,
+      sourceStatus: {
+        assistant: 'error',
+        sessions: 'error',
+        documents: 'error',
+        reasoning: 'error',
+      },
       summary: {
-        sessions: 0,
-        activeSessions: 0,
-        sources: 0,
-        documentJobs: 0,
-        documentArtifacts: 0,
-        reasoningJobs: 0,
-        reasoningArtifacts: 0,
+        sessions: null,
+        activeSessions: null,
+        sources: null,
+        documentJobs: null,
+        documentArtifacts: null,
+        reasoningJobs: null,
+        reasoningArtifacts: null,
       },
       sessions: [],
       sources: [],
       documents: [],
       reasoning: [],
-      partials: [],
+      partials: [
+        'The memory proxy returned an incomplete payload; unavailable totals are shown as unknown.',
+      ],
     })
   })
 
-  it('derives missing summary counts from normalized records', () => {
+  it('keeps authoritative totals and omits records without identifiers', () => {
     const payload = normalizeMemoryPayload({
-      sessions: [{ id: 'session-1', active: true }, null],
+      summary: {
+        sessions: 1,
+        activeSessions: 1,
+        sources: 1,
+        documentJobs: 1,
+        documentArtifacts: 2,
+        reasoningJobs: 1,
+        reasoningArtifacts: 3,
+      },
+      sourceStatus: {
+        assistant: 'ok',
+        sessions: 'partial',
+        documents: 'ok',
+        reasoning: 'ok',
+      },
+      sessions: [{ id: 'session-1', active: true }, { active: false }, null],
       sources: [{ source: 'gateway', count: 1 }],
       documents: [{ id: 'doc-1', artifacts: 2 }],
-      reasoning: [{ id: 'reason-1', artifacts: 3 }],
+      reasoning: [{ id: 'reason-1', artifacts: 3 }, { artifacts: 4 }],
+      partials: ['One session record was omitted because the upstream identifier was missing.'],
     })
 
     expect(payload.summary).toEqual({
@@ -45,5 +69,8 @@ describe('memory dashboard payload normalization', () => {
       source: 'unknown',
       channel: 'direct',
     })
+    expect(payload.sessions).toHaveLength(1)
+    expect(payload.reasoning).toHaveLength(1)
+    expect(payload.sourceStatus.sessions).toBe('partial')
   })
 })

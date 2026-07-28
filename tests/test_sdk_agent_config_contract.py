@@ -43,7 +43,7 @@ def test_agents_create_accepts_dict_config_and_sends_backend_json_string_contrac
         captured["json"] = json.loads(request.content.decode())
         return httpx.Response(201, json=_agent_payload(config={"model": "gpt-4o"}))
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     agents = Agents(client)
 
     agents.create(
@@ -65,7 +65,7 @@ def test_agents_create_accepts_json_string_config_and_preserves_it() -> None:
         captured["json"] = json.loads(request.content.decode())
         return httpx.Response(201, json=_agent_payload(config=json.loads(raw_json)))
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     agents = Agents(client)
 
     agents.create(name="demo", config=raw_json)
@@ -129,7 +129,7 @@ def test_agent_logs_maps_backend_extra_data_field_to_sdk_aliases() -> None:
     ]
 
     client = httpx.Client(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(
             lambda request: httpx.Response(200, json={"items": log_payload})
         ),

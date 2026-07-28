@@ -2,9 +2,9 @@
 
 MUTX is a source-available control plane for operating AI agents with clearer boundaries than a demo app.
 
-Today the repo exposes a supported marketing site, a supported dashboard lane, and a separate preview control demo. Understanding that split is the fastest way to orient yourself.
+Today the repo exposes a supported marketing site, a supported authenticated dashboard, and a separate simulated control demo. Understanding that split is the fastest way to orient yourself.
 
-For a detailed supported-vs-preview matrix, see [Surface Matrix](surfaces.md).
+For a detailed surface matrix, see [Surface Matrix](surfaces.md).
 
 ## The public surfaces
 
@@ -27,9 +27,9 @@ What it is not:
 
 The landing page currently lives in `app/page.tsx`.
 
-### `docs.mutx.dev`
+### `mutx.dev/docs`
 
-`docs.mutx.dev` is the canonical documentation surface.
+`mutx.dev/docs` is the canonical documentation surface.
 
 It should answer three questions clearly:
 
@@ -47,16 +47,16 @@ What exists today:
 
 - login and register browser flows via `app/api/auth/*`
 - current-user lookup via `app/api/auth/me`
-- supported dashboard pages under `app/dashboard/*` for stable routes like agents, deployments, runs, sessions, budgets, monitoring, and webhooks
-- preview/demo or redirect-backed pages under the same tree for channels, skills, orchestration, memory, spawn, and logs; those are visible in the shell but not stable product truth yet
+- supported dashboard pages under `app/dashboard/*` for agents, deployments, documents, reasoning, runs, execution history, sessions, observability, approvals, audit, budgets, monitoring, webhooks, security, orchestration, memory, channels, templates, notifications, standup, skills, and local autonomy
+- a compatibility redirect from `/dashboard/spawn` to agent creation
 - same-origin dashboard and control-plane proxies under `app/api/dashboard/*`, `app/api/agents/*`, `app/api/deployments/*`, `app/api/api-keys/*`, and `app/api/webhooks/*`
 - a catch-all control demo rendered from `app/control/[[...slug]]/page.tsx`
 
-What it is not yet:
+Operational boundaries:
 
-- not a complete production dashboard for every backend capability
-- not a full replacement for direct API usage
-- not a blanket guarantee that preview-labeled routes are stable
+- optional providers and machine-local integrations report unavailable or degraded state when they are not configured
+- provider-side infrastructure rollout remains separate from mutating a control-plane deployment record
+- direct API and CLI usage remain first-class automation paths alongside the dashboard
 
 ## Product model right now
 

@@ -88,11 +88,18 @@ The backend is organized so route handlers stay relatively thin and most behavio
 
 ### Identity and access
 
-MUTX enforces RBAC on all routes. OIDC token validation lives in `src/api/auth/oidc.py` and is configured through:
+MUTX enforces authentication and persisted-role checks on protected routes; public
+probes, account-entry flows, and lead capture remain anonymous by design. The
+generic OIDC validation utility lives in `src/api/auth/oidc.py` and is configured
+through:
 
 * `OIDC_ISSUER`
 * `OIDC_CLIENT_ID`
 * `OIDC_JWKS_URI`
+
+Mounted SSO callbacks use provider-specific domain/client settings, bind the
+verified external identity to a local user, and issue a MUTX JWT. Canonical
+protected routes do not directly accept arbitrary provider bearer tokens.
 
 This matters architecturally because authorization is not an afterthought at the edge. It is part of the route and dependency layer.
 
@@ -124,7 +131,7 @@ Current observability touchpoints include:
 
 * OpenTelemetry span naming under the `mutx.*` namespace
 * trace propagation through middleware in `src/api/middleware/tracing.py`
-* a public telemetry config route at `GET /v1/telemetry/config`
+* an internal-admin, tenant-scoped telemetry config route at `GET /v1/telemetry/config`
 * dashboard and docs surfaces that explain runtime history, traces, and monitoring
 
 That gives the architecture a useful property: web UI, API clients, and runtime operators can speak about the same run, session, and trace identifiers.
@@ -145,10 +152,10 @@ This is why the architecture spans more than the FastAPI app. MUTX includes the 
 Some architecture questions are easier to answer from adjacent pages:
 
 * [Deployment Quickstart](/docs/deployment/quickstart) for the shortest supported install and setup path
-* [API Reference](/docs/api/reference) for the public `/v1/*` contract
+* [API Reference](../api/reference.md) for the public `/v1/*` contract
 * [AI Agent Approvals](/ai-agent-approvals) for human approval gates in the control plane
 * [AI Agent Cost Management](/ai-agent-cost) for spend visibility and budget controls
-* [Autonomous Agent Team](/docs/agents) for the specialist roles used in autonomous shipping workflows
+* [Autonomous Agent Team](https://github.com/mutx-dev/mutx-dev/blob/main/agents/README.md) for the specialist roles used in autonomous shipping workflows
 
 ## Summary
 

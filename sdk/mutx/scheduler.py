@@ -1,13 +1,12 @@
-"""Scheduler API SDK - /scheduler endpoints.
-
-Note: Scheduler feature is planned for v1.3 and returns 503.
-"""
+"""Scheduler API SDK for the mounted ``/v1/scheduler`` endpoints."""
 
 from __future__ import annotations
 
 from typing import Any
 
 import httpx
+
+from mutx._http import api_path
 
 
 class SchedulerTask:
@@ -27,10 +26,7 @@ class SchedulerTask:
 
 
 class Scheduler:
-    """SDK resource for /scheduler endpoints.
-
-    Note: Scheduler is planned for v1.3. These methods currently return 503 errors.
-    """
+    """SDK resource for scheduler status and manual task triggers."""
 
     def __init__(self, client: httpx.Client | httpx.AsyncClient):
         self._client = client
@@ -51,17 +47,17 @@ class Scheduler:
         """Get scheduler status. Admin role required.
 
         Raises:
-            httpx.HTTPStatusError: 503 if not yet implemented (v1.3)
+            httpx.HTTPStatusError: If the scheduler request fails.
         """
         self._require_sync_client()
-        response = self._client.get("/scheduler")
+        response = self._client.get("scheduler")
         response.raise_for_status()
         return response.json()
 
     async def aget_status(self) -> dict[str, Any]:
         """Get scheduler status (async)."""
         self._require_async_client()
-        response = await self._client.get("/scheduler")
+        response = await self._client.get("scheduler")
         response.raise_for_status()
         return response.json()
 
@@ -75,10 +71,10 @@ class Scheduler:
             task_id: The ID of the task to trigger
 
         Raises:
-            httpx.HTTPStatusError: 503 if not yet implemented (v1.3)
+            httpx.HTTPStatusError: If the trigger request fails.
         """
         self._require_sync_client()
-        response = self._client.post("/scheduler", json={"task_id": task_id})
+        response = self._client.post(api_path("scheduler/{task_id}/trigger", task_id=task_id))
         response.raise_for_status()
         return response.json()
 
@@ -88,6 +84,6 @@ class Scheduler:
     ) -> dict[str, Any]:
         """Manually trigger a scheduled task (async)."""
         self._require_async_client()
-        response = await self._client.post("/scheduler", json={"task_id": task_id})
+        response = await self._client.post(api_path("scheduler/{task_id}/trigger", task_id=task_id))
         response.raise_for_status()
         return response.json()

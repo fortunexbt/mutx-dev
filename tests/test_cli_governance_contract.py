@@ -14,7 +14,9 @@ class _DummyConfig:
 
 class _DummyResponse:
     def __init__(self, payload: dict):
+        self.status_code = 200
         self._payload = payload
+        self.text = json.dumps(payload)
 
     def raise_for_status(self) -> None:
         return None

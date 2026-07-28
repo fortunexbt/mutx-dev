@@ -85,14 +85,14 @@ class Budgets:
     def get(self) -> Budget:
         """Get current user's budget and credits."""
         self._require_sync_client()
-        response = self._client.get("/budgets")
+        response = self._client.get("budgets")
         response.raise_for_status()
         return Budget(response.json())
 
     async def aget(self) -> Budget:
         """Get current user's budget and credits (async)."""
         self._require_async_client()
-        response = await self._client.get("/budgets")
+        response = await self._client.get("budgets")
         response.raise_for_status()
         return Budget(response.json())
 
@@ -113,7 +113,7 @@ class Budgets:
             params["period_start"] = period_start
         if period_end:
             params["period_end"] = period_end
-        response = self._client.get("/budgets/usage", params=params)
+        response = self._client.get("budgets/usage", params=params)
         response.raise_for_status()
         return UsageBreakdown(response.json())
 
@@ -129,6 +129,6 @@ class Budgets:
             params["period_start"] = period_start
         if period_end:
             params["period_end"] = period_end
-        response = await self._client.get("/budgets/usage", params=params)
+        response = await self._client.get("budgets/usage", params=params)
         response.raise_for_status()
         return UsageBreakdown(response.json())

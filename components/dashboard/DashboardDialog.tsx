@@ -172,13 +172,13 @@ export function DashboardDialog({
   return (
     <div
       ref={modalRootRef}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+      className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6"
     >
       <button
         type="button"
         aria-label={`Close ${title} dialog`}
         tabIndex={-1}
-        className="absolute inset-0 bg-[#04070c]/82 backdrop-blur-sm"
+        className="absolute inset-0 bg-[#040403]/88"
         onClick={() => onOpenChangeRef.current(false)}
       />
 
@@ -189,7 +189,10 @@ export function DashboardDialog({
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
-        className={cn("relative z-10 w-full max-w-lg overflow-hidden rounded-xl border", className)}
+        className={cn(
+          "relative z-10 flex max-h-[100dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-[8px] border sm:max-h-[calc(100dvh-3rem)] sm:rounded-[8px]",
+          className,
+        )}
         style={{
           borderColor: dashboardTokens.borderStrong,
           background: dashboardTokens.panelGradientStrong,
@@ -242,11 +245,11 @@ export function DashboardDialog({
           </button>
         </div>
 
-        <div className="px-5 py-5 sm:px-6">{children}</div>
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">{children}</div>
 
         {footer ? (
           <div
-            className="flex flex-wrap items-center justify-end gap-3 border-t px-5 py-4 sm:px-6"
+            className="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6 sm:pb-4"
             style={{ borderColor: dashboardTokens.borderSubtle }}
           >
             {footer}

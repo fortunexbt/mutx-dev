@@ -165,6 +165,7 @@ describe('Webhooks route proxies', () => {
         },
         body: JSON.stringify({
           url: 'https://example.com/webhook',
+          name: 'my-webhook',
           events: ['agent.deployed'],
         }),
         cache: 'no-store',
@@ -242,6 +243,53 @@ describe('Webhooks route proxies', () => {
           refresh_token: 'new_refresh_token',
         })
       )
+    })
+  })
+
+  describe('PATCH /api/webhooks/:id', () => {
+    it('forwards backend-supported name and circuit reset fields', async () => {
+      hasAuthSession.mockReturnValue(true)
+      authenticatedFetch.mockResolvedValue({
+        response: {
+          status: 200,
+          json: async () => ({
+            id: 'wh_123',
+            name: 'renamed-webhook',
+            circuit_open: false,
+          }),
+        },
+        tokenRefreshed: false,
+      })
+      const request = mockJsonRequest({
+        name: 'renamed-webhook',
+        reset_circuit: true,
+      })
+      const { PATCH } = await import('../../app/api/webhooks/[id]/route')
+
+      const response = await PATCH(request, { params: Promise.resolve({ id: 'wh_123' }) })
+
+      expect(authenticatedFetch).toHaveBeenCalledWith(
+        request,
+        'http://localhost:8000/v1/webhooks/wh_123',
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'renamed-webhook', reset_circuit: true }),
+          cache: 'no-store',
+        },
+      )
+      expect(response.status).toBe(200)
+    })
+
+    it('rejects unsupported secret rotation before proxying', async () => {
+      hasAuthSession.mockReturnValue(true)
+      const request = mockJsonRequest({ secret: 'replacement-secret' })
+      const { PATCH } = await import('../../app/api/webhooks/[id]/route')
+
+      const response = await PATCH(request, { params: Promise.resolve({ id: 'wh_123' }) })
+
+      expect(response.status).toBe(400)
+      expect(authenticatedFetch).not.toHaveBeenCalled()
     })
   })
 })

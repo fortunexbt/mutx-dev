@@ -1,7 +1,7 @@
-FROM node:24-alpine3.23 AS base
+FROM node:24-alpine3.23@sha256:595398b0081eacda8e1c4c5b97b76cd1020e4d58a8ebcb4843b9bca1e79e7436 AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN apk upgrade --no-cache && npm install -g npm@11.12.1
+RUN npm install -g npm@11.18.0
 
 FROM base AS deps
 COPY package.json package-lock.json ./
@@ -28,16 +28,26 @@ FROM base AS production
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
-COPY --from=builder /app /app
+
+# Run the standalone server as an unprivileged user. Create it before copying
+# artifacts so the image does not need a recursive ownership rewrite.
+RUN addgroup -S nextjs && adduser -S nextjs -G nextjs
+
+# Ship only the traced Next.js runtime plus assets that standalone output does
+# not place at the paths used by the production server.
+COPY --from=builder --chown=nextjs:nextjs /app/.next/standalone /app/.next/standalone
 # Next standalone does not bundle public assets or .next/static by default.
 # Put them under the standalone runtime directory so `node .next/standalone/server.js`
 # can resolve the same asset paths Railway serves in production.
-COPY --from=builder /app/public /app/.next/standalone/public
-COPY --from=builder /app/.next/static /app/.next/standalone/.next/static
+COPY --from=builder --chown=nextjs:nextjs /app/public /app/.next/standalone/public
+COPY --from=builder --chown=nextjs:nextjs /app/.next/static /app/.next/standalone/.next/static
 
-# Run the app as a non-root user
-RUN addgroup -S nextjs && adduser -S nextjs -G nextjs
-RUN chown -R nextjs:nextjs /app
+# These routes read source content from process.cwd() at request time. Keep the
+# explicit runtime assets without copying the builder workspace wholesale.
+COPY --from=builder --chown=nextjs:nextjs /app/docs /app/docs
+COPY --from=builder --chown=nextjs:nextjs /app/SUMMARY.md /app/security.md /app/support.md /app/
+COPY --from=builder --chown=nextjs:nextjs /app/app/fonts /app/app/fonts
+
 USER nextjs
 
 EXPOSE 3000

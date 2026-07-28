@@ -69,14 +69,14 @@ I want an agent on very cheap hardware and I care more about footprint than ecos
 
 ---
 
-## Example 6 — NanoClaw `/setup` confusion
+## Example 6 — NanoClaw v1/v2 setup confusion
 
 ### User
-I ran `/setup` in my shell and got “command not found.”
+I ran `/setup` from an old guide and got “command not found.”
 
 ### Good response shape
-- Explain that `/setup` is a Claude Code slash command, not a shell command.
-- Give the shortest correction: `claude`, then `/setup`.
+- Explain that `/setup` belongs to the older v1 workflow.
+- Give the current correction: use a pinned v2 checkout and run `bash nanoclaw.sh` in the shell.
 - Verify Claude Code is installed and working.
 - Ask for `claude --version` only if needed.
 

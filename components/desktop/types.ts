@@ -156,6 +156,28 @@ export type DesktopLifecycleState =
   | "error"
   | "stopped";
 
+export type DesktopStatusSourceFreshness =
+  | "checking"
+  | "fresh"
+  | "stale"
+  | "unavailable";
+
+export interface DesktopStatusSource {
+  freshness: DesktopStatusSourceFreshness;
+  observedAt: string | null;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+}
+
+export type GovernanceRuntimeState =
+  | "running"
+  | "stopped"
+  | "degraded"
+  | "not_installed"
+  | "error"
+  | "unknown"
+  | "unavailable";
+
 export interface DoctorBridgeAPI {
   run(): Promise<DoctorResult>;
 }
@@ -218,7 +240,7 @@ export interface DesktopStatus {
   faramesh: {
     available: boolean;
     socketPath: string | null;
-    health: string;
+    health: GovernanceRuntimeState;
   };
   uiServer: {
     ready: boolean;
@@ -228,6 +250,7 @@ export interface DesktopStatus {
     lastError: string | null;
     lastExitCode: number | null;
     attempt: number;
+    observedAt: string | null;
   };
   localControlPlane: {
     ready: boolean;
@@ -246,7 +269,7 @@ export interface DesktopStatus {
     agentId: string | null;
     workspace: string | null;
     gatewayStatus: string | null;
-    sessionCount: number;
+    sessionCount: number | null;
     state: DesktopLifecycleState;
     lastError: string | null;
   };
@@ -260,6 +283,16 @@ export interface DesktopStatus {
   };
   cliAvailable: boolean;
   mutxVersion: string | null;
+  sources: {
+    uiServer: DesktopStatusSource;
+    bridge: DesktopStatusSource;
+    context: DesktopStatusSource;
+    auth: DesktopStatusSource;
+    runtime: DesktopStatusSource;
+    governance: DesktopStatusSource;
+    sessions: DesktopStatusSource;
+    controlPlane: DesktopStatusSource;
+  };
   lastUpdated: string | null;
 }
 

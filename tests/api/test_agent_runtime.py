@@ -2,7 +2,15 @@ from datetime import datetime, timezone
 import uuid
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import select
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def developer_principals(db_session, test_user, other_user):
+    test_user.roles = ["DEVELOPER"]
+    other_user.roles = ["DEVELOPER"]
+    await db_session.commit()
 
 
 @pytest.mark.asyncio

@@ -1,440 +1,460 @@
-"""
-Tests for /policies endpoints.
-"""
+"""Tenant isolation, durability, and RBAC tests for /v1/policies."""
+
+from __future__ import annotations
 
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import pytest
-from httpx import AsyncClient
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from src.api.services.policy_store import Policy, PolicyEvaluationContext, PolicyStore, Rule
+from src.api.auth.dependencies import get_current_user
+from src.api.database import get_db
+from src.api.main import create_app
+from src.api.models import User
+from src.api.routes import policies as policy_routes
+from src.api.services.policy_store import (
+    Policy,
+    PolicyEvaluationContext,
+    PolicyStore,
+    PolicyUpdate,
+    PolicyVersionConflictError,
+    Rule,
+)
+
+
+def _policy(
+    name: str,
+    *,
+    policy_id: str | None = None,
+    rules: list[Rule] | None = None,
+    enabled: bool = True,
+) -> Policy:
+    return Policy(
+        id=policy_id or str(uuid.uuid4()),
+        name=name,
+        rules=rules or [],
+        enabled=enabled,
+        version=1,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+
+
+def _payload(policy: Policy) -> dict:
+    return policy.model_dump(mode="json", exclude={"created_at", "updated_at"})
+
+
+async def _set_roles(db: AsyncSession, user: User, *roles: str) -> None:
+    user.roles = list(roles)
+    await db.commit()
+
+
+@pytest_asyncio.fixture
+async def developer_client(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    test_user: User,
+) -> AsyncClient:
+    await _set_roles(db_session, test_user, "DEVELOPER")
+    return client
+
+
+@asynccontextmanager
+async def _new_client(db: AsyncSession, user: User):
+    """Build a new app instance against the same durable database."""
+    app = create_app(
+        enable_lifespan=False,
+        background_monitor_enabled=False,
+        database_required_on_startup=False,
+    )
+
+    async def override_get_db():
+        yield db
+
+    async def override_get_current_user() -> User:
+        return user
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as new_client:
+        yield new_client
 
 
 class TestPolicyStore:
-    """Unit tests for PolicyStore."""
-
     def test_rule_rejects_empty_patterns(self):
         with pytest.raises(ValueError):
             Rule(type="block", pattern="", action="reject", scope="input")
 
     @pytest.mark.asyncio
-    async def test_get_policy_not_found(self):
-        store = PolicyStore()
-        result = await store.get_policy("nonexistent")
-        assert result is None
+    async def test_store_is_tenant_scoped_and_durable(
+        self,
+        db_session: AsyncSession,
+        test_user: User,
+        other_user: User,
+    ):
+        first_process = PolicyStore(db_session, test_user.id)
+        await first_process.create_policy(_policy("durable-policy"))
+
+        restarted_process = PolicyStore(db_session, test_user.id)
+        other_tenant = PolicyStore(db_session, other_user.id)
+
+        assert (await restarted_process.get_policy("durable-policy")) is not None
+        assert await other_tenant.get_policy("durable-policy") is None
+        assert await other_tenant.list_policies() == []
+        assert await other_tenant.delete_policy("durable-policy") is False
 
     @pytest.mark.asyncio
-    async def test_upsert_policy_creates_new(self):
-        store = PolicyStore()
-        policy = Policy(
-            id=str(uuid.uuid4()),
-            name="test-policy",
-            rules=[
-                Rule(
-                    type="block",
-                    pattern="*.exe",
-                    action="reject",
-                    scope="input",
-                )
-            ],
-            enabled=True,
-            version=1,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+    async def test_same_name_and_id_are_isolated_by_owner(
+        self,
+        db_session: AsyncSession,
+        test_user: User,
+        other_user: User,
+    ):
+        shared_id = str(uuid.uuid4())
+        first = await PolicyStore(db_session, test_user.id).create_policy(
+            _policy("shared-name", policy_id=shared_id)
         )
-        result = await store.upsert_policy(policy)
-        assert result.name == "test-policy"
-        assert result.version == 1
-        assert len(result.rules) == 1
+        second = await PolicyStore(db_session, other_user.id).create_policy(
+            _policy("shared-name", policy_id=shared_id)
+        )
+
+        assert first.id == second.id == shared_id
+        assert first.name == second.name == "shared-name"
 
     @pytest.mark.asyncio
-    async def test_upsert_policy_increments_version(self):
-        store = PolicyStore()
-        policy = Policy(
-            id=str(uuid.uuid4()),
-            name="test-policy",
-            rules=[],
-            enabled=True,
-            version=1,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-        )
-        await store.upsert_policy(policy)
-        policy2 = Policy(
-            id=str(uuid.uuid4()),
-            name="test-policy",
-            rules=[Rule(type="warn", pattern="*.bat", action="log", scope="input")],
-            enabled=True,
-            version=1,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-        )
-        result = await store.upsert_policy(policy2)
-        assert result.version == 2
-        assert len(result.rules) == 1
+    async def test_upsert_increments_only_the_owner_version(
+        self,
+        db_session: AsyncSession,
+        test_user: User,
+        other_user: User,
+    ):
+        owner_store = PolicyStore(db_session, test_user.id)
+        other_store = PolicyStore(db_session, other_user.id)
+        await owner_store.create_policy(_policy("versioned"))
+        await other_store.create_policy(_policy("versioned"))
 
-    @pytest.mark.asyncio
-    async def test_list_policies(self):
-        store = PolicyStore()
-        for i in range(3):
-            await store.upsert_policy(
-                Policy(
-                    id=str(uuid.uuid4()),
-                    name=f"policy-{i}",
-                    rules=[],
-                    enabled=True,
-                    version=1,
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc),
-                )
+        updated = await owner_store.upsert_policy(
+            _policy(
+                "versioned",
+                rules=[Rule(type="warn", pattern="*.bat", action="log", scope="input")],
             )
-        policies = await store.list_policies()
-        assert len(policies) == 3
+        )
+
+        assert updated.version == 2
+        assert (await other_store.get_policy("versioned")).version == 1
 
     @pytest.mark.asyncio
-    async def test_delete_policy(self):
-        store = PolicyStore()
-        await store.upsert_policy(
-            Policy(
-                id=str(uuid.uuid4()),
-                name="to-delete",
-                rules=[],
+    async def test_atomic_update_rejects_a_second_writer_with_a_stale_version(
+        self,
+        db_session: AsyncSession,
+        test_engine: AsyncEngine,
+        test_user: User,
+    ):
+        created = await PolicyStore(db_session, test_user.id).create_policy(_policy("contended"))
+        session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
+
+        async with session_factory() as first_db, session_factory() as second_db:
+            first_store = PolicyStore(first_db, test_user.id)
+            second_store = PolicyStore(second_db, test_user.id)
+            first_observation = await first_store.get_policy("contended")
+            second_observation = await second_store.get_policy("contended")
+            assert first_observation is not None
+            assert second_observation is not None
+
+            first_update = PolicyUpdate(
+                id=created.id,
+                name=created.name,
+                rules=[Rule(type="warn", pattern="first", action="log", scope="input")],
                 enabled=True,
-                version=1,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                expected_version=first_observation.version,
             )
-        )
-        deleted = await store.delete_policy("to-delete")
-        assert deleted is True
-        assert await store.get_policy("to-delete") is None
-
-    @pytest.mark.asyncio
-    async def test_delete_policy_not_found(self):
-        store = PolicyStore()
-        result = await store.delete_policy("nonexistent")
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_reload_client_registration(self):
-        store = PolicyStore()
-        client = _DummySSEClient()
-        store.register_reload_client(client)
-        assert client in store._reload_clients
-        store.unregister_reload_client(client)
-        assert client not in store._reload_clients
-
-    @pytest.mark.asyncio
-    async def test_upsert_notifies_reload_clients(self):
-        store = PolicyStore()
-        client = _DummySSEClient()
-        store.register_reload_client(client)
-
-        await store.upsert_policy(
-            Policy(
-                id=str(uuid.uuid4()),
-                name="observed-policy",
-                rules=[],
+            second_update = PolicyUpdate(
+                id=created.id,
+                name=created.name,
+                rules=[Rule(type="block", pattern="second", action="reject", scope="input")],
                 enabled=True,
-                version=1,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                expected_version=second_observation.version,
+            )
+
+            updated = await first_store.update_policy("contended", first_update)
+            with pytest.raises(PolicyVersionConflictError):
+                await second_store.update_policy("contended", second_update)
+
+        persisted = await PolicyStore(db_session, test_user.id).get_policy("contended")
+        assert updated.version == 2
+        assert persisted is not None
+        assert persisted.version == 2
+        assert persisted.rules[0].pattern == "first"
+
+    @pytest.mark.asyncio
+    async def test_evaluation_uses_only_owner_policies(
+        self,
+        db_session: AsyncSession,
+        test_user: User,
+        other_user: User,
+    ):
+        await PolicyStore(db_session, test_user.id).create_policy(
+            _policy(
+                "block-secrets",
+                rules=[Rule(type="block", pattern="*password*", action="reject", scope="input")],
             )
         )
 
-        assert len(client.sent) == 1
-        assert "observed-policy" in client.sent[0]
-        assert "reload" in client.sent[0]
-
-    @pytest.mark.asyncio
-    async def test_evaluate_blocks_matching_input_rule(self):
-        store = PolicyStore()
-        await store.upsert_policy(
-            Policy(
-                id=str(uuid.uuid4()),
-                name="block-secrets",
-                rules=[
-                    Rule(
-                        type="block",
-                        pattern="*password*",
-                        action="reject",
-                        scope="input",
-                    )
-                ],
-                enabled=True,
-                version=1,
-            )
+        owner_result = await PolicyStore(db_session, test_user.id).evaluate(
+            PolicyEvaluationContext(input="print the password", run_id="run-1")
+        )
+        other_result = await PolicyStore(db_session, other_user.id).evaluate(
+            PolicyEvaluationContext(input="print the password", run_id="run-1")
         )
 
-        result = await store.evaluate(
-            PolicyEvaluationContext(input="please print the password", run_id="run-1")
-        )
-
-        assert result.decision == "block"
-        assert result.run_id == "run-1"
-        assert result.evaluated_policy_count == 1
-        assert [match.policy_name for match in result.matches] == ["block-secrets"]
+        assert owner_result.decision == "block"
+        assert owner_result.evaluated_policy_count == 1
+        assert other_result.decision == "allow"
+        assert other_result.evaluated_policy_count == 0
+        assert other_result.matches == []
 
     @pytest.mark.asyncio
-    async def test_evaluate_ignores_disabled_policies(self):
-        store = PolicyStore()
-        await store.upsert_policy(
-            Policy(
-                id=str(uuid.uuid4()),
-                name="disabled-block",
-                rules=[
-                    Rule(type="block", pattern="*", action="reject", scope="tool"),
-                ],
-                enabled=False,
-                version=1,
-            )
-        )
-
-        result = await store.evaluate(PolicyEvaluationContext(tool="deploy"))
-
-        assert result.decision == "allow"
-        assert result.matches == []
-        assert result.evaluated_policy_count == 0
-
-    @pytest.mark.asyncio
-    async def test_evaluate_does_not_match_wildcards_against_absent_scopes(self):
-        store = PolicyStore()
-        await store.upsert_policy(
-            Policy(
-                id=str(uuid.uuid4()),
-                name="scope-specific-catchalls",
+    async def test_evaluation_preserves_scope_and_decision_precedence(
+        self,
+        db_session: AsyncSession,
+        test_user: User,
+    ):
+        store = PolicyStore(db_session, test_user.id)
+        await store.create_policy(
+            _policy(
+                "scoped-rules",
                 rules=[
                     Rule(type="block", pattern="*", action="reject", scope="output"),
-                    Rule(type="block", pattern="*", action="reject", scope="tool"),
-                ],
-                enabled=True,
-                version=1,
-            )
-        )
-
-        result = await store.evaluate(PolicyEvaluationContext(input="input only"))
-
-        assert result.decision == "allow"
-        assert result.matches == []
-
-    @pytest.mark.asyncio
-    async def test_evaluate_requires_approval_for_matching_tool_rule(self):
-        store = PolicyStore()
-        await store.upsert_policy(
-            Policy(
-                id=str(uuid.uuid4()),
-                name="deploy-approval",
-                rules=[
                     Rule(
                         type="warn",
                         pattern="terraform_*",
                         action="require_approval",
                         scope="tool",
-                    )
-                ],
-                enabled=True,
-                version=1,
-            )
-        )
-
-        result = await store.evaluate(
-            PolicyEvaluationContext(
-                tool="terraform_apply",
-                tool_args={"workspace": "production"},
-                agent_id="agent-1",
-                session_id="session-1",
-            )
-        )
-
-        assert result.decision == "require_approval"
-        assert result.agent_id == "agent-1"
-        assert result.session_id == "session-1"
-        assert result.matches[0].action == "require_approval"
-
-    @pytest.mark.asyncio
-    async def test_evaluate_never_downgrades_a_block_rule_to_approval(self):
-        store = PolicyStore()
-        await store.upsert_policy(
-            Policy(
-                id=str(uuid.uuid4()),
-                name="block-wins",
-                rules=[
+                    ),
                     Rule(
                         type="block",
                         pattern="*production*",
                         action="require_approval",
                         scope="tool",
-                    )
+                    ),
                 ],
-                enabled=True,
-                version=1,
             )
         )
 
-        result = await store.evaluate(PolicyEvaluationContext(tool="deploy_production"))
+        absent_scope = await store.evaluate(PolicyEvaluationContext(input="input only"))
+        production = await store.evaluate(
+            PolicyEvaluationContext(tool="terraform_apply_production")
+        )
 
-        assert result.decision == "block"
+        assert absent_scope.decision == "allow"
+        assert production.decision == "block"
 
+    @pytest.mark.asyncio
+    async def test_sse_generator_observes_durable_updates(
+        self,
+        db_session: AsyncSession,
+        test_engine: AsyncEngine,
+        test_user: User,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        store = PolicyStore(db_session, test_user.id)
+        created = await store.create_policy(_policy("observed"))
+        generator = policy_routes._sse_reload_generator(store, "observed", created.version)
+        assert "connected" in await anext(generator)
 
-class _DummySSEClient:
-    """Minimal async send-capable stand-in for EventSourceResponse."""
+        async def no_sleep(_seconds: float) -> None:
+            return None
 
-    def __init__(self) -> None:
-        self.sent: list[str] = []
+        monkeypatch.setattr(policy_routes.asyncio, "sleep", no_sleep)
+        session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
+        async with session_factory() as other_process_db:
+            await PolicyStore(other_process_db, test_user.id).upsert_policy(_policy("observed"))
 
-    async def send(self, payload: str) -> None:
-        self.sent.append(payload)
+        event = await anext(generator)
+        assert "reload" in event
+        assert '"version": 2' in event
 
 
 class TestPolicyRoutes:
-    """Integration tests for /v1/policies routes."""
+    @pytest.mark.asyncio
+    async def test_developer_crud_and_restart_persistence(
+        self,
+        developer_client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+    ):
+        policy = _policy("restart-policy")
+        created = await developer_client.post("/v1/policies", json=_payload(policy))
+        assert created.status_code == 201
+        assert created.json()["version"] == 1
+
+        async with _new_client(db_session, test_user) as restarted_client:
+            fetched = await restarted_client.get("/v1/policies/restart-policy")
+
+        assert fetched.status_code == 200
+        assert fetched.json()["id"] == policy.id
 
     @pytest.mark.asyncio
-    async def test_create_policy(self, client: AsyncClient):
-        response = await client.post(
-            "/v1/policies",
-            json={
-                "id": str(uuid.uuid4()),
-                "name": "my-policy",
-                "rules": [
-                    {"type": "block", "pattern": "*.exe", "action": "reject", "scope": "input"}
-                ],
-                "enabled": True,
-                "version": 1,
-            },
-        )
-        assert response.status_code == 201
-        data = response.json()
-        assert data["name"] == "my-policy"
-        assert data["version"] == 1
+    async def test_duplicate_policy_conflict_is_tenant_local(
+        self,
+        developer_client: AsyncClient,
+    ):
+        payload = _payload(_policy("duplicate"))
+        first = await developer_client.post("/v1/policies", json=payload)
+        second = await developer_client.post("/v1/policies", json=payload)
+
+        assert first.status_code == 201
+        assert second.status_code == 409
+        assert second.json()["detail"] == "Policy 'duplicate' already exists"
 
     @pytest.mark.asyncio
-    async def test_create_policy_duplicate_conflict(self, client: AsyncClient):
-        payload = {
-            "id": str(uuid.uuid4()),
-            "name": "duplicate-policy",
-            "rules": [],
-            "enabled": True,
-            "version": 1,
+    async def test_update_enforces_identity_and_expected_version(
+        self,
+        developer_client: AsyncClient,
+    ):
+        policy = _policy("versioned-route")
+        created = await developer_client.post("/v1/policies", json=_payload(policy))
+        assert created.status_code == 201
+
+        update_payload = {
+            "id": policy.id,
+            "name": policy.name,
+            "rules": [
+                {
+                    "type": "warn",
+                    "pattern": "*.sh",
+                    "action": "audit",
+                    "scope": "tool",
+                }
+            ],
+            "enabled": False,
+            "expected_version": 1,
         }
-        r1 = await client.post("/v1/policies", json=payload)
-        assert r1.status_code == 201
-        r2 = await client.post("/v1/policies", json=payload)
-        assert r2.status_code == 409
-
-    @pytest.mark.asyncio
-    async def test_list_policies(self, client: AsyncClient):
-        # Create two policies
-        for name in ["list-policy-a", "list-policy-b"]:
-            await client.post(
-                "/v1/policies",
-                json={
-                    "id": str(uuid.uuid4()),
-                    "name": name,
-                    "rules": [],
-                    "enabled": True,
-                    "version": 1,
-                },
-            )
-        response = await client.get("/v1/policies")
-        assert response.status_code == 200
-        data = response.json()
-        assert isinstance(data, list)
-        names = {p["name"] for p in data}
-        assert "list-policy-a" in names
-        assert "list-policy-b" in names
-
-    @pytest.mark.asyncio
-    async def test_get_policy_by_name(self, client: AsyncClient):
-        await client.post(
-            "/v1/policies",
-            json={
-                "id": str(uuid.uuid4()),
-                "name": "get-policy-test",
-                "rules": [
-                    {"type": "allow", "pattern": "*.txt", "action": "pass", "scope": "output"}
-                ],
-                "enabled": True,
-                "version": 1,
-            },
+        updated = await developer_client.put(
+            "/v1/policies/versioned-route",
+            json=update_payload,
         )
-        response = await client.get("/v1/policies/get-policy-test")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["name"] == "get-policy-test"
-        assert len(data["rules"]) == 1
-
-    @pytest.mark.asyncio
-    async def test_evaluate_policies_route(self, client: AsyncClient):
-        await client.post(
-            "/v1/policies",
-            json={
-                "id": str(uuid.uuid4()),
-                "name": "route-evaluate-policy",
-                "rules": [
-                    {
-                        "type": "warn",
-                        "pattern": "*delete_user*",
-                        "action": "require_approval",
-                        "scope": "tool",
-                    }
-                ],
-                "enabled": True,
-                "version": 1,
-            },
+        stale = await developer_client.put(
+            "/v1/policies/versioned-route",
+            json={**update_payload, "enabled": True},
+        )
+        wrong_name = await developer_client.put(
+            "/v1/policies/versioned-route",
+            json={**update_payload, "name": "renamed-in-body", "expected_version": 2},
+        )
+        wrong_id = await developer_client.put(
+            "/v1/policies/versioned-route",
+            json={**update_payload, "id": "guessed-id", "expected_version": 2},
         )
 
-        response = await client.post(
+        assert updated.status_code == 200
+        assert updated.json()["version"] == 2
+        assert updated.json()["enabled"] is False
+        assert stale.status_code == 409
+        assert "Fetch the latest policy" in stale.json()["detail"]
+        assert wrong_name.status_code == 400
+        assert wrong_id.status_code == 400
+
+        persisted = await developer_client.get("/v1/policies/versioned-route")
+        assert persisted.json()["version"] == 2
+        assert persisted.json()["enabled"] is False
+
+    @pytest.mark.asyncio
+    async def test_cross_tenant_list_get_delete_reload_and_evaluate_fail_closed(
+        self,
+        client: AsyncClient,
+        other_user_client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+        other_user: User,
+    ):
+        await _set_roles(db_session, test_user, "DEVELOPER")
+        await _set_roles(db_session, other_user, "DEVELOPER")
+        private_policy = _policy(
+            "private-policy",
+            rules=[
+                Rule(
+                    type="block",
+                    pattern="*private*",
+                    action="reject",
+                    scope="input",
+                )
+            ],
+        )
+        await client.post(
+            "/v1/policies",
+            json=_payload(private_policy),
+        )
+
+        listed = await other_user_client.get("/v1/policies")
+        fetched = await other_user_client.get("/v1/policies/private-policy")
+        deleted = await other_user_client.delete("/v1/policies/private-policy")
+        updated = await other_user_client.put(
+            "/v1/policies/private-policy",
+            json={
+                "id": private_policy.id,
+                "name": private_policy.name,
+                "rules": [],
+                "enabled": False,
+                "expected_version": 1,
+            },
+        )
+        reloaded = await other_user_client.post("/v1/policies/private-policy/reload")
+        evaluated = await other_user_client.post(
             "/v1/policies/evaluate",
-            json={
-                "tool": "delete_user",
-                "tool_args": {"user_id": "user-123"},
-                "run_id": "run-123",
-            },
+            json={"input": "private", "run_id": "guessed-run"},
         )
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["decision"] == "require_approval"
-        assert data["run_id"] == "run-123"
-        assert data["matches"][0]["policy_name"] == "route-evaluate-policy"
+        assert listed.status_code == 200
+        assert listed.json() == []
+        assert fetched.status_code == 404
+        assert deleted.status_code == 404
+        assert updated.status_code == 404
+        assert reloaded.status_code == 404
+        assert evaluated.status_code == 200
+        assert evaluated.json()["decision"] == "allow"
+        assert evaluated.json()["evaluated_policy_count"] == 0
+        assert (await client.get("/v1/policies/private-policy")).status_code == 200
 
     @pytest.mark.asyncio
-    async def test_get_policy_not_found(self, client: AsyncClient):
-        response = await client.get("/v1/policies/does-not-exist")
-        assert response.status_code == 404
-
-    @pytest.mark.asyncio
-    async def test_delete_policy(self, client: AsyncClient):
-        await client.post(
-            "/v1/policies",
+    async def test_viewer_can_read_but_cannot_mutate_or_evaluate(
+        self,
+        client: AsyncClient,
+    ):
+        listed = await client.get("/v1/policies")
+        created = await client.post("/v1/policies", json=_payload(_policy("forbidden")))
+        updated = await client.put(
+            "/v1/policies/forbidden",
             json={
-                "id": str(uuid.uuid4()),
-                "name": "to-delete-test",
+                "id": "forbidden",
+                "name": "forbidden",
                 "rules": [],
                 "enabled": True,
-                "version": 1,
+                "expected_version": 1,
             },
         )
-        response = await client.delete("/v1/policies/to-delete-test")
-        assert response.status_code == 204
-        # Confirm it's gone
-        get_resp = await client.get("/v1/policies/to-delete-test")
-        assert get_resp.status_code == 404
+        deleted = await client.delete("/v1/policies/forbidden")
+        evaluated = await client.post("/v1/policies/evaluate", json={"tool": "deploy"})
+
+        assert listed.status_code == 200
+        assert created.status_code == 403
+        assert updated.status_code == 403
+        assert deleted.status_code == 403
+        assert evaluated.status_code == 403
 
     @pytest.mark.asyncio
-    async def test_delete_policy_not_found(self, client: AsyncClient):
-        response = await client.delete("/v1/policies/never-existed")
-        assert response.status_code == 404
+    async def test_admin_retains_access_within_own_tenant(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+    ):
+        await _set_roles(db_session, test_user, "ADMIN")
 
-    @pytest.mark.asyncio
-    async def test_reload_endpoint_policy_not_found(self, client: AsyncClient):
-        response = await client.post("/v1/policies/nonexistent/reload")
-        assert response.status_code == 404
+        response = await client.post("/v1/policies", json=_payload(_policy("admin-policy")))
 
-    # NOTE: testing the SSE streaming endpoint (200 + text/event-stream) via
-    # client.post() is blocked — httpx reads the full response body before
-    # returning, so an infinite SSE stream hangs forever.  The SSE generator
-    # logic (event format, version-change detection, cancellation handling) is
-    # fully exercised by TestPolicyStore.test_upsert_notifies_reload_clients.
+        assert response.status_code == 201

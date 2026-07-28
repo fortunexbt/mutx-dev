@@ -282,13 +282,13 @@ def test_overview_returns_assistant_overview() -> None:
         captured["params"] = dict(request.url.params)
         return httpx.Response(200, json=_overview_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     assistant = Assistant(client)
 
     result = assistant.overview()
 
     assert isinstance(result, AssistantOverview)
-    assert captured["path"] == "/assistant/overview"
+    assert captured["path"] == "/v1/assistant/overview"
     assert captured["params"] == {}
     client.close()
 
@@ -301,7 +301,7 @@ def test_overview_passes_agent_id_param() -> None:
         captured["params"] = dict(request.url.params)
         return httpx.Response(200, json=_overview_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     assistant = Assistant(client)
 
     assistant.overview(agent_id=agent_id)
@@ -311,7 +311,7 @@ def test_overview_passes_agent_id_param() -> None:
 
 
 def test_overview_requires_sync_client() -> None:
-    async_client = httpx.AsyncClient(base_url="https://api.test")
+    async_client = httpx.AsyncClient(base_url="https://api.test/v1/")
     assistant = Assistant(async_client)
 
     with pytest.raises(RuntimeError, match="sync"):
@@ -333,7 +333,7 @@ async def test_aoverview_returns_assistant_overview() -> None:
         return httpx.Response(200, json=_overview_payload(has_assistant=True))
 
     client = httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     )
     assistant = Assistant(client)
@@ -347,7 +347,7 @@ async def test_aoverview_returns_assistant_overview() -> None:
 
 @pytest.mark.asyncio
 async def test_aoverview_requires_async_client() -> None:
-    sync_client = httpx.Client(base_url="https://api.test")
+    sync_client = httpx.Client(base_url="https://api.test/v1/")
     assistant = Assistant(sync_client)
 
     with pytest.raises(RuntimeError, match="async"):
@@ -369,7 +369,7 @@ def test_skills_returns_list_of_assistant_skills() -> None:
         captured["path"] = request.url.path
         return httpx.Response(200, json=[_skill_payload(id="sk1"), _skill_payload(id="sk2")])
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     assistant = Assistant(client)
 
     result = assistant.skills(agent_id)
@@ -377,12 +377,12 @@ def test_skills_returns_list_of_assistant_skills() -> None:
     assert isinstance(result, list)
     assert len(result) == 2
     assert all(isinstance(s, AssistantSkill) for s in result)
-    assert captured["path"] == f"/assistant/{agent_id}/skills"
+    assert captured["path"] == f"/v1/assistant/{agent_id}/skills"
     client.close()
 
 
 def test_skills_requires_sync_client() -> None:
-    async_client = httpx.AsyncClient(base_url="https://api.test")
+    async_client = httpx.AsyncClient(base_url="https://api.test/v1/")
     assistant = Assistant(async_client)
 
     with pytest.raises(RuntimeError, match="sync"):
@@ -406,7 +406,7 @@ async def test_askills_returns_list_of_assistant_skills() -> None:
         return httpx.Response(200, json=[_skill_payload(id="ask1")])
 
     client = httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     )
     assistant = Assistant(client)
@@ -421,7 +421,7 @@ async def test_askills_returns_list_of_assistant_skills() -> None:
 
 @pytest.mark.asyncio
 async def test_askills_requires_async_client() -> None:
-    sync_client = httpx.Client(base_url="https://api.test")
+    sync_client = httpx.Client(base_url="https://api.test/v1/")
     assistant = Assistant(sync_client)
 
     with pytest.raises(RuntimeError, match="async"):
@@ -445,20 +445,20 @@ def test_install_skill_returns_updated_skills_list() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json=[_skill_payload(id=skill_id, installed=True)])
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     assistant = Assistant(client)
 
     result = assistant.install_skill(agent_id, skill_id)
 
     assert isinstance(result, list)
     assert all(isinstance(s, AssistantSkill) for s in result)
-    assert captured["path"] == f"/assistant/{agent_id}/skills/{skill_id}"
+    assert captured["path"] == f"/v1/assistant/{agent_id}/skills/{skill_id}"
     assert captured["method"] == "POST"
     client.close()
 
 
 def test_install_skill_requires_sync_client() -> None:
-    async_client = httpx.AsyncClient(base_url="https://api.test")
+    async_client = httpx.AsyncClient(base_url="https://api.test/v1/")
     assistant = Assistant(async_client)
 
     with pytest.raises(RuntimeError, match="sync"):
@@ -483,7 +483,7 @@ async def test_ainstall_skill_returns_updated_skills_list() -> None:
         return httpx.Response(200, json=[_skill_payload(id=skill_id, installed=True)])
 
     client = httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     )
     assistant = Assistant(client)
@@ -497,7 +497,7 @@ async def test_ainstall_skill_returns_updated_skills_list() -> None:
 
 @pytest.mark.asyncio
 async def test_ainstall_skill_requires_async_client() -> None:
-    sync_client = httpx.Client(base_url="https://api.test")
+    sync_client = httpx.Client(base_url="https://api.test/v1/")
     assistant = Assistant(sync_client)
 
     with pytest.raises(RuntimeError, match="async"):
@@ -521,19 +521,19 @@ def test_uninstall_skill_returns_updated_skills_list() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json=[])
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     assistant = Assistant(client)
 
     result = assistant.uninstall_skill(agent_id, skill_id)
 
     assert isinstance(result, list)
-    assert captured["path"] == f"/assistant/{agent_id}/skills/{skill_id}"
+    assert captured["path"] == f"/v1/assistant/{agent_id}/skills/{skill_id}"
     assert captured["method"] == "DELETE"
     client.close()
 
 
 def test_uninstall_skill_requires_sync_client() -> None:
-    async_client = httpx.AsyncClient(base_url="https://api.test")
+    async_client = httpx.AsyncClient(base_url="https://api.test/v1/")
     assistant = Assistant(async_client)
 
     with pytest.raises(RuntimeError, match="sync"):
@@ -558,7 +558,7 @@ async def test_auninstall_skill_returns_updated_skills_list() -> None:
         return httpx.Response(200, json=[])
 
     client = httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     )
     assistant = Assistant(client)
@@ -571,7 +571,7 @@ async def test_auninstall_skill_returns_updated_skills_list() -> None:
 
 @pytest.mark.asyncio
 async def test_auninstall_skill_requires_async_client() -> None:
-    sync_client = httpx.Client(base_url="https://api.test")
+    sync_client = httpx.Client(base_url="https://api.test/v1/")
     assistant = Assistant(sync_client)
 
     with pytest.raises(RuntimeError, match="async"):
@@ -593,7 +593,7 @@ def test_channels_returns_list_of_assistant_channels() -> None:
         captured["path"] = request.url.path
         return httpx.Response(200, json=[_channel_payload(id="ch1"), _channel_payload(id="ch2")])
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     assistant = Assistant(client)
 
     result = assistant.channels(agent_id)
@@ -601,12 +601,12 @@ def test_channels_returns_list_of_assistant_channels() -> None:
     assert isinstance(result, list)
     assert len(result) == 2
     assert all(isinstance(c, AssistantChannel) for c in result)
-    assert captured["path"] == f"/assistant/{agent_id}/channels"
+    assert captured["path"] == f"/v1/assistant/{agent_id}/channels"
     client.close()
 
 
 def test_channels_requires_sync_client() -> None:
-    async_client = httpx.AsyncClient(base_url="https://api.test")
+    async_client = httpx.AsyncClient(base_url="https://api.test/v1/")
     assistant = Assistant(async_client)
 
     with pytest.raises(RuntimeError, match="sync"):
@@ -630,7 +630,7 @@ async def test_achannels_returns_list_of_assistant_channels() -> None:
         return httpx.Response(200, json=[_channel_payload(id="ach1")])
 
     client = httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     )
     assistant = Assistant(client)
@@ -645,7 +645,7 @@ async def test_achannels_returns_list_of_assistant_channels() -> None:
 
 @pytest.mark.asyncio
 async def test_achannels_requires_async_client() -> None:
-    sync_client = httpx.Client(base_url="https://api.test")
+    sync_client = httpx.Client(base_url="https://api.test/v1/")
     assistant = Assistant(sync_client)
 
     with pytest.raises(RuntimeError, match="async"):
@@ -667,7 +667,7 @@ def test_wakeups_returns_list_of_assistant_wakeups() -> None:
         captured["path"] = request.url.path
         return httpx.Response(200, json=[_wakeup_payload(id="wk1"), _wakeup_payload(id="wk2")])
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     assistant = Assistant(client)
 
     result = assistant.wakeups(agent_id)
@@ -675,12 +675,12 @@ def test_wakeups_returns_list_of_assistant_wakeups() -> None:
     assert isinstance(result, list)
     assert len(result) == 2
     assert all(isinstance(w, AssistantWakeup) for w in result)
-    assert captured["path"] == f"/assistant/{agent_id}/wakeups"
+    assert captured["path"] == f"/v1/assistant/{agent_id}/wakeups"
     client.close()
 
 
 def test_wakeups_requires_sync_client() -> None:
-    async_client = httpx.AsyncClient(base_url="https://api.test")
+    async_client = httpx.AsyncClient(base_url="https://api.test/v1/")
     assistant = Assistant(async_client)
 
     with pytest.raises(RuntimeError, match="sync"):
@@ -704,7 +704,7 @@ async def test_awakeups_returns_list_of_assistant_wakeups() -> None:
         return httpx.Response(200, json=[_wakeup_payload(id="awk1")])
 
     client = httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     )
     assistant = Assistant(client)
@@ -719,7 +719,7 @@ async def test_awakeups_returns_list_of_assistant_wakeups() -> None:
 
 @pytest.mark.asyncio
 async def test_awakeups_requires_async_client() -> None:
-    sync_client = httpx.Client(base_url="https://api.test")
+    sync_client = httpx.Client(base_url="https://api.test/v1/")
     assistant = Assistant(sync_client)
 
     with pytest.raises(RuntimeError, match="async"):
@@ -741,7 +741,7 @@ def test_health_returns_assistant_health() -> None:
         captured["path"] = request.url.path
         return httpx.Response(200, json=_health_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     assistant = Assistant(client)
 
     result = assistant.health(agent_id)
@@ -749,12 +749,12 @@ def test_health_returns_assistant_health() -> None:
     assert isinstance(result, AssistantHealth)
     assert result.status == "ok"
     assert result.version == "1.2.3"
-    assert captured["path"] == f"/assistant/{agent_id}/health"
+    assert captured["path"] == f"/v1/assistant/{agent_id}/health"
     client.close()
 
 
 def test_health_requires_sync_client() -> None:
-    async_client = httpx.AsyncClient(base_url="https://api.test")
+    async_client = httpx.AsyncClient(base_url="https://api.test/v1/")
     assistant = Assistant(async_client)
 
     with pytest.raises(RuntimeError, match="sync"):
@@ -778,7 +778,7 @@ async def test_ahealth_returns_assistant_health() -> None:
         return httpx.Response(200, json=_health_payload(status="degraded"))
 
     client = httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     )
     assistant = Assistant(client)
@@ -792,7 +792,7 @@ async def test_ahealth_returns_assistant_health() -> None:
 
 @pytest.mark.asyncio
 async def test_ahealth_requires_async_client() -> None:
-    sync_client = httpx.Client(base_url="https://api.test")
+    sync_client = httpx.Client(base_url="https://api.test/v1/")
     assistant = Assistant(sync_client)
 
     with pytest.raises(RuntimeError, match="async"):
@@ -817,7 +817,7 @@ def test_sessions_returns_list_of_assistant_sessions() -> None:
             json=[_session_payload(id="s1"), _session_payload(id="s2")],
         )
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     assistant = Assistant(client)
 
     result = assistant.sessions(agent_id)
@@ -825,12 +825,12 @@ def test_sessions_returns_list_of_assistant_sessions() -> None:
     assert isinstance(result, list)
     assert len(result) == 2
     assert all(isinstance(s, AssistantSession) for s in result)
-    assert captured["path"] == f"/assistant/{agent_id}/sessions"
+    assert captured["path"] == f"/v1/assistant/{agent_id}/sessions"
     client.close()
 
 
 def test_sessions_requires_sync_client() -> None:
-    async_client = httpx.AsyncClient(base_url="https://api.test")
+    async_client = httpx.AsyncClient(base_url="https://api.test/v1/")
     assistant = Assistant(async_client)
 
     with pytest.raises(RuntimeError, match="sync"):
@@ -854,7 +854,7 @@ async def test_asessions_returns_list_of_assistant_sessions() -> None:
         return httpx.Response(200, json=[_session_payload(id="as1")])
 
     client = httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     )
     assistant = Assistant(client)
@@ -869,7 +869,7 @@ async def test_asessions_returns_list_of_assistant_sessions() -> None:
 
 @pytest.mark.asyncio
 async def test_asessions_requires_async_client() -> None:
-    sync_client = httpx.Client(base_url="https://api.test")
+    sync_client = httpx.Client(base_url="https://api.test/v1/")
     assistant = Assistant(sync_client)
 
     with pytest.raises(RuntimeError, match="async"):

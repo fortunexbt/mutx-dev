@@ -5,12 +5,16 @@ import uuid
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 from click.testing import CliRunner
 
 from cli.main import cli
 
 
 class DummyConfig:
+    api_url = "https://api.example.test"
+    refresh_token = None
+
     def is_authenticated(self) -> bool:
         return True
 
@@ -33,22 +37,28 @@ def test_api_keys_list_hits_canonical_route_and_renders_keys(monkeypatch) -> Non
         captured["path"] = path
         return DummyResponse(
             200,
-            [
-                {
-                    "id": key_id,
-                    "name": "test-key-1",
-                    "created_at": "2026-03-14T10:00:00",
-                    "is_active": True,
-                    "expires_at": "2026-04-14T10:00:00",
-                },
-                {
-                    "id": str(uuid.uuid4()),
-                    "name": "test-key-2",
-                    "created_at": "2026-03-14T10:00:00",
-                    "is_active": False,
-                    "expires_at": None,
-                },
-            ],
+            {
+                "items": [
+                    {
+                        "id": key_id,
+                        "name": "test-key-1",
+                        "created_at": "2026-03-14T10:00:00",
+                        "is_active": True,
+                        "expires_at": "2026-04-14T10:00:00",
+                    },
+                    {
+                        "id": str(uuid.uuid4()),
+                        "name": "test-key-2",
+                        "created_at": "2026-03-14T10:00:00",
+                        "is_active": False,
+                        "expires_at": None,
+                    },
+                ],
+                "total": 2,
+                "skip": 0,
+                "limit": 50,
+                "has_more": False,
+            },
         )
 
     monkeypatch.setattr(
@@ -74,7 +84,10 @@ def test_api_keys_list_hits_canonical_route_and_renders_keys(monkeypatch) -> Non
 
 def test_api_keys_list_empty(monkeypatch) -> None:
     def fake_get(path: str, params: dict[str, Any] | None = None) -> DummyResponse:
-        return DummyResponse(200, [])
+        return DummyResponse(
+            200,
+            {"items": [], "total": 0, "skip": 0, "limit": 50, "has_more": False},
+        )
 
     monkeypatch.setattr("cli.commands.api_keys.current_config", lambda: DummyConfig())
     monkeypatch.setattr(
@@ -228,3 +241,53 @@ def test_api_keys_rotate_requires_confirmation_without_force(monkeypatch) -> Non
 
     assert result.exit_code == 0
     assert "Rotating will revoke the old key immediately" in result.output
+
+
+def test_api_keys_transport_failure_exits_nonzero_without_success(monkeypatch) -> None:
+    def fake_get(path: str) -> DummyResponse:
+        request = httpx.Request("GET", f"https://api.example.test{path}")
+        raise httpx.ConnectError("Connection refused", request=request)
+
+    monkeypatch.setattr("cli.commands.api_keys.current_config", lambda: DummyConfig())
+    monkeypatch.setattr(
+        "cli.commands.api_keys.get_client",
+        lambda config: SimpleNamespace(get=fake_get),
+    )
+
+    result = CliRunner().invoke(cli, ["api-keys", "list"])
+
+    assert result.exit_code == 1
+    assert "Could not reach API" in result.output
+    assert "No API keys found" not in result.output
+
+
+def test_api_keys_malformed_payload_exits_nonzero_without_success(monkeypatch) -> None:
+    class MalformedResponse(DummyResponse):
+        def json(self) -> Any:
+            raise ValueError("invalid JSON")
+
+    monkeypatch.setattr("cli.commands.api_keys.current_config", lambda: DummyConfig())
+    monkeypatch.setattr(
+        "cli.commands.api_keys.get_client",
+        lambda config: SimpleNamespace(get=lambda path: MalformedResponse(200, None)),
+    )
+
+    result = CliRunner().invoke(cli, ["api-keys", "list"])
+
+    assert result.exit_code == 1
+    assert "API returned malformed JSON" in result.output
+    assert "No API keys found" not in result.output
+
+
+def test_api_keys_expired_auth_exits_nonzero_without_success(monkeypatch) -> None:
+    monkeypatch.setattr("cli.commands.api_keys.current_config", lambda: DummyConfig())
+    monkeypatch.setattr(
+        "cli.commands.api_keys.get_client",
+        lambda config: SimpleNamespace(get=lambda path: DummyResponse(401, {"detail": "expired"})),
+    )
+
+    result = CliRunner().invoke(cli, ["api-keys", "list"])
+
+    assert result.exit_code == 1
+    assert "Authentication expired" in result.output
+    assert "No API keys found" not in result.output

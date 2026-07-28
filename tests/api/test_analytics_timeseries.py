@@ -61,7 +61,6 @@ class TestAnalyticsTimeSeriesResponse:
             result.__iter__ = lambda s: iter([FakeRow()])
             return result
 
-        original_execute = db_session.execute
         call_count = [0]
 
         async def counting_execute(stmt, *args, **kwargs):

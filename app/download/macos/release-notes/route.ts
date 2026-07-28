@@ -10,7 +10,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const release = await fetchLatestStableDesktopRelease();
-  return NextResponse.redirect(
+  const response = NextResponse.redirect(
     release ? buildReleaseNotesUrl(release.version) : MUTX_RELEASE_NOTES_URL,
   );
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
 }

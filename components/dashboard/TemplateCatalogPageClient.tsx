@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
   ExternalLink,
@@ -16,8 +16,14 @@ import {
   Tags,
 } from "lucide-react";
 
+import { ApiRequestError, extractApiErrorMessage } from "@/components/app/http";
+import {
+  dashboardRequestErrorMessage,
+  getDashboardRequestAccessFailure,
+} from "@/components/dashboard/dashboardRequestAccess";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { FeatureHint } from "@/components/dashboard/FeatureHint";
+import { LiveAuthRequired, LiveForbidden } from "@/components/dashboard/livePrimitives";
 import { dashboardTokens } from "@/components/dashboard/tokens";
 
 type TemplateSourceFilter = "all" | "official" | "imported";
@@ -95,8 +101,9 @@ interface CustomTemplateForm {
   version: string;
 }
 
-function sourceLabel(templateId: string) {
-  return templateId === "personal_assistant" ? "official" : "imported";
+function sourceLabel(template: TemplateRecord) {
+  if (template.category === "custom") return "custom";
+  return template.is_official ? "official" : "imported";
 }
 
 function buildDraft(template: TemplateRecord): DeployDraft {
@@ -129,10 +136,16 @@ function buildCustomTemplateForm(template: TemplateRecord | null): CustomTemplat
   };
 }
 
+function templateRequestError(response: Response, payload: unknown, fallback: string) {
+  return new ApiRequestError(extractApiErrorMessage(payload, fallback), response.status);
+}
+
 export function TemplateCatalogPageClient() {
   const [templates, setTemplates] = useState<TemplateRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState<TemplateSourceFilter>("all");
   const [pinnedTemplateIds, setPinnedTemplateIds] = useState<string[]>([]);
@@ -147,10 +160,29 @@ export function TemplateCatalogPageClient() {
   const [deletingCustomId, setDeletingCustomId] = useState<string | null>(null);
   const [deployError, setDeployError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<DeploymentReceipt | null>(null);
+  const deploymentAttempts = useRef(new Map<string, { fingerprint: string; idempotencyKey: string }>());
+  const inFlightDeployments = useRef(new Set<string>());
+
+  const handleAccessFailure = useCallback((requestError: unknown) => {
+    const accessFailure = getDashboardRequestAccessFailure(requestError);
+    if (accessFailure === "authentication") {
+      setAuthRequired(true);
+      setPermissionDenied(false);
+      return true;
+    }
+    if (accessFailure === "permission") {
+      setPermissionDenied(true);
+      setAuthRequired(false);
+      return true;
+    }
+    return false;
+  }, []);
 
   const loadTemplates = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setAuthRequired(false);
+    setPermissionDenied(false);
     try {
       const [templatesResponse, stateResponse] = await Promise.all([
         fetch("/api/dashboard/templates", {
@@ -165,24 +197,27 @@ export function TemplateCatalogPageClient() {
 
       const payload = await templatesResponse.json().catch(() => []);
       if (!templatesResponse.ok) {
-        throw new Error(
-          typeof payload?.detail === "string" ? payload.detail : "Failed to load starter templates",
-        );
+        throw templateRequestError(templatesResponse, payload, "Failed to load starter templates");
       }
 
       const statePayload = await stateResponse.json().catch(() => ({}));
-      if (!stateResponse.ok) {
-        throw new Error(
-          typeof statePayload?.detail === "string"
-            ? statePayload.detail
-            : "Failed to load template catalog state",
-        );
+      if (!stateResponse.ok && stateResponse.status === 401) {
+        throw templateRequestError(stateResponse, statePayload, "Failed to load template preferences");
+      }
+      if (!stateResponse.ok && stateResponse.status === 403) {
+        throw templateRequestError(stateResponse, statePayload, "Failed to load template preferences");
       }
 
       const nextTemplates = Array.isArray(payload)
         ? (payload.filter((entry) => entry && typeof entry === "object") as TemplateRecord[])
         : [];
-      const nextState = statePayload as TemplateCatalogStateRecord;
+      const nextState = stateResponse.ok
+        ? (statePayload as TemplateCatalogStateRecord)
+        : {
+            pinned_template_ids: [],
+            recent_template_ids: [],
+            deployment_count_by_template: {},
+          };
 
       setTemplates(nextTemplates);
       setPinnedTemplateIds(Array.isArray(nextState.pinned_template_ids) ? nextState.pinned_template_ids : []);
@@ -197,15 +232,25 @@ export function TemplateCatalogPageClient() {
         }
         return next;
       });
-      if (!nextTemplates.some((template) => template.id === selectedTemplateId) && nextTemplates[0]?.id) {
-        setSelectedTemplateId(nextTemplates[0].id);
+      setSelectedTemplateId((current) => {
+        if (nextTemplates.some((template) => template.id === current)) return current;
+        return nextTemplates[0]?.id || "";
+      });
+      if (!stateResponse.ok) {
+        setDeployError(
+          typeof statePayload?.detail === "string"
+            ? `Templates loaded, but saved catalog preferences are unavailable: ${statePayload.detail}`
+            : "Templates loaded, but saved catalog preferences are unavailable.",
+        );
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load starter templates");
+      if (!handleAccessFailure(loadError)) {
+        setError(dashboardRequestErrorMessage(loadError, "Failed to load starter templates"));
+      }
     } finally {
       setLoading(false);
     }
-  }, [selectedTemplateId]);
+  }, [handleAccessFailure]);
 
   const persistCatalogState = useCallback(
     async (nextState: TemplateCatalogStateRecord) => {
@@ -222,11 +267,7 @@ export function TemplateCatalogPageClient() {
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(
-          typeof payload?.detail === "string"
-            ? payload.detail
-            : "Failed to persist template catalog state",
-        );
+        throw templateRequestError(response, payload, "Failed to persist template catalog state");
       }
     },
     [],
@@ -240,8 +281,8 @@ export function TemplateCatalogPageClient() {
     const needle = search.trim().toLowerCase();
     return [...templates]
       .filter((template) => {
-        if (sourceFilter === "official") return template.id === "personal_assistant";
-        if (sourceFilter === "imported") return template.id !== "personal_assistant";
+        if (sourceFilter === "official") return Boolean(template.is_official);
+        if (sourceFilter === "imported") return !template.is_official;
         return true;
       })
       .filter((template) => {
@@ -311,9 +352,10 @@ export function TemplateCatalogPageClient() {
         deployment_count_by_template: deploymentCounts,
       });
     } catch (persistError) {
-      setDeployError(
-        persistError instanceof Error ? persistError.message : "Failed to persist template favorites",
-      );
+      setPinnedTemplateIds(pinnedTemplateIds);
+      if (!handleAccessFailure(persistError)) {
+        setDeployError(dashboardRequestErrorMessage(persistError, "Failed to persist template favorites"));
+      }
     }
   }
 
@@ -365,14 +407,14 @@ export function TemplateCatalogPageClient() {
       });
       const created = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(typeof created?.detail === "string" ? created.detail : "Failed to create custom template");
+        throw templateRequestError(response, created, "Failed to create custom template");
       }
       await loadTemplates();
       setSelectedTemplateId(String(created.id || nextId));
     } catch (creationError) {
-      setDeployError(
-        creationError instanceof Error ? creationError.message : "Failed to create custom template",
-      );
+      if (!handleAccessFailure(creationError)) {
+        setDeployError(dashboardRequestErrorMessage(creationError, "Failed to create custom template"));
+      }
     } finally {
       setSavingCustomId(null);
     }
@@ -384,7 +426,7 @@ export function TemplateCatalogPageClient() {
     setCloningId(template.id);
     setDeployError(null);
     try {
-      const response = await fetch(`/api/dashboard/templates/${template.id}/clone`, {
+      const response = await fetch(`/api/dashboard/templates/${encodeURIComponent(template.id)}/clone`, {
         method: "POST",
         credentials: "include",
         cache: "no-store",
@@ -398,12 +440,14 @@ export function TemplateCatalogPageClient() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(typeof payload?.detail === "string" ? payload.detail : "Failed to clone template");
+        throw templateRequestError(response, payload, "Failed to clone template");
       }
       await loadTemplates();
       setSelectedTemplateId(String(payload.id || nextId));
     } catch (cloneError) {
-      setDeployError(cloneError instanceof Error ? cloneError.message : "Failed to clone template");
+      if (!handleAccessFailure(cloneError)) {
+        setDeployError(dashboardRequestErrorMessage(cloneError, "Failed to clone template"));
+      }
     } finally {
       setCloningId(null);
     }
@@ -414,7 +458,7 @@ export function TemplateCatalogPageClient() {
     setSavingCustomId(template.id);
     setDeployError(null);
     try {
-      const response = await fetch(`/api/dashboard/templates/custom/${template.id}`, {
+      const response = await fetch(`/api/dashboard/templates/custom/${encodeURIComponent(template.id)}`, {
         method: "PUT",
         credentials: "include",
         cache: "no-store",
@@ -439,12 +483,14 @@ export function TemplateCatalogPageClient() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(typeof payload?.detail === "string" ? payload.detail : "Failed to save custom template");
+        throw templateRequestError(response, payload, "Failed to save custom template");
       }
       await loadTemplates();
       setSelectedTemplateId(template.id);
     } catch (saveError) {
-      setDeployError(saveError instanceof Error ? saveError.message : "Failed to save custom template");
+      if (!handleAccessFailure(saveError)) {
+        setDeployError(dashboardRequestErrorMessage(saveError, "Failed to save custom template"));
+      }
     } finally {
       setSavingCustomId(null);
     }
@@ -455,25 +501,28 @@ export function TemplateCatalogPageClient() {
     setDeletingCustomId(template.id);
     setDeployError(null);
     try {
-      const response = await fetch(`/api/dashboard/templates/custom/${template.id}`, {
+      const response = await fetch(`/api/dashboard/templates/custom/${encodeURIComponent(template.id)}`, {
         method: "DELETE",
         credentials: "include",
         cache: "no-store",
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(typeof payload?.detail === "string" ? payload.detail : "Failed to delete custom template");
+        throw templateRequestError(response, payload, "Failed to delete custom template");
       }
       await loadTemplates();
       setSelectedTemplateId("personal_assistant");
     } catch (deleteError) {
-      setDeployError(deleteError instanceof Error ? deleteError.message : "Failed to delete custom template");
+      if (!handleAccessFailure(deleteError)) {
+        setDeployError(dashboardRequestErrorMessage(deleteError, "Failed to delete custom template"));
+      }
     } finally {
       setDeletingCustomId(null);
     }
   }
 
   async function deployTemplate(template: TemplateRecord) {
+    if (inFlightDeployments.current.has(template.id)) return;
     const draft = drafts[template.id] || buildDraft(template);
     const name = draft.name.trim();
     if (!name) {
@@ -489,40 +538,62 @@ export function TemplateCatalogPageClient() {
     const defaultChannels = template.default_config?.channels || {};
     const channels = Object.fromEntries(
       Object.entries(defaultChannels)
-        .filter(([channelId]) => draft.enabledChannels.includes(channelId))
         .map(([channelId, payload]) => [
           channelId,
           {
             label: payload.label || channelId,
-            enabled: true,
+            enabled: draft.enabledChannels.includes(channelId),
             mode: payload.mode || "pairing",
             allow_from: payload.allow_from || [],
           },
         ]),
     );
 
+    const deploymentPayload = {
+      name,
+      replicas: draft.replicas,
+      model: draft.model.trim() || undefined,
+      workspace: draft.workspace.trim() || undefined,
+      skills,
+      channels,
+    };
+    const fingerprint = JSON.stringify(deploymentPayload);
+    const previousAttempt = deploymentAttempts.current.get(template.id);
+    const idempotencyKey =
+      previousAttempt?.fingerprint === fingerprint
+        ? previousAttempt.idempotencyKey
+        : crypto.randomUUID();
+    deploymentAttempts.current.set(template.id, { fingerprint, idempotencyKey });
+    inFlightDeployments.current.add(template.id);
+
     setDeployingId(template.id);
     setDeployError(null);
     setReceipt(null);
     try {
-      const response = await fetch(`/api/dashboard/templates/${template.id}/deploy`, {
+      const response = await fetch(`/api/dashboard/templates/${encodeURIComponent(template.id)}/deploy`, {
         method: "POST",
         credentials: "include",
         cache: "no-store",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          replicas: draft.replicas,
-          model: draft.model.trim() || undefined,
-          workspace: draft.workspace.trim() || undefined,
-          skills,
-          channels,
-        }),
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify(deploymentPayload),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(
-          typeof payload?.detail === "string" ? payload.detail : "Failed to deploy starter template",
+        deploymentAttempts.current.delete(template.id);
+        throw templateRequestError(response, payload, "Failed to deploy starter template");
+      }
+
+      const agentId = typeof payload?.agent?.id === "string" ? payload.agent.id.trim() : "";
+      const deploymentId =
+        typeof payload?.deployment?.id === "string" ? payload.deployment.id.trim() : "";
+      if (!agentId || !deploymentId) {
+        deploymentAttempts.current.delete(template.id);
+        throw new ApiRequestError(
+          "Deployment response did not include a canonical agent and deployment receipt. No successful deployment is confirmed in this view.",
+          502,
         );
       }
 
@@ -533,26 +604,42 @@ export function TemplateCatalogPageClient() {
       };
       setRecentTemplateIds(nextRecent);
       setDeploymentCounts(nextCounts);
-      await persistCatalogState({
-        pinned_template_ids: pinnedTemplateIds,
-        recent_template_ids: nextRecent,
-        deployment_count_by_template: nextCounts,
-      });
+      deploymentAttempts.current.delete(template.id);
       setReceipt({
         templateId: template.id,
-        agentId: String(payload?.agent?.id || ""),
-        deploymentId: String(payload?.deployment?.id || ""),
+        agentId,
+        deploymentId,
       });
+      try {
+        await persistCatalogState({
+          pinned_template_ids: pinnedTemplateIds,
+          recent_template_ids: nextRecent,
+          deployment_count_by_template: nextCounts,
+        });
+      } catch (persistError) {
+        if (!handleAccessFailure(persistError)) {
+          setDeployError(
+            `Deployment succeeded, but catalog activity was not saved: ${dashboardRequestErrorMessage(persistError, "request failed")}`,
+          );
+        }
+      }
     } catch (deploymentError) {
-      setDeployError(
-        deploymentError instanceof Error
-          ? deploymentError.message
-          : "Failed to deploy starter template",
-      );
-      void loadTemplates();
+      if (!handleAccessFailure(deploymentError)) {
+        setDeployError(dashboardRequestErrorMessage(deploymentError, "Failed to deploy starter template"));
+        void loadTemplates();
+      }
     } finally {
+      inFlightDeployments.current.delete(template.id);
       setDeployingId(null);
     }
+  }
+
+  if (authRequired) {
+    return <LiveAuthRequired title="Operator session required" message="Sign in to browse and deploy workspace templates." />;
+  }
+
+  if (permissionDenied) {
+    return <LiveForbidden title="Template permission required" message="Your account cannot read or mutate workspace templates. Catalog, clone, edit, and deploy controls are unavailable." />;
   }
 
   return (
@@ -574,8 +661,7 @@ export function TemplateCatalogPageClient() {
           </div>
           <div className="flex flex-wrap gap-2">
             <FeatureHint
-              tone="beta"
-              detail="Spawn Lab actions are active, but template deployment, cloning, and custom editing are still an operator beta."
+              detail="Template deployment, cloning, and custom editing use live workspace contracts and return persisted catalog state or deployment receipts."
             />
             {(["all", "official", "imported"] as TemplateSourceFilter[]).map((filter) => {
               const active = sourceFilter === filter;
@@ -605,7 +691,7 @@ export function TemplateCatalogPageClient() {
                 color: dashboardTokens.textPrimary,
               }}
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "motion-safe:animate-spin motion-reduce:animate-none" : ""}`} />
               Refresh
             </button>
             <button
@@ -636,10 +722,10 @@ export function TemplateCatalogPageClient() {
                 Deployment receipt
               </p>
               <p className="mt-2 text-sm text-white">
-                Template {receipt.templateId} deployed into agent {receipt.agentId || "pending"}.
+                Template {receipt.templateId} deployed into agent {receipt.agentId}.
               </p>
               <p className="mt-1 text-xs text-slate-400">
-                Deployment id: {receipt.deploymentId || "pending orchestration response"}
+                Deployment id: {receipt.deploymentId}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -665,12 +751,12 @@ export function TemplateCatalogPageClient() {
       ) : null}
 
       {deployError ? (
-        <div className="rounded-[20px] border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+        <div role="alert" aria-live="assertive" className="rounded-[20px] border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
           {deployError}
         </div>
       ) : null}
 
-      {error ? <EmptyState title="Template catalog unavailable" message={error} /> : null}
+      {error ? <EmptyState role="alert" aria-live="assertive" title="Template catalog unavailable" message={error} /> : null}
 
       {!error && !loading && filteredTemplates.length === 0 ? (
         <EmptyState
@@ -767,7 +853,7 @@ export function TemplateCatalogPageClient() {
                         color: imported ? "rgb(165,243,252)" : "rgb(253,230,138)",
                       }}
                     >
-                      {sourceLabel(template.id)}
+                      {sourceLabel(template)}
                     </span>
                   </div>
                 </div>
@@ -817,7 +903,7 @@ export function TemplateCatalogPageClient() {
                     <Layers3 className="h-4 w-4" />
                     <span className="text-[10px] uppercase tracking-[0.18em]">Source</span>
                   </div>
-                  <p className="mt-2 text-sm font-semibold text-white">{sourceLabel(selectedTemplate.id)}</p>
+                  <p className="mt-2 text-sm font-semibold text-white">{sourceLabel(selectedTemplate)}</p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
                   <div className="flex items-center gap-2 text-slate-500">

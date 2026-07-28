@@ -37,7 +37,7 @@ export function Sidebar({
 }: SidebarProps) {
   return (
     <aside
-      className={cn("flex h-full shrink-0 flex-col border-r px-4 py-5", className)}
+      className={cn("flex h-full shrink-0 flex-col border-e px-4 py-5", className)}
       style={{
         width,
         background: dashboardTokens.shellGradient,
@@ -71,7 +71,7 @@ export function Sidebar({
                   <span className="truncate text-sm">{item.label}</span>
                   {item.badge ? (
                     <span
-                      className="ml-auto rounded-full border px-2 py-0.5 text-[11px]"
+                      className="ms-auto rounded-full border px-2 py-0.5 text-[11px]"
                       style={{
                         borderColor: dashboardTokens.borderStrong,
                         color: dashboardTokens.textSubtle,
@@ -85,7 +85,7 @@ export function Sidebar({
               );
 
               const sharedClassName = cn(
-                "flex w-full items-center gap-3 rounded-full border px-3 py-2.5 text-left transition-colors",
+                "flex w-full items-center gap-3 rounded-full border px-3 py-2.5 text-start transition-colors",
                 item.disabled ? "cursor-not-allowed opacity-50" : undefined,
               );
 

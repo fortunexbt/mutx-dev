@@ -10,8 +10,8 @@ import { buildPageMetadata, getAppUrl } from "@/lib/seo";
 export const metadata: Metadata = {
   metadataBase: new URL(getAppUrl()),
   ...buildPageMetadata({
-    title: "MUTX Control Plane",
-    description: "Operator-grade control plane for deploying, observing, and governing agent infrastructure.",
+    title: "MUTX Simulated Control Demo",
+    description: "A sample-data walkthrough of the MUTX operator flight recorder. No live workspace or write controls are connected.",
     path: "/control",
     host: getAppUrl(),
     siteName: "MUTX App",
@@ -22,8 +22,8 @@ export const metadata: Metadata = {
     follow: true,
     nocache: false,
   },
-  title: "MUTX Control Plane",
-  description: "Operator-grade control plane for deploying, observing, and governing agent infrastructure.",
+  title: "MUTX Simulated Control Demo",
+  description: "A sample-data walkthrough of the MUTX operator flight recorder. No live workspace or write controls are connected.",
   keywords: [
     "agent control plane",
     "agent deployments",

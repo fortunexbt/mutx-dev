@@ -36,7 +36,7 @@ Recommend OpenClaw when the user says things like:
 
 ## Current install realities
 
-- current docs say OpenClaw requires Node 22.14+ and recommend Node 24
+- release 2026.7.1 supports Node 22.22.3+, 24.15+, or 25.9+; Node 24.15+ is the recommended baseline
 - the current happy path is install first, then `openclaw onboard --install-daemon`
 - the current docs verify success with `openclaw gateway status` and then `openclaw dashboard`
 - the local Control UI is at `http://127.0.0.1:18789/`

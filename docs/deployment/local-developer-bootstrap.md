@@ -12,8 +12,8 @@ Use this guide when setting up the repository for local development the first ti
 Install the following on your machine:
 
 * Git
-* Node.js 20 LTS recommended (`18+` minimum)
-* `pnpm` or `npm` for frontend dependencies and scripts
+* Node.js `>=24.15.0`
+* npm `>=11.18.0 <12` (the repository pins `npm@11.18.0`)
 * Python `3.10+`
 * Docker + Docker Compose v2
 * `make` and `curl` (recommended for local verification commands)
@@ -23,19 +23,12 @@ Quick check:
 ```bash
 git --version
 node -v
-corepack enable
-pnpm -v
+npm -v
 python3 --version
 docker --version
 docker compose version
 make --version
 curl --version
-```
-
-If you prefer npm:
-
-```bash
-npm -v
 ```
 
 ## 2. Clone and Setup
@@ -44,11 +37,8 @@ npm -v
 git clone https://github.com/mutx-dev/mutx-dev.git
 cd mutx-dev
 
-# Frontend deps (pnpm)
-pnpm install
-
-# Frontend deps (npm)
-# npm install
+# Frontend dependencies from the committed package-lock.json
+npm ci --legacy-peer-deps
 
 # Python deps
 python3 -m venv .venv
@@ -127,8 +117,7 @@ source .venv/bin/activate
 uvicorn src.api.main:app --reload --port 8000
 
 # Terminal 2 (web)
-pnpm dev
-# npm run dev
+npm run dev
 ```
 
 ## 5. Testing the Setup

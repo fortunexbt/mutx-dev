@@ -70,7 +70,7 @@ const githubAction = {
   label: 'View on GitHub',
 } as const
 
-const downloadAction = { href: '/download', label: 'Download for Mac' } as const
+const downloadAction = { href: '/download', label: 'Check Mac availability' } as const
 
 export const operationalStories = {
   approvals: {
@@ -86,7 +86,7 @@ export const operationalStories = {
       title:
         'AI Agent Approval Workflows — Human-in-the-Loop Gates & Operator Authorization | MUTX',
       description:
-        "Most agent approval systems are advisory — they suggest a review but don't block the action. MUTX approval gates are enforced by the control plane. The agent waits for a decision, and every decision is on the record.",
+        'Put a durable human decision around selected operations. Unbound runtime DEFER fails closed before the handler, while the approvals API keeps an assigned decision record.',
       keywords: [
         'ai agent approvals',
         'human in the loop ai agents',
@@ -95,46 +95,46 @@ export const operationalStories = {
         'approval gates for ai agents',
       ],
       socialDescription:
-        'Enforced approval gates for AI agents. The agent waits for a human decision, the decision is recorded, and the record travels with the trace.',
+        'DEFER stops selected MUTX runtime tool calls before their registered handler runs.',
       twitterTitle: 'AI Agent Approval Workflows | MUTX',
       twitterDescription:
-        'Human-in-the-loop gates enforced by the control plane. Agents wait for operator decisions — no advisory-only approvals.',
+        'Human-in-the-loop records and pre-handler DEFER verdicts for the governed MUTX runtime path.',
       webPageName: 'AI Agent Approval Workflows | MUTX',
       webPageDescription:
-        'Enforced approval gates for AI agents. Human-in-the-loop controls with operator routing, searchable audit records, and decision tracking built into the control plane.',
+        'Human-in-the-loop records, owner-scoped decisions, and pre-handler DEFER verdicts for MUTX-governed tool execution.',
     },
     hero: {
       eyebrow: 'AI Agent Approvals',
       title: 'Real gates,\nnot rubber stamps.',
       body:
-        'You can’t review every agent action, but you can require a human on the ones that matter. MUTX lets you define approval workflows for high-stakes agent operations, route those decisions to the right people, and keep the record attached to the runtime history.',
+        'You can’t review every operation, but you can put a human decision at selected boundaries. In the MUTX runtime, an unbound DEFER verdict fails closed before the registered handler runs; the separate approvals API persists who was assigned, who decided, and why.',
       actions: [downloadAction, { href: '/ai-agent-governance', label: 'Governance' }],
     },
     workflow: {
       eyebrow: 'How approvals work',
-      title: 'Approvals that\nactually block execution.',
+      title: 'Approvals with\nhonest boundaries.',
       body:
-        'Most approval systems are advisory — they suggest a review but don’t stop the agent. MUTX approvals are control plane gates. The agent waits for the decision, and that decision travels with the trace.',
+        'MUTX separates the gate from the inbox. Governed runtime calls can stop at a DEFER verdict before execution, while owner-scoped approval records give operators a durable review workflow.',
       items: [
         {
           title: 'Human-in-the-loop workflows',
           body:
-            'Define which agent operations require a human sign-off before proceeding. Approval gates are control plane records — not a Slack message that may or may not get answered.',
+            'Policy rules can return DEFER for tool calls that pass through the MUTX runtime handler. Without a durable serialized continuation, the handler is not invoked and no misleading resumable approval is emitted.',
         },
         {
           title: 'Operator authorization records',
           body:
-            'Who approved what, when, and why — recorded with full execution context. The chain from request to approval to outcome, not a vague note that someone clicked approve.',
+            'The approvals API records owner, assigned reviewer, approver, status, comment, action type, agent, and session identifiers, and computes whether the current caller can resolve.',
         },
         {
           title: 'Escalation paths',
           body:
-            'Pending approvals route to the right operator instead of hoping the request appears in whichever notification channel happens to be watched that day.',
+            'Pending records can be filtered by status and agent. An optional webhook can notify an operator system when a request is created.',
         },
         {
           title: 'Autonomous vs. approved',
           body:
-            'Know what the agent did on its own versus what required human sign-off. That distinction stays visible in traces, cost attribution, and audit logs.',
+            'Governed runtime receipts distinguish PERMIT, DENY, and DEFER. Approval records remain a separate control-plane contract until a caller links them to its resume path.',
         },
       ],
     },
@@ -170,7 +170,7 @@ export const operationalStories = {
       eyebrow: 'Get started',
       title: 'Define an approval gate.\nWatch it block.',
       body:
-        'Download the Mac app, define an approval workflow for a high-stakes agent operation, and trigger it. Watch the gate block the operation, notify the right operator, and record the decision in the control plane.',
+        'Start with the runtime policy examples and approvals API. Put DEFER on one registered tool, inspect the fail-closed evidence, and bind canonical approval to a durable idempotent continuation before presenting the operation as resumable.',
       actions: [downloadAction, githubAction],
     },
   },
@@ -186,48 +186,48 @@ export const operationalStories = {
       title:
         'AI Agent Audit Logs — Decision Records, Policy Traces, Compliance Exports | MUTX',
       description:
-        'Complete trace history for every agent decision. MUTX records actions, policy evaluations, and operator overrides — so you can answer what happened and why, with the full execution context.',
+        'Hash-chained evidence for tool calls executed through the governed MUTX runtime, plus APIs for caller-submitted runs, traces, logs, and adapter events.',
       socialDescription:
-        'Complete trace history for every agent decision. Records built for compliance and operator investigation.',
+        'Hash-chained governed-operation evidence and caller-submitted run traces built for operator investigation.',
       twitterTitle: 'AI Agent Audit Logs | MUTX',
       twitterDescription:
-        'Complete trace history for every agent decision. Records built for compliance and operator investigation.',
+        'Hash-chained evidence for governed tool calls, with query and verification exports for authorized operators.',
       webPageName: 'AI Agent Audit Logs | MUTX',
       webPageDescription:
-        'Complete trace history for every agent decision. Records built for compliance and operator investigation.',
+        'Hash-chained governed-operation evidence and caller-submitted trace records for operator investigation.',
     },
     hero: {
       eyebrow: 'AI Agent Audit Logs',
       title: 'A record of what\nyour agents decided.',
       body:
-        'When compliance asks what the agent decided and why, vague chat logs and “it ran successfully” messages won’t cut it. MUTX keeps a complete trace history with full execution context — so you can answer that question definitively, not with a summary.',
+        'When a review asks what happened, a generic success message is not enough. MUTX preserves policy decisions and outcomes for its governed runtime path, and accepts structured traces from instrumented callers.',
       actions: [downloadAction, { href: '/ai-agent-monitoring', label: 'Monitoring' }],
     },
     workflow: {
       eyebrow: 'Audit log properties',
       title: 'Logs built for answers,\nnot just retention.',
       body:
-        'Most audit logs are written for compliance retention — not for anyone to actually read. MUTX audit logs are structured for investigation: every record has enough context to reconstruct what happened and understand why.',
+        'MUTX governed-operation events carry actor, run, session, policy, approval, outcome, and integrity fields. Trace depth still depends on what the runtime or adapter instruments and submits.',
       items: [
         {
           title: 'Decision records',
           body:
-            'Every agent decision — what it tried, what tool it called, what it read or wrote, what the outcome was — recorded as a durable trace. Enough context to reconstruct what happened without asking the agent to explain itself.',
+            'Tool calls routed through the MUTX runtime record authorization before an allowed handler runs, then append the observed outcome to the evidence chain.',
         },
         {
           title: 'Policy evaluation traces',
           body:
-            'When a governance policy is evaluated, that evaluation is in the log: which policy version was active, what the input was, what the decision was. Not just pass/fail.',
+            'Governed-operation events include policy and rule references, the normalized tool name, the verdict, the reason, and a linked receipt hash.',
         },
         {
           title: 'Operator accountability',
           body:
-            'Who configured an agent, who approved a deployment, who overrode a guardrail — all in the audit log, attached to the trace they affected.',
+            'Approval records identify requester and approver. Governed runtime evidence can also carry actor identity when the caller supplies it.',
         },
         {
           title: 'Compliance export',
           body:
-            'Audit logs structured for compliance review. Filter by policy, operator, time range, or outcome. Export what compliance needs without giving them access to the full operational surface.',
+            'Authorized audit roles can query by agent, session, run, time range, or event type and export a SHA-256 chain with an explicit verification result.',
         },
       ],
     },
@@ -235,31 +235,31 @@ export const operationalStories = {
       eyebrow: 'Connected surfaces',
       title: 'Everything feeds\nthe audit log.',
       body:
-        'Audit logs aren’t a separate system in MUTX — they’re where everything in the control plane ends up. Governance evaluations, approval decisions, deployment records, and monitoring traces all attach to one record. The full picture in one place.',
+        'MUTX exposes two evidence paths: hash-chained events for governed runtime operations, and structured run or adapter records submitted through authenticated APIs. Instrumentation determines coverage.',
       items: [
         {
           title: 'Governance',
           href: '/ai-agent-governance',
           body:
-            'Policy evaluations are in the audit log — not just pass or fail, but the full evaluation trace with policy version and input context.',
+            'Policy decisions made in the governed runtime are linked to receipts and hash-chained audit events before allowed handlers execute.',
         },
         {
           title: 'Monitoring',
           href: '/ai-agent-monitoring',
           body:
-            'Traces feed the audit log. Every tool call, outcome, and error — in a record that satisfies compliance and helps operators reason about incidents.',
+            'Run trace endpoints preserve the ordered events an authenticated caller submits; SDK adapters report the lifecycle callbacks they observe.',
         },
         {
           title: 'Approvals',
           href: '/ai-agent-approvals',
           body:
-            'Approval decisions — who approved, what they approved, the full context — are in the audit log. The complete chain from request to approval to outcome.',
+            'Approval requests and resolutions are durable owner-scoped records. They are not automatically evidence for an external runtime unless that integration links them.',
         },
         {
           title: 'Guardrails',
           href: '/ai-agent-guardrails',
           body:
-            'Guardrail violations are first-class audit events. You see the policy violated, the operation attempted, and the context — not just an error code.',
+            'Denied and deferred MUTX runtime tool calls produce receipts and policy-check events. SDK text guardrails report locally unless the caller submits them.',
         },
       ],
     },
@@ -267,7 +267,7 @@ export const operationalStories = {
       eyebrow: 'Get started',
       title: 'Answer the question\nbefore compliance asks it.',
       body:
-        'Download the Mac app. Run an agent. Open the audit log and see every decision, policy evaluation, and operator action — structured for compliance review and operator investigation alike.',
+        'Run one tool through the governed runtime or submit an instrumented run. Then inspect exactly which events were captured and verify the exported evidence chain.',
       actions: [
         downloadAction,
         { href: '/ai-agent-approvals', label: 'Approval workflows' },
@@ -285,15 +285,15 @@ export const operationalStories = {
     seo: {
       title: 'AI Agent Control Plane - Runtime Traces, Lifecycle, Agent Setup | MUTX',
       description:
-        'MUTX gives you runtime traces, agent lifecycle records, and a clear review dashboard for every agent in your workspace.',
+        'MUTX brings authenticated agent records, lifecycle history, submitted traces, usage, and governed runtime evidence into one control plane.',
       socialDescription:
-        'Runtime traces, lifecycle records, and a clear review dashboard for every agent in your workspace.',
+        'Authenticated lifecycle records, submitted traces, and governed runtime evidence in one operator control plane.',
       twitterTitle: 'AI Agent Control Plane | MUTX',
       twitterDescription:
         'Runtime traces, lifecycle records, and review dashboards for agents from setup to daily use.',
       webPageName: 'AI Agent Control Plane | MUTX',
       webPageDescription:
-        'Runtime traces, lifecycle records, and a clear review dashboard for every agent in your workspace.',
+        'Authenticated lifecycle records, submitted traces, and governed runtime evidence in one operator control plane.',
     },
     hero: {
       eyebrow: 'AI Agent Control Plane',
@@ -311,12 +311,12 @@ export const operationalStories = {
         {
           title: 'Runtime visibility',
           body:
-            'See what your agents did. Traces, tool calls, context windows, and outcomes are collected in one place.',
+            'Inspect run traces and adapter events that your runtime instruments and submits, alongside governed tool-call evidence from the MUTX runtime.',
         },
         {
           title: 'Agent lifecycle',
           body:
-            'Every agent has a record: who created it, what runtime it uses, and which toolchain version was active.',
+            'Agent records carry authenticated ownership, type, configuration, status, versions, heartbeats, and lifecycle timestamps.',
         },
         {
           title: 'Agent setup',
@@ -326,7 +326,7 @@ export const operationalStories = {
         {
           title: 'Consistent settings',
           body:
-            'Keep staging and production aligned with settings that travel with each agent configuration.',
+            'Version agent configuration records so operators can compare and restore control-plane state across revisions.',
         },
       ],
     },
@@ -334,31 +334,31 @@ export const operationalStories = {
       eyebrow: 'Cross-cutting concerns',
       title: 'One plane.\nEvery concern.',
       body:
-        'Governance, cost, deployment, and observability belong in the same workspace. Policies, traces, and setup details stay connected as your agent fleet grows.',
+        'Governance, recorded usage, deployment lifecycle, and observability share control-plane identifiers. External runtimes and hosting providers still need deliberate integration.',
       items: [
         {
           title: 'Governance',
           href: '/ai-agent-governance',
           body:
-            'Auth boundaries and access controls enforced by the control plane, not by convention. They travel with the agent everywhere it runs.',
+            'Authenticated routes enforce user ownership or explicit roles. Tool policy enforcement applies to calls routed through the MUTX governed runtime.',
         },
         {
           title: 'Cost Management',
           href: '/ai-agent-cost',
           body:
-            'Spend limits and rate limits are control plane properties. They are enforced in the runtime instead of scattered across individual API calls.',
+            'Usage and budget endpoints summarize recorded credits. Runtime spend cutoffs are not implied by the reporting surface.',
         },
         {
           title: 'Monitoring',
           href: '/ai-agent-monitoring',
           body:
-            'Traces and metrics surface through the control plane, tied to the agent definitions they describe.',
+            'Authenticated ingestion, run, log, and metric endpoints tie submitted telemetry to owned agent records.',
         },
         {
           title: 'Deployment',
           href: '/ai-agent-deployment',
           body:
-            'Deployments are control plane records. What ran, when, with what config - versioned and readable in the same dashboard you use to operate the agent.',
+            'Deployment records expose desired replicas, status, versions, events, logs, and metrics. Provider rollout remains an operator integration.',
         },
       ],
     },
@@ -366,7 +366,7 @@ export const operationalStories = {
       eyebrow: 'Get started',
       title: 'See what your agents\nare actually doing.',
       body:
-        'Download the Mac app and open the runtime workspace. Review agent traces, settings, and setup details in one place.',
+        'Check the Mac release lane or use the API, then review the traces, settings, and setup details your integration reports.',
       actions: [
         downloadAction,
         { href: '/docs/architecture/overview', label: 'Architecture overview' },
@@ -385,7 +385,7 @@ export const operationalStories = {
     seo: {
       title: 'AI Agent Cost Management — Per-Run Spend Tracking, Budgets, Attribution | MUTX',
       description:
-        'Track AI agent costs by run, model, provider, and workflow. MUTX attributes spend in real time, enforces budgets at the control plane, and catches runaway agents before the invoice lands.',
+        'See credits and usage events recorded by MUTX endpoints, with authenticated breakdowns by agent and event type. Runtime budget cutoffs remain an integration concern.',
       keywords: [
         'ai agent cost management',
         'llm cost tracking',
@@ -394,46 +394,46 @@ export const operationalStories = {
         'runaway agent costs',
       ],
       socialDescription:
-        'Track AI agent costs by run, model, provider, and workflow. Budgets and attribution built into the control plane.',
+        'Owner-scoped usage records and monthly credit summaries in the MUTX control plane.',
       twitterTitle: 'AI Agent Cost Management | MUTX',
       twitterDescription:
-        'Track AI agent costs by run, model, provider, and workflow. Catch runaway spend before the invoice lands.',
+        'Inspect recorded credits and usage by agent and event type before the billing review.',
       webPageName: 'AI Agent Cost Management | MUTX',
       webPageDescription:
-        'Track AI agent costs by run, model, provider, and workflow. Budget enforcement and runtime context built into the control plane.',
+        'Inspect recorded usage credits by agent and event type, with monthly plan totals and remaining-credit summaries.',
     },
     hero: {
       eyebrow: 'AI Agent Cost Management',
       title: 'Know what your AI\nagents cost — per run.',
       body:
-        'API bills don’t tell you which agent ran up $4k last Tuesday, which model earns its price, or which workflow is about to blow up the monthly budget. MUTX attributes LLM spend to the agent, the run, and the decision — with budgets enforced at the control plane.',
+        'Provider invoices rarely explain which control-plane operation consumed the budget. MUTX keeps authenticated usage events and agent-scoped resource records so operators can investigate what was reported and where.',
       actions: [downloadAction, { href: '/ai-agent-monitoring', label: 'Monitoring' }],
     },
     workflow: {
       eyebrow: 'Cost properties',
       title: 'Cost is a control\nplane concern.',
       body:
-        'Most teams discover agent cost problems from the provider invoice. By then it’s too late. MUTX treats cost visibility and budget enforcement as first-class control plane properties — not afterthoughts bolted onto a billing export.',
+        'Cost visibility starts with honest inputs. MUTX reports the credits and resource usage its endpoints or integrated runtimes record; it does not turn that report into an automatic model-call cutoff.',
       items: [
         {
           title: 'AI agent spend tracking',
           body:
-            'Track spend per agent, model, provider, and workflow. MUTX answers which run is expensive — not just what the provider charged.',
+            'Query recorded credits by agent and event type, or submit agent resource usage with token, API-call, model, and cost fields.',
         },
         {
           title: 'Per-run attribution',
           body:
-            'Which agent burned $4,200 last Tuesday? MUTX ties spend to the actual agent record and runtime context. No reverse-engineering from an API key.',
+            'Agent resource-usage records carry a reporting period and authenticated agent ownership, making submitted costs easier to trace than a shared API key.',
         },
         {
-          title: 'Budget enforcement',
+          title: 'Budget reporting',
           body:
-            'Set spend limits per agent or per team. MUTX enforces them at the control plane — not by hoping application code checks the budget before every model call.',
+            'Monthly budget endpoints calculate plan credits used, remaining, and reset date from recorded events. Enforcement before a provider call must be wired by the runtime operator.',
         },
         {
           title: 'Model and provider visibility',
           body:
-            'Compare which models and providers earn their cost. Rate limits and provider-level controls live on the agent definition — not in environment variables.',
+            'Model and custom metadata can travel with submitted agent resource-usage records. The fidelity of provider attribution depends on the reporting integration.',
         },
       ],
     },
@@ -446,22 +446,22 @@ export const operationalStories = {
         {
           title: 'Runaway retry loops',
           body:
-            'An agent retrying a broken tool path burns tokens invisibly. MUTX makes that spend attributable and interruptible — you see the loop, you stop the loop.',
+            'Repeated usage events can expose a retry pattern when the runtime reports them. Operators can then inspect the related run and stop the agent through its lifecycle controls.',
         },
         {
           title: 'Background worker drift',
           body:
-            'Long-running agents spend money quietly. Cost records stay attached to runtime history so you can inspect what happened before the budget report lands.',
+            'Periodic resource-usage records keep token, call, and cost reports attached to an owned agent across a defined time window.',
         },
         {
           title: 'Approval-aware budgets',
           body:
-            'High-cost actions are governance events. Budgets, approvals, and runtime controls share one review dashboard, not three disconnected tools.',
+            'Approval and usage surfaces share agent and session identifiers when the caller supplies them, giving integrations a clean way to link high-cost review paths.',
         },
         {
           title: 'Trace-linked investigations',
           body:
-            'A cost spike is only useful if you can see the trace behind it. MUTX keeps spend next to monitoring and audit surfaces so operators can investigate fast.',
+            'Runs, usage records, and governed-operation evidence are queryable in the same control plane; correlation depends on the identifiers reported by the integration.',
         },
       ],
     },
@@ -469,7 +469,7 @@ export const operationalStories = {
       eyebrow: 'Get started',
       title: 'Set a budget before\nyour agents set one for you.',
       body:
-        'Download the Mac app. Define spend limits for your first agents. See what cost attribution looks like when it’s built into the control plane from day one.',
+        'Connect usage reporting for one agent, then inspect the monthly credit summary and agent breakdown before deciding where a runtime cutoff belongs.',
       actions: [downloadAction, githubAction],
     },
   },
@@ -484,48 +484,48 @@ export const operationalStories = {
     seo: {
       title: 'AI Agent Deployment — Repeatable Envs, Audit Trails, Rollback | MUTX',
       description:
-        'Agents that deploy like services, not science projects. MUTX gives you repeatable runtime environments, deployment records with audit trails, and one-click rollback.',
+        'Track deployment desired state, lifecycle events, versions, logs, metrics, and record-level rollback. Provider rollout remains operator-owned.',
       socialDescription:
-        'Agents that deploy like services. Repeatable environments, deployment records, and rollback paths — built into the control plane.',
+        'Deployment lifecycle records, version history, and explicit record rollback in the control plane.',
       twitterTitle: 'AI Agent Deployment | MUTX',
       twitterDescription:
-        'Agents that deploy like services. Repeatable environments and deployment records built into the control plane.',
+        'Versioned deployment records and lifecycle history, with provider execution left explicit.',
       webPageName: 'AI Agent Deployment | MUTX',
       webPageDescription:
-        'Agents that deploy like services. Repeatable environments, deployment records, and rollback paths — built into the control plane.',
+        'Deployment desired state, lifecycle events, version history, logs, metrics, and record-level rollback in the control plane.',
     },
     hero: {
       eyebrow: 'AI Agent Deployment',
       title: 'Ship agents\nlike services.',
       body:
-        'Agents shouldn’t need custom deployment scripts held together by convention and prayer. MUTX treats deployment as a first-class record — repeatable environments, rollback paths, and audit trails that make what shipped visible to your whole team.',
+        'MUTX makes deployment state inspectable: desired replicas, status, lifecycle events, versions, logs, and metrics live on an authenticated record. The operator still owns the provider action that makes that record real.',
       actions: [downloadAction, { href: '/ai-agent-control-plane', label: 'Control Plane' }],
     },
     workflow: {
       eyebrow: 'Deployment properties',
       title: 'Deployment is a record.\nNot a prayer.',
       body:
-        'Most agent tooling doesn’t have a deployment concept — just a script that runs and crosses its fingers. MUTX makes deployment a durable record. Audit what changed. Roll back what broke. Reason about production state without guessing.',
+        'A durable deployment record gives operators one place to inspect lifecycle state and history. MUTX can change that record through start, stop, scale, restart, terminate, and rollback APIs; it does not silently deploy a hosting provider.',
       items: [
         {
-          title: 'Repeatable environments',
+          title: 'Explicit desired state',
           body:
-            'Define a runtime environment once. Deploy the same config to staging and production without surprises — because the environment is the artifact, not a script someone wrote months ago and nobody touched since.',
+            'Record the owned agent, desired replica count, version label, status, and node assignment instead of hiding them inside a provider script.',
         },
         {
           title: 'Deployment records',
           body:
-            'Every deployment is a record. What changed, who shipped it, what runtime config was active. Reason backward from a production incident instead of forward from a Slack message.',
+            'Create, start, stop, scale, restart, terminate, heartbeat, and rollback transitions append lifecycle events to the deployment record.',
         },
         {
           title: 'Rollback paths',
           body:
-            'Rolling back should be a defined action — not a heroic improvisation at 11 PM. MUTX keeps the previous deployment state accessible so rollback is explicit, auditable, and fast.',
+            'The rollback API restores a stored control-plane snapshot and records the transition. Applying that state to Railway, Kubernetes, or another provider remains the deployment integration’s job.',
         },
         {
-          title: 'Environment parity',
+          title: 'Provider boundary',
           body:
-            'Local, staging, and production should behave the same because the control plane enforces it — not because the team agreed they ‘probably should’ and moved on.',
+            'MUTX keeps desired state and provider execution separate. Operators can verify what the control plane recorded without mistaking a successful API response for a completed rollout.',
         },
       ],
     },
@@ -533,31 +533,31 @@ export const operationalStories = {
       eyebrow: 'Connected surfaces',
       title: 'Everything flows from\nthe deployment record.',
       body:
-        'When deployment is a first-class control plane record, governance policies, cost limits, and monitoring all attach cleanly. The deployment is the artifact. Everything else branches from it.',
+        'Lifecycle events, agent logs, and agent metrics can be read from the deployment surface. Governance and usage remain separate records unless an integration supplies shared identifiers.',
       items: [
         {
           title: 'Governance',
           href: '/ai-agent-governance',
           body:
-            'Governance policies travel with the deployment. Promote an agent to production and auth boundaries go with it — no separate config you have to remember to update at 5 PM on a Friday.',
+            'Deployment routes enforce authenticated ownership. Tool policies are enforced only when execution passes through the governed MUTX runtime.',
         },
         {
           title: 'Cost Management',
           href: '/ai-agent-cost',
           body:
-            'Spend budgets and rate limits attach to the deployment record. The same limits that worked in staging are live in production — enforced by the control plane, not by memory.',
+            'Deployment actions emit usage events, so recorded control-plane activity can appear in budget and usage breakdowns.',
         },
         {
           title: 'Monitoring',
           href: '/ai-agent-monitoring',
           body:
-            'Monitoring traces attach to deployment records. Investigate an incident and see which deployment is running and what changed — not just a wall of timestamps.',
+            'Deployment endpoints expose lifecycle events plus the owned agent’s submitted logs and metrics. Run traces remain a separate instrumented surface.',
         },
         {
           title: 'Reliability',
           href: '/ai-agent-reliability',
           body:
-            'Health checks and readiness probes are part of the deployment record. The agent isn’t “running” until the control plane confirms it — not when a process starts in the background and everyone hopes for the best.',
+            'Agent heartbeats can promote the latest deployment record to running. Infrastructure readiness probes validate the MUTX services, not arbitrary external agent instances.',
         },
       ],
     },
@@ -565,7 +565,7 @@ export const operationalStories = {
       eyebrow: 'Get started',
       title: 'Deploy an agent.\nSee the record.',
       body:
-        'Download the Mac app, deploy your first agent, and see what the deployment record looks like when it’s built around auditability and rollback — not around whatever was easiest to hack together.',
+        'Create a deployment record, inspect its event and version history, then connect the provider action explicitly so recorded state and deployed state can be verified separately.',
       actions: [
         downloadAction,
         { href: '/docs/deployment/quickstart', label: 'Deployment quickstart' },
@@ -578,13 +578,13 @@ export const operationalStories = {
     record: {
       id: 'GOV-2104',
       operation: 'policy.evaluate',
-      status: 'BOUNDARY ENFORCED',
+      status: 'RUNTIME BOUNDARY',
     },
     seo: {
       title:
         'AI Agent Governance — Auth Boundaries, Access Control & Audit Compliance | MUTX',
       description:
-        'Agent access is a minefield of implicit permissions and undocumented API keys. MUTX bakes auth boundaries, operator access controls, and compliance audit trails into the control plane — so what every agent can do is explicit, versioned, and enforced.',
+        'MUTX enforces authentication, ownership, and role checks on control-plane paths, and evaluates tool policy for calls routed through its governed runtime handler.',
       socialDescription:
         'Auth boundaries, operator access controls, and compliance audit trails baked into the control plane. No implicit permissions.',
       twitterTitle: 'AI Agent Governance | MUTX',
@@ -598,66 +598,66 @@ export const operationalStories = {
       eyebrow: 'AI Agent Governance',
       title: 'Lock down what\nevery agent can touch.',
       body:
-        'Agents with implicit permissions, undocumented tool access, and loose API keys are how projects implode in production. MUTX makes every agent’s access boundaries explicit, versioned, and enforced — everywhere the agent runs.',
+        'Implicit access is hard to review. MUTX makes control-plane ownership and roles explicit, then adds pre-execution policy decisions for tools registered with the governed MUTX runtime.',
       actions: [downloadAction, { href: '/ai-agent-control-plane', label: 'Control Plane' }],
     },
     workflow: {
       eyebrow: 'How governance works',
       title: 'Policies that follow\nthe agent.',
       body:
-        'Most platforms bolt governance onto each deployment. The moment an agent moves environments or changes hands, policies drift. MUTX governance is wired into the control plane — it follows the agent everywhere.',
+        'MUTX governance has a precise boundary: API routes protect owned resources, and the MUTX runtime evaluates normalized tool calls before invoking registered handlers. External runtimes need their own adapter or Faramesh integration.',
       items: [
         {
           title: 'Auth boundaries',
           body:
-            'Pin what each agent can touch — APIs, data sources, tools. The control plane enforces these boundaries in every environment the agent runs in. No environment-specific config drift.',
+            'The default MUTX runtime policy allows known low-risk built-ins and denies unconfigured custom tools. Additional policy sets can scope matching tool and agent patterns.',
         },
         {
           title: 'Operator access control',
           body:
-            'Decide who can configure, operate, or observe each agent. RBAC that lives in the agent definition, not in some environment config nobody opens.',
+            'Authenticated route dependencies enforce ownership for user resources and explicit roles for internal, audit, and privileged operations.',
         },
         {
           title: 'Compliance guardrails',
           body:
-            'Data handling policies and access logs that satisfy compliance without slowing down development. Audit records that exist because the system writes them, not because someone remembered to add logging.',
+            'Governed runtime decisions create receipts and hash-chained evidence. That evidence supports review; compliance suitability still depends on deployment, retention, and organizational controls.',
         },
         {
           title: 'Policy-as-code',
           body:
-            'Governance policies written in code, versioned with agent definitions, enforced by the control plane. The policy lives next to the agent — not in a Google doc nobody updates.',
+            'Policy sets and rules are deterministic runtime objects. Faramesh FPL support is a separate preview path that depends on an operator-managed local daemon.',
         },
       ],
     },
     evidence: {
-      eyebrow: 'Runs through every layer',
+      eyebrow: 'Where governance applies',
       title: 'Governance isn’t a bolt-on.\nIt’s the foundation.',
       body:
-        'MUTX governance isn’t an add-on. It runs through the control plane from deployment to monitoring. Every agent action is evaluated against your policies automatically — not enforced by convention or hope.',
+        'Governance is strongest when the boundary is explicit. MUTX protects control-plane resources and governed runtime tool dispatch; it does not claim to intercept actions taken by an uninstrumented external agent.',
       items: [
         {
           title: 'Control Plane',
           href: '/ai-agent-control-plane',
           body:
-            'Auth boundaries and operator access controls enforced at the runtime layer. Governance starts here — it’s not just documented, it’s enforced.',
+            'User-scoped API routes require authentication and ownership. Privileged surfaces add role checks where the route declares them.',
         },
         {
           title: 'Deployment',
           href: '/ai-agent-deployment',
           body:
-            'Policies are versioned with deployment configs. What runs in production is exactly what you reviewed — no gap between intention and reality.',
+            'Deployment records are owner-scoped desired state. Provider execution and policy attachment must be connected and verified by the operator integration.',
         },
         {
           title: 'Monitoring',
           href: '/ai-agent-monitoring',
           body:
-            'Auth failures and policy violations surface as first-class events. You see when an agent hit a boundary — not just when something broke.',
+            'Governed runtime DENY and DEFER verdicts produce receipts and telemetry; visibility for external runtimes depends on their instrumentation.',
         },
         {
           title: 'Audit Logs',
           href: '/ai-agent-audit-logs',
           body:
-            'Every access decision, policy evaluation, and operator action — recorded by the control plane, not retrofitted into a logging service after the fact.',
+            'Policy authorization is persisted before an allowed MUTX runtime handler executes. Post-execution evidence describes only the outcomes the handler can report.',
         },
       ],
     },
@@ -665,7 +665,7 @@ export const operationalStories = {
       eyebrow: 'Get started',
       title: 'Ship your first\nagent auth boundary.',
       body:
-        'Download the Mac app and define auth boundaries in code. Apply them to one agent or your whole fleet — the control plane handles enforcement across every environment.',
+        'Start with one governed MUTX runtime tool, inspect its policy receipt, then add adapters deliberately for any external runtime that must share the boundary.',
       actions: [
         downloadAction,
         { href: '/ai-agent-approvals', label: 'Approval workflows' },
@@ -678,53 +678,53 @@ export const operationalStories = {
     record: {
       id: 'GUARD-9880',
       operation: 'boundary.check',
-      status: 'POLICY ENFORCED',
+      status: 'POLICY EVALUATED',
     },
     seo: {
       title: 'AI Agent Guardrails — Runtime Policy Enforcement & Safety Boundaries | MUTX',
       description:
-        "Agents without guardrails will find every edge case — including the ones you didn't anticipate. MUTX enforces safety policies at runtime and surfaces violations as first-class events, not buried log lines.",
+        'Apply deterministic policy to governed MUTX runtime tools, or opt into SDK input and output guardrails for supported integrations.',
       socialDescription:
-        'Runtime safety policies enforced by the control plane. Guardrail violations surface as first-class events.',
+        'Pre-handler policy decisions for the MUTX runtime and opt-in SDK text guardrails.',
       twitterTitle: 'AI Agent Guardrails | MUTX',
       twitterDescription:
-        'Safety policies enforced at runtime by the control plane. Violations surface as first-class events.',
+        'Deterministic tool policy inside the governed MUTX runtime, plus opt-in SDK text checks.',
       webPageName: 'AI Agent Guardrails | MUTX',
       webPageDescription:
-        'Runtime safety policies enforced by the control plane. Guardrail violations surface as first-class events with full context.',
+        'Deterministic tool policy inside the governed MUTX runtime and opt-in SDK input/output checks.',
     },
     hero: {
       eyebrow: 'AI Agent Guardrails',
       title: 'Draw the line on\nwhat agents can’t do.',
       body:
-        'An agent without guardrails will probe every edge case — especially the ones you never wanted it to find. MUTX lets you write safety policies, enforce them at runtime, and surface violations as first-class events instead of silent failures buried in a log file nobody opens.',
+        'MUTX offers two guardrail layers with different scope: pre-handler policy for tools dispatched by its runtime, and optional SDK middleware for text entering or leaving an integrated agent.',
       actions: [downloadAction, { href: '/ai-agent-governance', label: 'Governance' }],
     },
     workflow: {
       eyebrow: 'How guardrails work',
       title: 'Safety policies,\nnot safety theater.',
       body:
-        'Most guardrail setups check a compliance box without blocking anything real. MUTX guardrails are enforced by the control plane at runtime — not by prompt instructions a capable model will sidestep when the stakes are high.',
+        'A guardrail is only real where code invokes it. MUTX runtime DENY and DEFER verdicts stop registered handlers; SDK text checks block only when the caller enables and runs the middleware.',
       items: [
         {
           title: 'Runtime policy enforcement',
           body:
-            'Pin what agents can call, what data they can touch, what operations are off-limits. MUTX evaluates these policies at runtime — not at write-time, not in code review.',
+            'Policy rules match normalized tool, agent, and session identifiers before a registered MUTX runtime handler runs.',
         },
         {
           title: 'Safety boundaries',
           body:
-            'Hard walls around operations that should never happen — destructive tool calls, sensitive data access, unattended privileged operations. Boundaries that follow the agent across environments.',
+            'Built-in command constraints block known dangerous shell patterns. Custom policy rules can deny or defer additional registered tools.',
         },
         {
           title: 'Violation visibility',
           body:
-            'When a guardrail fires, you see it immediately. Violations surface as first-class events — the violated policy, the attempted operation, and the triggering context. Not a buried log line.',
+            'Denied and deferred governed calls return a reason, receipt identifier, and integrity hash. SDK text guardrails raise a local exception unless the caller reports it.',
         },
         {
           title: 'Policy versioning',
           body:
-            'Guardrail policies version with the agent definition. You can check which policy was active during a violation, roll back, and test policy changes against real traces before shipping.',
+            'Governed audit events carry policy and rule references. Policy lifecycle is not automatically coupled to deployment or agent-version records.',
         },
       ],
     },
@@ -732,31 +732,31 @@ export const operationalStories = {
       eyebrow: 'How guardrails connect',
       title: 'Guardrails are\ngovernance, enforced.',
       body:
-        'Auth boundaries and compliance requirements become guardrail policies in MUTX. When a violation fires, it surfaces in monitoring, gets recorded in the audit log, and can trip a circuit breaker — all coordinated by the control plane.',
+        'Governed runtime policy decisions generate receipts, audit evidence, and security telemetry. SDK text guardrails remain local unless an integration forwards their results.',
       items: [
         {
           title: 'Governance',
           href: '/ai-agent-governance',
           body:
-            'Guardrails turn governance policies into runtime enforcement. The abstract auth boundary in your governance model becomes the concrete guardrail that fires in production.',
+            'The governed MUTX runtime turns configured tool rules into ALLOW, DENY, MODIFY, or DEFER decisions before dispatch.',
         },
         {
           title: 'Monitoring',
           href: '/ai-agent-monitoring',
           body:
-            'Guardrail violations are first-class monitoring events. The policy that was violated, the operation attempted, the surrounding context — not just an error code.',
+            'Security telemetry is emitted for governed runtime decisions. External backends receive it only when telemetry export is configured.',
         },
         {
           title: 'Reliability',
           href: '/ai-agent-reliability',
           body:
-            'Guardrail violations can trip circuit breakers. A repeated policy violation isn’t just a compliance issue — it’s a reliability signal the control plane can act on.',
+            'Policy verdicts do not automatically trip agent failover. Webhook delivery has its own circuit breaker, and operators can build additional responses from emitted events.',
         },
         {
           title: 'Audit Logs',
           href: '/ai-agent-audit-logs',
           body:
-            'Every violation is logged with the policy version, the attempted operation, and the context. Records that satisfy compliance reviews — not just developer curiosity.',
+            'Governed runtime denials and deferrals are hash-chained with policy references and normalized action context for authorized review.',
         },
       ],
     },
@@ -764,7 +764,7 @@ export const operationalStories = {
       eyebrow: 'Get started',
       title: 'Write a policy.\nBreak it on purpose.',
       body:
-        'Download the Mac app, write a guardrail policy, and trigger the violation deliberately. See the violation event in the control plane, check the audit log entry, and understand what operators see before users are affected.',
+        'Write one tool policy, trigger it through the MUTX runtime handler, and inspect the verdict and receipt. For SDK text checks, enable middleware explicitly and test the blocked input locally.',
       actions: [downloadAction, githubAction],
     },
   },
@@ -779,48 +779,48 @@ export const operationalStories = {
     seo: {
       title: 'AI Agent Infrastructure — Compute, Secrets, Storage, Network | MUTX',
       description:
-        'Stop guessing where your agents run. MUTX surfaces compute, secrets, and storage as explicit control plane properties — auditable, versioned, and visible.',
+        'Make agent configuration, reported resource use, deployment state, and service health visible without pretending MUTX owns the underlying provider.',
       socialDescription:
-        'Stop guessing where your agents run. Compute, secrets, and storage as explicit control plane properties.',
+        'Agent configuration, reported resource use, deployment state, and service health in one control plane.',
       twitterTitle: 'AI Agent Infrastructure | MUTX',
       twitterDescription:
-        'Stop guessing where your agents run. Compute, secrets, and storage as explicit control plane properties.',
+        'Inspect agent config, reported CPU and memory, deployment state, and control-plane health.',
       webPageName: 'AI Agent Infrastructure | MUTX',
       webPageDescription:
-        'Stop guessing where your agents run. Compute, secrets, and storage as explicit control plane properties.',
+        'Inspect agent configuration, reported resource use, deployment state, and control-plane service health.',
     },
     hero: {
       eyebrow: 'AI Agent Infrastructure',
       title: 'Infrastructure you\ncan actually see.',
       body:
-        'Your agent infrastructure shouldn’t be a pile of one-off scripts, stale docs, and secrets nobody remembers provisioning. MUTX makes compute, storage, and secrets legible and versioned — so you own what runs in production, not just hope it works.',
+        'MUTX records agent configuration, desired deployment state, heartbeats, logs, and submitted CPU or memory metrics. Hosting, secret storage, network policy, and provider rollout remain explicit operator responsibilities.',
       actions: [downloadAction, { href: '/ai-agent-control-plane', label: 'Control Plane' }],
     },
     workflow: {
       eyebrow: 'Infrastructure properties',
       title: 'Know what’s running.\nOwn why.',
       body:
-        'Most agent infra is implicit — a shared doc that hasn’t been updated since Q1, a hosting console disconnected from the agent definition, and a tribal knowledge base that walks out the door with your senior engineer. MUTX makes infrastructure explicit, versioned, and auditable.',
+        'The control plane gives infrastructure a readable interface without claiming to replace it. Use MUTX for owned records and reported signals; use Terraform, Helm, Railway, or your provider to apply the underlying resources.',
       items: [
         {
           title: 'Compute management',
           body:
-            'Where agents run is part of the control plane record. Compute allocation, scheduling, and scaling are surfaced as explicit properties — not buried in a hosting provider’s console you check after something breaks.',
+            'Deployment records expose desired replicas, region, node identifier, version, and status. Applying replica changes to real compute requires a provider integration.',
         },
         {
           title: 'Secrets management',
           body:
-            'API keys and credentials live in the control plane — not scattered across .env files, CI variables, and someone’s notes app. Rotated, versioned, and attached to the agents that use them.',
+            'MUTX manages its own user and agent API credentials and exposes governance credential-broker contracts. External secret backends remain configuration-dependent.',
         },
         {
           title: 'Storage layer',
           body:
-            'What the agent reads, what it writes, and how long that state persists — all explicit. No orphaned state blobs living outside the system’s awareness.',
+            'The API persists agent, run, deployment, event, log, metric, and workflow records. It does not inventory arbitrary storage used by an external agent.',
         },
         {
           title: 'Network topology',
           body:
-            'Which services the agent can reach, which endpoints it’s allowed to call, and how traffic routes out — defined in the control plane, not discovered during an incident.',
+            'Repository Helm, Docker, and Terraform assets define MUTX service networking. Per-agent network reachability is not automatically enforced by the control-plane record.',
         },
       ],
     },
@@ -828,31 +828,31 @@ export const operationalStories = {
       eyebrow: 'Connected surfaces',
       title: 'Infra isn’t a side quest.\nIt’s the foundation.',
       body:
-        'When infrastructure lives in the control plane, it connects to governance, deployment, and cost — no manual reconciliation. Secrets attach to agent records. Network policies enforce at the infra layer. Compute spend shows up in cost attribution.',
+        'MUTX connects owned agent identifiers to deployment records, submitted metrics, logs, and usage. Reconciliation with provider resources remains part of the operator integration.',
       items: [
         {
           title: 'Governance',
           href: '/ai-agent-governance',
           body:
-            'Network topology and secrets are governance surface. What the agent can access is determined by infra config, governed by the control plane — not left to convention and good intentions.',
+            'Control-plane routes protect stored resources, and the governed runtime protects its registered tools. Infrastructure permissions still come from the deployed environment.',
         },
         {
           title: 'Deployment',
           href: '/ai-agent-deployment',
           body:
-            'Compute and storage config travel with the deployment record. Promote an agent to production and the infra config goes with it — no copy-paste, no manual sync.',
+            'Deployment records retain desired replicas and version snapshots. Provider-specific compute and storage changes must be applied and verified separately.',
         },
         {
           title: 'Cost Management',
           href: '/ai-agent-cost',
           body:
-            'Compute allocation maps directly to cost attribution. A spend spike shows you which compute resources were running — not just a pile of API call records.',
+            'Agent resource-usage records can carry CPU, memory, token, call, model, and cost reports when an integration submits them.',
         },
         {
           title: 'Guardrails',
           href: '/ai-agent-guardrails',
           body:
-            'Safety boundaries and network policies enforced at the infra layer. Guardrail violations related to network access show up with full infrastructure context — not in a separate dashboard you never check.',
+            'SDK guardrails and governed tool policy do not replace network policy. Use infrastructure controls for network isolation and report relevant events back to MUTX when needed.',
         },
       ],
     },
@@ -860,7 +860,7 @@ export const operationalStories = {
       eyebrow: 'Get started',
       title: 'See your infra.\nAll of it.',
       body:
-        'Download the Mac app and open the infrastructure surface. See where agents run, what secrets they hold, and what your network topology actually looks like when it’s defined instead of assumed.',
+        'Register an agent, submit heartbeats and resource metrics, and inspect the deployment record. Then verify the corresponding provider resources with the operator tooling that owns them.',
       actions: [
         downloadAction,
         { href: '/docs/architecture/overview', label: 'Architecture overview' },
@@ -879,48 +879,48 @@ export const operationalStories = {
       title:
         'AI Agent Monitoring — Execution Traces, Tool Call History, Outcome Records | MUTX',
       description:
-        "See what agents actually did — not what they said they'd do. MUTX captures execution traces, tool call chains, and outcomes so your team can investigate incidents and fix behavior in production.",
+        'Inspect ordered run traces, adapter events, logs, metrics, and governed tool-call evidence reported to MUTX by instrumented runtimes.',
       socialDescription:
-        'See what agents actually did. Execution traces, tool call history, and outcomes — built into the control plane.',
+        'Ordered traces and runtime signals reported by instrumented agents, plus governed MUTX runtime evidence.',
       twitterTitle: 'AI Agent Monitoring | MUTX',
       twitterDescription:
-        "See what agents actually did, not what they said they'd do. Runtime traces and tool call history in the control plane.",
+        'Inspect the traces, callbacks, logs, and metrics your integrated runtime actually reports.',
       webPageName: 'AI Agent Monitoring | MUTX',
       webPageDescription:
-        'See what agents actually did. Execution traces, tool call history, and outcome records — built into the control plane.',
+        'Inspect ordered traces, adapter callbacks, logs, metrics, and governed tool-call evidence reported to MUTX.',
     },
     hero: {
       eyebrow: 'AI Agent Monitoring',
       title: 'See what agents\nactually did.',
       body:
-        'When something breaks in production, you need to reason backward from what the agent actually executed — not forward from what the model promised. MUTX captures the full execution trace: model calls, tool invocations, context changes, and outcomes. Built for investigation, not just alerting.',
+        'When something breaks, operators need reported execution evidence rather than a model summary. MUTX stores ordered trace events and adapter callbacks from instrumented callers, with stronger receipts for its governed runtime path.',
       actions: [downloadAction, { href: '/ai-agent-control-plane', label: 'Control Plane' }],
     },
     workflow: {
       eyebrow: 'Observability properties',
       title: 'Traces, not tail outputs.',
       body:
-        'Traditional monitoring tells you something happened. MUTX traces tell you what the agent did — the full execution path, the tool call chain, the outcome. Information structured for investigation, not just alerting.',
+        'MUTX preserves the event sequence a caller submits. It does not manufacture missing model calls, tool invocations, context changes, or outcomes when an integration does not observe them.',
       items: [
         {
           title: 'Execution traces',
           body:
-            'The full sequence of what the agent did — every model call, tool invocation, and context window change. Not a self-summary. The actual trace.',
+            'Run trace records retain event type, message, payload, timestamp, and deterministic sequence for the events the caller submits.',
         },
         {
           title: 'Tool call history',
           body:
-            'Which tool was called, with what arguments, in what order, and what came back. The information you need to understand why an agent chose a path.',
+            'SDK adapters emit the lifecycle callbacks they observe. The governed MUTX runtime also records normalized tool authorization and handler outcomes.',
         },
         {
           title: 'Outcome records',
           body:
-            'What the agent produced, where it wrote state, what external calls it made. Reason backward from results instead of guessing forward from prompt intentions.',
+            'Run and governed-operation records can carry output or error context. Coverage is bounded by the runtime’s instrumentation and redaction choices.',
         },
         {
           title: 'Alert routing',
           body:
-            'When something in the trace looks wrong, alerts route to the right operator — not a generic inbox nobody reads. Alerts attach to agent records, not a SIEM.',
+            'Owned alert records can be filtered and resolved through the monitoring API. Notification routing depends on configured webhooks or operator integrations.',
         },
       ],
     },
@@ -928,31 +928,31 @@ export const operationalStories = {
       eyebrow: 'Connected surfaces',
       title: 'Monitoring is the payoff\nfor good control.',
       body:
-        'When governance, deployment, and cost share one control plane, monitoring traces attach to all of them. You see the deployment that shipped, the policy that was evaluated, and the cost that was incurred — in the same trace.',
+        'Runs, governed decisions, deployment events, and usage records share control-plane identifiers when integrations provide them. They are not automatically fused into one complete trace.',
       items: [
         {
           title: 'Governance',
           href: '/ai-agent-governance',
           body:
-            'Auth failures and policy violations are first-class trace events. You see when an agent hit a boundary and what it tried to do — not just the error in the logs.',
+            'Governed MUTX runtime decisions emit receipts, audit events, and security telemetry. External auth failures need explicit reporting.',
         },
         {
           title: 'Deployment',
           href: '/ai-agent-deployment',
           body:
-            'Traces attach to deployment records. Investigate a production incident and you see which deployment is running and what changed — not just a timestamp.',
+            'Deployment lifecycle events, logs, and metrics are queryable alongside runs. Direct trace-to-deployment correlation depends on submitted metadata.',
         },
         {
           title: 'Cost Management',
           href: '/ai-agent-cost',
           body:
-            'Cost spikes surface through the monitoring view with corresponding traces. You see the spend anomaly and the execution trace in the same incident.',
+            'Recorded usage and runs can be compared by agent and time window. Exact cost-to-trace attribution requires the integration to submit shared identifiers.',
         },
         {
           title: 'Audit Logs',
           href: '/ai-agent-audit-logs',
           body:
-            'Traces feed the audit log. Every action recorded with enough context to satisfy a compliance review — not a generic “agent ran successfully” entry.',
+            'Governed runtime evidence is hash-chained. General run traces remain authenticated caller-submitted records with their own retention contract.',
         },
       ],
     },
@@ -960,7 +960,7 @@ export const operationalStories = {
       eyebrow: 'Get started',
       title: 'Watch the runtime\ndo something real.',
       body:
-        'Download the Mac app. Run an agent. Open the trace view and see what it actually did — every tool call, context window change, and outcome. Then compare that to what you thought it would do.',
+        'Instrument one runtime, submit a run, and inspect the resulting event sequence. Missing events should stay visibly missing instead of being inferred by the UI.',
       actions: [
         downloadAction,
         { href: '/ai-agent-cost', label: 'Cost management' },
@@ -978,48 +978,48 @@ export const operationalStories = {
     seo: {
       title: 'AI Agent Reliability — Health Checks, Circuit Breakers, Failover | MUTX',
       description:
-        'Agents that survive production. MUTX runs health probes, enforces circuit breakers, and routes around failures — so operators catch degradation before users do.',
+        'Monitor agent heartbeats, create stale-agent alerts, inspect service readiness, and contain failing webhook delivery with a circuit breaker.',
       socialDescription:
-        'Agents that survive production. Health checks, circuit breakers, and operator visibility — built into the control plane.',
+        'Heartbeat state, stale-agent alerts, service readiness, and webhook delivery containment.',
       twitterTitle: 'AI Agent Reliability | MUTX',
       twitterDescription:
-        'Agents that survive production. Health checks and circuit breakers built into the control plane.',
+        'Heartbeat monitoring, readiness signals, alerts, and a webhook delivery circuit breaker.',
       webPageName: 'AI Agent Reliability | MUTX',
       webPageDescription:
-        'Agents that survive production. Health checks, circuit breakers, and operator visibility — built into the control plane.',
+        'Heartbeat monitoring, stale-agent alerts, service readiness, and webhook delivery containment in the control plane.',
     },
     hero: {
       eyebrow: 'AI Agent Reliability',
       title: 'Agents that\nsurvive production.',
       body:
-        'Shipping an agent to production and hoping for the best isn’t a reliability strategy. MUTX runs health probes, enforces circuit breakers, and routes around failures — so operators catch degradation before users report it.',
+        'MUTX turns reported heartbeats into operator state: stale agents can be marked failed, alerts and lifecycle events are recorded, and service probes distinguish liveness from database readiness.',
       actions: [downloadAction, { href: '/ai-agent-monitoring', label: 'Monitoring' }],
     },
     workflow: {
       eyebrow: 'Reliability properties',
       title: 'Reliability is a control\nplane property.',
       body:
-        'Most agent tooling assumes the model will behave. MUTX doesn’t. Health checks, circuit breakers, and explicit operational state give operators something to read and act on — before the model has a bad day.',
+        'Reliability starts with signals that say exactly what they measure. MUTX monitors control-plane and reported agent health; it does not claim provider-level traffic failover for external agent instances.',
       items: [
         {
           title: 'Health checks',
           body:
-            'Not just “is the process running” but “is the agent responsive, is the control plane reachable, is the toolchain intact.” MUTX confirms health before declaring an agent operational.',
+            'The control plane tracks agent heartbeats and submitted CPU or memory metrics. Its root probes report API liveness and database-aware readiness.',
         },
         {
           title: 'Readiness probes',
           body:
-            'An agent that just started isn’t ready. MUTX defines readiness as an explicit state — context warmed, tools loaded, ready to handle requests.',
+            'The `/ready` probe confirms MUTX database availability. Helm wires it to the API workload; it does not attest an external agent’s context or tools.',
         },
         {
           title: 'Circuit breakers',
           body:
-            'When an agent hits persistent errors or a downstream service degrades, MUTX trips the circuit breaker before cascading failures spread.',
+            'Webhook delivery tracks consecutive failures and opens a delivery circuit breaker. This breaker does not govern arbitrary model or tool traffic.',
         },
         {
-          title: 'Failover paths',
+          title: 'Recovery boundary',
           body:
-            'When an agent instance fails, the control plane routes requests to a healthy instance. No human intervention required.',
+            'The background monitor can update control-plane status and invoke configured recovery handlers. The default handler restores records; provider restart and traffic failover require an external integration.',
         },
       ],
     },
@@ -1027,31 +1027,31 @@ export const operationalStories = {
       eyebrow: 'Connected surfaces',
       title: 'Reliability connects to\nthe rest of the plane.',
       body:
-        'When reliability standards live in the control plane, circuit breakers integrate with cost enforcement, failover routes based on deployment records, and health checks feed the audit log — without stitching together separate monitoring tools.',
+        'Heartbeat failures, alerts, deployment lifecycle events, and webhook delivery state are visible to operators. Provider recovery and spend enforcement remain separate concerns.',
       items: [
         {
           title: 'Cost Management',
           href: '/ai-agent-cost',
           body:
-            'Circuit breakers and spend limits work together. When an agent hits its cost ceiling, the control plane throttles it — before it becomes a runaway API bill.',
+            'Budget endpoints report recorded credits. They do not automatically throttle an agent when a threshold is reached.',
         },
         {
           title: 'Deployment',
           href: '/ai-agent-deployment',
           body:
-            'Health checks are part of the deployment record. The agent isn’t “deployed” in MUTX until it passes its health probe — not just until the deploy command exits.',
+            'Heartbeats can update the latest deployment record, and monitor failures append deployment events. Provider rollout health must be verified separately.',
         },
         {
           title: 'Monitoring',
           href: '/ai-agent-monitoring',
           body:
-            'Circuit breaker trips and health check failures surface through the monitoring view. Operators see the degradation with full context — before customers report it.',
+            'Owned alerts and submitted metrics appear in monitoring views; webhook delivery state is available through webhook APIs.',
         },
         {
           title: 'Guardrails',
           href: '/ai-agent-guardrails',
           body:
-            'When a guardrail violation triggers a circuit breaker, the response is coordinated by the control plane — not handled by two systems that disagree on what happened.',
+            'Guardrail verdicts and webhook circuit breakers are separate mechanisms. Operators can correlate them only when integrations report shared context.',
         },
       ],
     },
@@ -1059,7 +1059,7 @@ export const operationalStories = {
       eyebrow: 'Get started',
       title: 'Ship an agent. Watch the\nhealth surface respond.',
       body:
-        'Download the Mac app. Deploy an agent. Open the reliability surface and see what the health probe reports, what happens when you trip a circuit breaker, and what the operator sees before the incident reaches users.',
+        'Connect one agent heartbeat, inspect the stale-state transition and alert contract, then test webhook failure containment without confusing it with provider failover.',
       actions: [downloadAction, { href: '/docs/quickstart', label: 'Read quickstart' }],
     },
   },

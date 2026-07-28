@@ -6,18 +6,24 @@ import logging
 import uuid
 from enum import Enum
 from typing import Any, Literal, Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.auth.ownership import get_owned_agent
+from src.api.auth.dependencies import require_roles
 from src.api.database import get_db
-from src.api.auth.dependencies import get_current_user
 from src.api.models import User
 from src.api.services.assistant_control_plane import (
-    collect_assistant_overview,
     list_gateway_sessions,
+)
+from src.api.services.session_ownership import (
+    OwnedSession,
+    filter_and_claim_owned_sessions,
+    forget_owned_session,
+    get_owned_session_agent,
+    require_live_owned_gateway_session,
 )
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -39,7 +45,7 @@ async def _call_gateway(
     path: str,
     json: Optional[dict[str, Any]] = None,
     params: Optional[dict[str, Any]] = None,
-) -> dict[str, Any]:
+) -> Any:
     """Make an HTTP request to the local OpenClaw gateway.
 
     Returns parsed JSON response.
@@ -61,6 +67,10 @@ async def _call_gateway(
                 kwargs["params"] = params
 
             async with session.request(method, f"{base_url}{path}", **kwargs) as resp:
+                response_data: Any = None
+                if resp.content_type and "application/json" in resp.content_type:
+                    response_data = await resp.json()
+
                 if resp.status == 404:
                     raise HTTPException(status_code=404, detail="Session not found on gateway")
                 if resp.status >= 500:
@@ -68,8 +78,18 @@ async def _call_gateway(
                         status_code=502,
                         detail=f"Gateway error: {resp.status}",
                     )
-                if resp.content_type and "application/json" in resp.content_type:
-                    return await resp.json()
+                if resp.status >= 400:
+                    detail = (
+                        response_data.get("detail") or response_data.get("message")
+                        if isinstance(response_data, dict)
+                        else None
+                    )
+                    raise HTTPException(
+                        status_code=resp.status,
+                        detail=detail or f"Gateway rejected request: {resp.status}",
+                    )
+                if response_data is not None:
+                    return response_data
                 return {"status": resp.status}
     except aiohttp.ClientConnectorError:
         raise HTTPException(
@@ -107,6 +127,7 @@ def _parse_timestamp(ts: str | int | float) -> float:
 
 def get_local_claude_sessions() -> list[dict[str, Any]]:
     """Discover Claude sessions from ~/.claude/projects/."""
+    import json
     from pathlib import Path
 
     sessions: list[dict[str, Any]] = []
@@ -128,11 +149,30 @@ def get_local_claude_sessions() -> list[dict[str, Any]]:
                 try:
                     stat = session_file.stat()
                     session_id = session_file.stem
+                    workspace = None
+                    agent_ids: set[str] = set()
+                    with session_file.open() as transcript:
+                        for _ in range(20):
+                            line = transcript.readline()
+                            if not line:
+                                break
+                            try:
+                                entry = json.loads(line)
+                            except json.JSONDecodeError:
+                                continue
+                            if not isinstance(entry, dict):
+                                continue
+                            if workspace is None and isinstance(entry.get("cwd"), str):
+                                workspace = entry["cwd"]
+                            if isinstance(entry.get("agent_id"), str):
+                                agent_ids.add(entry["agent_id"])
                     sessions.append(
                         {
                             "id": f"claude:{session_id}",
                             "source": "claude",
                             "project": project_name,
+                            "agent_id": next(iter(agent_ids)) if len(agent_ids) == 1 else None,
+                            "workspace": workspace,
                             "status": "available",
                             "last_activity": stat.st_mtime,
                             "created_at": stat.st_ctime,
@@ -174,6 +214,9 @@ def get_local_codex_sessions() -> list[dict[str, Any]]:
                             "id": f"codex:{session_id}",
                             "source": "codex",
                             "name": thread_name,
+                            "agent_id": entry.get("agent_id"),
+                            "assistant_id": entry.get("assistant_id"),
+                            "workspace": entry.get("workspace") or entry.get("cwd"),
                             "status": "available",
                             "last_activity": _parse_timestamp(updated_at),
                             "created_at": _parse_timestamp(entry.get("created_at", updated_at)),
@@ -214,6 +257,9 @@ def get_local_hermes_sessions() -> list[dict[str, Any]]:
                     "id": f"hermes:{session_id}",
                     "source": "hermes",
                     "session_key": key,
+                    "agent_id": entry.get("agent_id"),
+                    "assistant_id": entry.get("assistant_id"),
+                    "workspace": entry.get("workspace"),
                     "display_name": entry.get("display_name", "Untitled"),
                     "platform": entry.get("platform", "unknown"),
                     "chat_type": entry.get("chat_type", "unknown"),
@@ -236,6 +282,8 @@ def merge_and_dedupe_sessions(
     claude_sessions: list[dict[str, Any]],
     codex_sessions: list[dict[str, Any]],
     hermes_sessions: list[dict[str, Any]],
+    *,
+    limit: int | None = 100,
 ) -> list[dict[str, Any]]:
     all_sessions = gateway_sessions + claude_sessions + codex_sessions + hermes_sessions
 
@@ -253,9 +301,10 @@ def merge_and_dedupe_sessions(
         if not existing or current_activity > existing_activity:
             seen[key] = session
 
-    return sorted(seen.values(), key=lambda session: session.get("last_activity", 0), reverse=True)[
-        :100
-    ]
+    sorted_sessions = sorted(
+        seen.values(), key=lambda session: session.get("last_activity", 0), reverse=True
+    )
+    return sorted_sessions[:limit] if limit is not None else sorted_sessions
 
 
 # --- Schemas ---
@@ -321,36 +370,58 @@ class SessionListResponse(BaseModel):
     sessions: list[dict[str, Any]]
 
 
+def _discover_sessions() -> list[dict[str, Any]]:
+    # Ownership must be resolved before deduplication or truncation. Otherwise a
+    # foreign session that reuses an ID could crowd out the owner's real record.
+    return (
+        list_gateway_sessions()
+        + get_local_claude_sessions()
+        + get_local_codex_sessions()
+        + get_local_hermes_sessions()
+    )
+
+
+async def _resolve_owned_session(
+    db: AsyncSession,
+    current_user: User,
+    session_key: str,
+) -> OwnedSession:
+    return await require_live_owned_gateway_session(
+        db,
+        user=current_user,
+        session_key=session_key,
+        gateway_sessions=list_gateway_sessions(),
+    )
+
+
 @router.get("", response_model=SessionListResponse)
 async def list_sessions(
     agent_id: uuid.UUID | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ) -> SessionListResponse:
-    """List assistant sessions discovered from OpenClaw state plus local sources."""
-    assistant_id = None
+    """List sessions unambiguously owned by the authenticated persisted principal."""
+    required_agent_id = None
     if agent_id is not None:
-        agent = await get_owned_agent(agent_id, db, current_user)
-        await db.refresh(agent, attribute_names=["deployments"])
-        overview = collect_assistant_overview(agent, list(agent.deployments))
-        assistant_id = overview["assistant_id"]
-        return SessionListResponse(sessions=list_gateway_sessions(assistant_id=assistant_id))
+        agent = await get_owned_session_agent(db, user=current_user, agent_id=agent_id)
+        required_agent_id = agent.id
 
-    gateway_sessions = list_gateway_sessions(assistant_id=assistant_id)
-    merged = merge_and_dedupe_sessions(
-        gateway_sessions,
-        get_local_claude_sessions(),
-        get_local_codex_sessions(),
-        get_local_hermes_sessions(),
+    sessions = await filter_and_claim_owned_sessions(
+        db,
+        user=current_user,
+        sessions=_discover_sessions(),
+        required_agent_id=required_agent_id,
     )
-    return SessionListResponse(sessions=merged)
+    visible_sessions = merge_and_dedupe_sessions(sessions, [], [], [])
+    return SessionListResponse(sessions=visible_sessions)
 
 
 @router.post("", response_model=SessionActionResponse)
 async def session_action(
     request: SessionActionRequest,
     action: str = Query(...),
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ) -> SessionActionResponse:
     """Apply a session action (set-thinking, set-verbose, set-reasoning, set-label).
 
@@ -384,6 +455,8 @@ async def session_action(
             detail="Label must be a string up to 100 characters",
         )
 
+    owned_session = await _resolve_owned_session(db, current_user, request.session_key)
+
     # Map action to gateway endpoint
     gateway_path_map = {
         "set-thinking": "/api/sessions/thinking",
@@ -393,7 +466,7 @@ async def session_action(
     }
 
     # Forge payload for gateway
-    body: dict[str, Any] = {"session": request.session_key}
+    body: dict[str, Any] = {"session": owned_session.canonical_key}
     if action == "set-label":
         body["label"] = request.label
     else:
@@ -411,18 +484,23 @@ async def session_action(
 @router.delete("", response_model=SessionActionResponse)
 async def delete_session(
     request: SessionActionRequest,
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ) -> SessionActionResponse:
     """Delete a session from the OpenClaw gateway.
 
     Requires session_key to identify the session to delete.
     """
-    if not request.session_key:
-        raise HTTPException(status_code=400, detail="session_key is required")
+    owned_session = await _resolve_owned_session(db, current_user, request.session_key)
 
     await _call_gateway(
         "DELETE",
-        f"/api/sessions/{request.session_key}",
+        f"/api/sessions/{quote(owned_session.canonical_key, safe='')}",
+    )
+    await forget_owned_session(
+        db,
+        user=current_user,
+        canonical_key=owned_session.canonical_key,
     )
     return SessionActionResponse(
         session_key=request.session_key,
@@ -443,11 +521,12 @@ _STATE_TRANSITIONS: dict[str, tuple[list[str], str]] = {
 }
 
 
-@router.post("/{session_key}/control", response_model=SessionControlResponse)
+@router.post("/{session_key:path}/control", response_model=SessionControlResponse)
 async def session_control(
     session_key: str,
     request: SessionControlRequest,
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ) -> SessionControlResponse:
     """Control session lifecycle: pause, resume, or kill a session.
 
@@ -456,12 +535,13 @@ async def session_control(
     and enriches the response with state information.
     """
     action = request.action
+    owned_session = await _resolve_owned_session(db, current_user, session_key)
 
     # Forward to the gateway control endpoint (MC v2.0 pattern).
     # The gateway expects POST /api/sessions/{key}/control with {"action": ...}.
     result = await _call_gateway(
         "POST",
-        f"/api/sessions/{session_key}/control",
+        f"/api/sessions/{quote(owned_session.canonical_key, safe='')}/control",
         json={"action": action},
     )
 
@@ -476,18 +556,20 @@ async def session_control(
     )
 
 
-@router.get("/{session_key}/transcript", response_model=SessionTranscriptResponse)
+@router.get("/{session_key:path}/transcript", response_model=SessionTranscriptResponse)
 async def session_transcript(
     session_key: str,
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ) -> SessionTranscriptResponse:
     """Retrieve the full session transcript (conversation history).
 
     Proxies to the OpenClaw gateway's ``GET /api/sessions/:key/history`` endpoint.
     """
+    owned_session = await _resolve_owned_session(db, current_user, session_key)
     data = await _call_gateway(
         "GET",
-        f"/api/sessions/{session_key}/history",
+        f"/api/sessions/{quote(owned_session.canonical_key, safe='')}/history",
     )
 
     # The gateway may return a list of messages directly or wrap them.

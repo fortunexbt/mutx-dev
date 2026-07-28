@@ -23,17 +23,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return unauthorized()
     }
 
+    const skip = request.nextUrl.searchParams.get('skip') ?? '0'
+    const limit = request.nextUrl.searchParams.get('limit') ?? '20'
+    const query = new URLSearchParams({ skip, limit })
+
     const { response, tokenRefreshed, refreshedTokens } = await authenticatedFetch(
       request,
-      `${getApiBaseUrl()}/v1/agents?limit=20`,
+      `${getApiBaseUrl()}/v1/agents?${query.toString()}`,
       { cache: 'no-store' }
     )
 
     const payload = await response.json().catch(() => ({ detail: 'Failed to fetch agents' }))
-    // Backend returns { items, total, skip, limit, has_more } envelope.
-    // Extract items for backward-compatible client consumption.
-    const agents = Array.isArray(payload) ? payload : payload.items ?? payload
-    const nextResponse = NextResponse.json(agents, { status: response.status })
+    const nextResponse = NextResponse.json(payload, { status: response.status })
 
     if (tokenRefreshed && refreshedTokens) {
       applyAuthCookies(nextResponse, request, refreshedTokens)

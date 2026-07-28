@@ -42,18 +42,6 @@ export type DemoSectionMeta = {
   narrative: string[];
 };
 
-export type DemoSectionTheme = {
-  navActive: string;
-  navIcon: string;
-  heroBorder: string;
-  heroGlow: string;
-  heroBadge: string;
-  heroTint: string;
-  heroRule: string;
-  textAccent: string;
-  chip: string;
-};
-
 export type Metric = {
   label: string;
   value: string;
@@ -311,131 +299,6 @@ export const SECTION_META: Record<DemoSection, DemoSectionMeta> = {
   },
 };
 
-export function getSectionTheme(section: DemoSection): DemoSectionTheme {
-  switch (section) {
-    case "agents":
-      return {
-        navActive: "border-emerald-300/20 bg-emerald-400/12 text-white shadow-[0_18px_48px_rgba(20,83,45,0.28)]",
-        navIcon: "border-emerald-300/20 bg-emerald-400/12 text-emerald-100",
-        heroBorder: "border-emerald-300/16",
-        heroGlow: "bg-emerald-400/18",
-        heroBadge: "border-emerald-300/20 bg-emerald-400/12 text-emerald-50",
-        heroTint: "from-emerald-400/18 via-emerald-300/8 to-transparent",
-        heroRule: "from-emerald-300/90 via-emerald-200/35 to-transparent",
-        textAccent: "text-emerald-200",
-        chip: "border-emerald-300/18 bg-emerald-400/10 text-emerald-100",
-      };
-    case "deployments":
-      return {
-        navActive: "border-amber-300/20 bg-amber-400/12 text-white shadow-[0_18px_48px_rgba(133,77,14,0.26)]",
-        navIcon: "border-amber-300/20 bg-amber-400/12 text-amber-50",
-        heroBorder: "border-amber-300/16",
-        heroGlow: "bg-amber-400/16",
-        heroBadge: "border-amber-300/20 bg-amber-400/12 text-amber-50",
-        heroTint: "from-amber-400/18 via-amber-300/8 to-transparent",
-        heroRule: "from-amber-300/90 via-amber-200/35 to-transparent",
-        textAccent: "text-amber-100",
-        chip: "border-amber-300/18 bg-amber-400/10 text-amber-50",
-      };
-    case "runs":
-      return {
-        navActive: "border-sky-300/20 bg-sky-400/12 text-white shadow-[0_18px_48px_rgba(3,105,161,0.24)]",
-        navIcon: "border-sky-300/20 bg-sky-400/12 text-sky-50",
-        heroBorder: "border-sky-300/16",
-        heroGlow: "bg-sky-400/18",
-        heroBadge: "border-sky-300/20 bg-sky-400/12 text-sky-50",
-        heroTint: "from-sky-400/18 via-sky-300/8 to-transparent",
-        heroRule: "from-sky-300/90 via-sky-200/35 to-transparent",
-        textAccent: "text-sky-100",
-        chip: "border-sky-300/18 bg-sky-400/10 text-sky-50",
-      };
-    case "environments":
-      return {
-        navActive: "border-teal-300/20 bg-teal-400/12 text-white shadow-[0_18px_48px_rgba(13,148,136,0.24)]",
-        navIcon: "border-teal-300/20 bg-teal-400/12 text-teal-50",
-        heroBorder: "border-teal-300/16",
-        heroGlow: "bg-teal-400/18",
-        heroBadge: "border-teal-300/20 bg-teal-400/12 text-teal-50",
-        heroTint: "from-teal-400/18 via-teal-300/8 to-transparent",
-        heroRule: "from-teal-300/90 via-teal-200/35 to-transparent",
-        textAccent: "text-teal-100",
-        chip: "border-teal-300/18 bg-teal-400/10 text-teal-50",
-      };
-    case "access":
-      return {
-        navActive: "border-orange-300/20 bg-orange-400/12 text-white shadow-[0_18px_48px_rgba(154,52,18,0.26)]",
-        navIcon: "border-orange-300/20 bg-orange-400/12 text-orange-50",
-        heroBorder: "border-orange-300/16",
-        heroGlow: "bg-orange-400/18",
-        heroBadge: "border-orange-300/20 bg-orange-400/12 text-orange-50",
-        heroTint: "from-orange-400/18 via-orange-300/8 to-transparent",
-        heroRule: "from-orange-300/90 via-orange-200/35 to-transparent",
-        textAccent: "text-orange-100",
-        chip: "border-orange-300/18 bg-orange-400/10 text-orange-50",
-      };
-    case "connectors":
-      return {
-        navActive: "border-rose-300/20 bg-rose-400/12 text-white shadow-[0_18px_48px_rgba(159,18,57,0.22)]",
-        navIcon: "border-rose-300/20 bg-rose-400/12 text-rose-50",
-        heroBorder: "border-rose-300/16",
-        heroGlow: "bg-rose-400/16",
-        heroBadge: "border-rose-300/20 bg-rose-400/12 text-rose-50",
-        heroTint: "from-rose-400/18 via-rose-300/8 to-transparent",
-        heroRule: "from-rose-300/90 via-rose-200/35 to-transparent",
-        textAccent: "text-rose-100",
-        chip: "border-rose-300/18 bg-rose-400/10 text-rose-50",
-      };
-    case "audit":
-      return {
-        navActive: "border-slate-300/18 bg-slate-300/10 text-white shadow-[0_18px_48px_rgba(51,65,85,0.22)]",
-        navIcon: "border-slate-300/18 bg-slate-300/10 text-slate-100",
-        heroBorder: "border-slate-300/14",
-        heroGlow: "bg-slate-300/10",
-        heroBadge: "border-slate-300/18 bg-slate-300/10 text-slate-100",
-        heroTint: "from-slate-300/14 via-slate-200/6 to-transparent",
-        heroRule: "from-slate-300/90 via-slate-200/35 to-transparent",
-        textAccent: "text-slate-100",
-        chip: "border-slate-300/14 bg-slate-300/10 text-slate-100",
-      };
-    case "usage":
-      return {
-        navActive: "border-lime-300/20 bg-lime-400/12 text-white shadow-[0_18px_48px_rgba(77,124,15,0.22)]",
-        navIcon: "border-lime-300/20 bg-lime-400/12 text-lime-50",
-        heroBorder: "border-lime-300/16",
-        heroGlow: "bg-lime-400/16",
-        heroBadge: "border-lime-300/20 bg-lime-400/12 text-lime-50",
-        heroTint: "from-lime-400/18 via-lime-300/8 to-transparent",
-        heroRule: "from-lime-300/90 via-lime-200/35 to-transparent",
-        textAccent: "text-lime-100",
-        chip: "border-lime-300/18 bg-lime-400/10 text-lime-50",
-      };
-    case "settings":
-      return {
-        navActive: "border-blue-300/18 bg-blue-400/12 text-white shadow-[0_18px_48px_rgba(37,99,235,0.2)]",
-        navIcon: "border-blue-300/18 bg-blue-400/12 text-blue-50",
-        heroBorder: "border-blue-300/16",
-        heroGlow: "bg-blue-400/16",
-        heroBadge: "border-blue-300/18 bg-blue-400/12 text-blue-50",
-        heroTint: "from-blue-400/16 via-blue-300/8 to-transparent",
-        heroRule: "from-blue-300/90 via-blue-200/35 to-transparent",
-        textAccent: "text-blue-100",
-        chip: "border-blue-300/18 bg-blue-400/10 text-blue-50",
-      };
-    default:
-      return {
-        navActive: "border-cyan-300/20 bg-cyan-400/12 text-white shadow-[0_18px_48px_rgba(8,145,178,0.24)]",
-        navIcon: "border-cyan-300/20 bg-cyan-400/12 text-cyan-50",
-        heroBorder: "border-cyan-300/16",
-        heroGlow: "bg-cyan-400/18",
-        heroBadge: "border-cyan-300/20 bg-cyan-400/12 text-cyan-50",
-        heroTint: "from-cyan-400/18 via-cyan-300/8 to-transparent",
-        heroRule: "from-cyan-300/90 via-cyan-200/35 to-transparent",
-        textAccent: "text-cyan-100",
-        chip: "border-cyan-300/18 bg-cyan-400/10 text-cyan-50",
-      };
-  }
-}
-
 export const BASE_SIGNALS: Array<Omit<SignalItem, "stamp">> = [
   {
     title: "Deployment succeeded",
@@ -514,45 +377,45 @@ export function rotate<T>(items: T[], offset: number) {
 export function toneBadgeClasses(tone: Tone) {
   switch (tone) {
     case "healthy":
-      return "border-emerald-400/18 bg-emerald-400/12 text-emerald-100";
+      return "border-[#285a43] bg-[#0f2018] text-[#78e3b4]";
     case "warning":
-      return "border-amber-400/18 bg-amber-400/12 text-amber-100";
+      return "border-[#65502b] bg-[#211a0e] text-[#f4cc82]";
     case "critical":
-      return "border-rose-400/18 bg-rose-400/12 text-rose-100";
+      return "border-[#66302e] bg-[#241312] text-[#ff9b96]";
     case "focus":
-      return "border-cyan-400/18 bg-cyan-400/12 text-cyan-100";
+      return "border-[#294d6c] bg-[#101c26] text-[#8ac7ff]";
     default:
-      return "border-white/10 bg-white/[0.04] text-white/68";
+      return "border-[#34342e] bg-[#171813] text-[#aaa397]";
   }
 }
 
 export function toneTextClasses(tone: Tone) {
   switch (tone) {
     case "healthy":
-      return "text-emerald-200";
+      return "text-[#78e3b4]";
     case "warning":
-      return "text-amber-200";
+      return "text-[#f4cc82]";
     case "critical":
-      return "text-rose-200";
+      return "text-[#ff9b96]";
     case "focus":
-      return "text-cyan-200";
+      return "text-[#8ac7ff]";
     default:
-      return "text-white/64";
+      return "text-[#aaa397]";
   }
 }
 
 export function toneDotClasses(tone: Tone) {
   switch (tone) {
     case "healthy":
-      return "bg-emerald-300";
+      return "bg-[#4bd69b]";
     case "warning":
-      return "bg-amber-300";
+      return "bg-[#efb654]";
     case "critical":
-      return "bg-rose-300";
+      return "bg-[#ff6d66]";
     case "focus":
-      return "bg-cyan-300";
+      return "bg-[#58aaff]";
     default:
-      return "bg-white/40";
+      return "bg-[#77766d]";
   }
 }
 

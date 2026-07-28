@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { AuthNav } from "@/components/AuthNav";
+import { PicoFooter } from "@/components/pico/PicoFooter";
 import { PublicFooter } from "@/components/site/PublicFooter";
 import { PublicSurface } from "@/components/site/PublicSurface";
 
@@ -37,12 +38,12 @@ export function AuthSurface({
     <PublicSurface>
       <AuthNav hostVariant={hostVariant} />
 
-      <main id="main-content" className={styles.main} data-auth-variant={variant} data-auth-host={hostVariant}>
+      <main id="main-content" tabIndex={-1} className={styles.main} data-auth-variant={variant} data-auth-host={hostVariant}>
         <section className={styles.stage}>
           <aside className={styles.visual}>
             <div className={styles.visualMeta}>
-              <span>Identity ledger</span>
-              <span className={styles.secureState}><i /> Secure channel</span>
+              <span>{hostVariant === "pico" ? "PicoMUTX" : "Identity ledger"}</span>
+              <span className={styles.secureState}><i /> {hostVariant === "pico" ? "TLS" : "Secure channel"}</span>
             </div>
 
             <div className={styles.visualContent}>
@@ -51,13 +52,15 @@ export function AuthSurface({
               <p className={styles.description}>{description}</p>
             </div>
 
-            <ol className={styles.ledger} aria-label="Account access sequence">
+            <ol className={styles.ledger} aria-label={hostVariant === "pico" ? eyebrow : "Account access sequence"}>
               {ledgerEntries.map((entry, index) => (
                 <li key={entry}>
                   <span>{`0${index + 1}`}</span>
                   <i aria-hidden="true" />
                   <p>{entry}</p>
-                  <strong>{index === ledgerEntries.length - 1 ? "ready" : "verified"}</strong>
+                  <strong aria-hidden={hostVariant === "pico" ? "true" : undefined}>
+                    {hostVariant === "pico" ? "✓" : index === ledgerEntries.length - 1 ? "ready" : "verified"}
+                  </strong>
                 </li>
               ))}
             </ol>
@@ -71,8 +74,8 @@ export function AuthSurface({
 
           <div className={styles.formPanel}>
             <div className={styles.formMeta} aria-hidden="true">
-              <span>{variant === "recovery" ? "RECOVERY / 01" : "ACCESS / 01"}</span>
-              <span>MUTX CONTROL PLANE</span>
+              <span>{hostVariant === "pico" ? "PICO / AUTH" : variant === "recovery" ? "RECOVERY / 01" : "ACCESS / 01"}</span>
+              <span>{hostVariant === "pico" ? "PicoMUTX" : "MUTX CONTROL PLANE"}</span>
             </div>
             <div className={styles.formInner}>
               {children}
@@ -81,7 +84,7 @@ export function AuthSurface({
         </section>
       </main>
 
-      <PublicFooter showCallout={false} />
+      {hostVariant === "pico" ? <PicoFooter /> : <PublicFooter showCallout={false} />}
     </PublicSurface>
   );
 }

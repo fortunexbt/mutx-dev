@@ -3,8 +3,7 @@ import path from "path";
 import type { Metadata } from "next";
 import matter from "gray-matter";
 import { DocsLayout } from "@/components/site/docs/DocsLayout";
-import { remark } from "remark";
-import remarkGfm from "remark-gfm";
+import { DocsRenderer, extractDocumentTitle } from "@/components/site/docs/DocsRenderer";
 import { buildPageMetadata, buildWebPageStructuredData } from "@/lib/seo";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -23,6 +22,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function ManifestoPage() {
   const source = fs.readFileSync(path.join(process.cwd(), "docs/manifesto.md"), "utf-8");
   const { data, content } = matter(source);
+  const documentTitle = (data.title as string) || extractDocumentTitle(content, "Manifesto");
 
   const structuredData = buildWebPageStructuredData({
     name: `${data.title || "Manifesto"} | MUTX`,
@@ -31,18 +31,12 @@ export default async function ManifestoPage() {
   });
 
   return (
-    <DocsLayout nav={[]} title={(data.title as string) || "Manifesto"}>
+    <DocsLayout nav={[]} title={documentTitle}>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <article className="docs-prose">
-        <div
-          dangerouslySetInnerHTML={{
-            __html: String(await remark().use(remarkGfm).process(content)),
-          }}
-        />
-      </article>
+      <DocsRenderer source={content} currentSlug={["manifesto"]} omitFirstH1 />
     </DocsLayout>
   );
 }

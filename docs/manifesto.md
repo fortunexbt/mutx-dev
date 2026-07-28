@@ -104,12 +104,13 @@ If an operator cannot answer who owns a resource, what changed, what failed, and
 ### 6. Small Surfaces, Strong Guarantees
 We would rather have a smaller system with real semantics than a larger one full of implied behavior.
 
-## Why Open Source
+## Why Source Availability
 
 Agent infrastructure should be inspectable.
 The control layer around deployment, auth, API keys, and operational workflows should not be magic.
 
-Open source forces clarity.
+MUTX core is source-available under the Business Source License (BUSL-1.1), with each release converting to Apache-2.0 after 36 months.
+Source availability forces clarity.
 It sharpens interfaces.
 It reveals drift.
 It invites the right contributors.

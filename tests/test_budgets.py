@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from sdk.mutx.budgets import Budget, Budgets, UsageByAgent, UsageByType, UsageBreakdown
+from tests.sdk_contract_utils import assert_v1_request
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +194,7 @@ class TestBudgetsSyncGet:
 
         assert isinstance(result, Budget)
         assert result.user_id == "user-123"
-        mock_client.get.assert_called_once_with("/budgets")
+        assert_v1_request(mock_client.get, "GET", "/v1/budgets")
         mock_response.raise_for_status.assert_called_once()
 
     def test_get_raises_for_status(self, minimal_budget_data):
@@ -220,7 +221,8 @@ class TestBudgetsSyncGetUsage:
         result = budgets.get_usage()
 
         assert isinstance(result, UsageBreakdown)
-        mock_client.get.assert_called_once_with("/budgets/usage", params={})
+        request = assert_v1_request(mock_client.get, "GET", "/v1/budgets/usage")
+        assert dict(request.url.params) == {}
 
     def test_get_usage_with_period_params(self, usage_breakdown_data):
         mock_response = MagicMock()
@@ -232,9 +234,8 @@ class TestBudgetsSyncGetUsage:
         result = budgets.get_usage(period_start="24h", period_end="7d")
 
         assert isinstance(result, UsageBreakdown)
-        mock_client.get.assert_called_once_with(
-            "/budgets/usage", params={"period_start": "24h", "period_end": "7d"}
-        )
+        request = assert_v1_request(mock_client.get, "GET", "/v1/budgets/usage")
+        assert dict(request.url.params) == {"period_start": "24h", "period_end": "7d"}
 
     def test_get_usage_raises_for_status(self, usage_breakdown_data):
         mock_response = MagicMock()
@@ -267,7 +268,7 @@ class TestBudgetsAsyncGet:
 
         assert isinstance(result, Budget)
         assert result.user_id == "user-123"
-        mock_client.get.assert_called_once_with("/budgets")
+        assert_v1_request(mock_client.get, "GET", "/v1/budgets")
         mock_response.raise_for_status.assert_called_once()
 
     @pytest.mark.asyncio
@@ -296,7 +297,8 @@ class TestBudgetsAsyncGetUsage:
         result = await budgets.aget_usage()
 
         assert isinstance(result, UsageBreakdown)
-        mock_client.get.assert_called_once_with("/budgets/usage", params={})
+        request = assert_v1_request(mock_client.get, "GET", "/v1/budgets/usage")
+        assert dict(request.url.params) == {}
 
     @pytest.mark.asyncio
     async def test_aget_usage_with_period_params(self, usage_breakdown_data):
@@ -309,9 +311,8 @@ class TestBudgetsAsyncGetUsage:
         result = await budgets.aget_usage(period_start="30d", period_end="now")
 
         assert isinstance(result, UsageBreakdown)
-        mock_client.get.assert_called_once_with(
-            "/budgets/usage", params={"period_start": "30d", "period_end": "now"}
-        )
+        request = assert_v1_request(mock_client.get, "GET", "/v1/budgets/usage")
+        assert dict(request.url.params) == {"period_start": "30d", "period_end": "now"}
 
     @pytest.mark.asyncio
     async def test_aget_usage_raises_for_status(self, usage_breakdown_data):

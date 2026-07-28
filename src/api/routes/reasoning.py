@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import UploadFile
 
 from src.api.database import get_db
-from src.api.auth.dependencies import get_current_user
+from src.api.auth.dependencies import require_roles
 from src.api.models import User
 from src.api.models.schemas import (
     ReasoningArtifactRegistrationCreate,
@@ -42,7 +42,9 @@ router = APIRouter(prefix="/reasoning", tags=["reasoning"])
 
 
 @router.get("/templates", response_model=list[ReasoningTemplateResponse])
-async def get_reasoning_templates():
+async def get_reasoning_templates(
+    _current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
+):
     return list_reasoning_templates()
 
 
@@ -50,7 +52,7 @@ async def get_reasoning_templates():
 async def create_reasoning_job_endpoint(
     request: ReasoningJobCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     job = await create_reasoning_job(db, current_user=current_user, request=request)
     return serialize_reasoning_job(job)
@@ -63,7 +65,7 @@ async def list_reasoning_jobs_endpoint(
     status_filter: str | None = Query(default=None, alias="status"),
     template_id: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     items, total = await list_reasoning_jobs(
         db,
@@ -88,7 +90,7 @@ async def list_reasoning_jobs_endpoint(
 async def get_reasoning_job_endpoint(
     job_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     job = await get_reasoning_job_or_404(db, job_id=job_id, current_user=current_user)
     return serialize_reasoning_job(job)
@@ -103,7 +105,7 @@ async def register_reasoning_artifact_endpoint(
     job_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     job = await get_reasoning_job_or_404(db, job_id=job_id, current_user=current_user)
     content_type = request.headers.get("content-type", "")
@@ -184,7 +186,7 @@ async def dispatch_reasoning_job_endpoint(
     job_id: uuid.UUID,
     request: ReasoningJobDispatchRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     job = await get_reasoning_job_or_404(db, job_id=job_id, current_user=current_user)
     updated = await dispatch_reasoning_job(db, job=job, request=request)
@@ -196,7 +198,7 @@ async def launch_reasoning_job_local_endpoint(
     job_id: uuid.UUID,
     request: ReasoningJobLocalLaunchRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     job = await get_reasoning_job_or_404(db, job_id=job_id, current_user=current_user)
     return await build_local_launch_response(db, job=job, output_dir=request.output_dir)
@@ -207,7 +209,7 @@ async def append_reasoning_job_event_endpoint(
     job_id: uuid.UUID,
     event: ReasoningJobEventCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     job = await get_reasoning_job_or_404(db, job_id=job_id, current_user=current_user)
     updated = await append_reasoning_job_event(db, job=job, event=event)
@@ -219,7 +221,7 @@ async def download_reasoning_artifact_endpoint(
     job_id: uuid.UUID,
     artifact_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     artifact = await get_reasoning_artifact_or_404(
         db,

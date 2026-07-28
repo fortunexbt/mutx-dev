@@ -29,7 +29,7 @@ export function InstallSurface() {
       <div className="site-command-card-head site-command-card-head-hero">
         <div>
           <p>Install lane</p>
-          <p>{showingMacLane ? "Signed desktop release" : "CLI bootstrap lane"}</p>
+          <p>{showingMacLane ? "Conditional desktop release" : "CLI bootstrap lane"}</p>
         </div>
         <div className="site-command-card-actions">
           {showingMacLane ? (
@@ -87,18 +87,19 @@ export function InstallSurface() {
                 Desktop operator app
               </p>
               <h3 className="mt-3 text-2xl font-semibold tracking-[-0.05em] text-white">
-                Download the signed macOS release.
+                Check the current macOS release.
               </h3>
               <p className="mt-3 text-sm leading-7 text-[color:var(--site-text-soft)]">
-                Use the notarized desktop build when you want the operator console,
-                local runtime posture, and the stable dashboard flow in one place.
+                The download lane opens only when MUTX resolves the complete expected
+                desktop asset set. Confirm publisher signing and notarization evidence
+                in the linked release before installation.
               </p>
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <Link href="/download/macos/arm64" className="site-button-primary w-full sm:w-auto">
                 Apple Silicon
-                <ArrowRight className="h-4 w-4" />
+                <ArrowRight className="rtl-directional-icon h-4 w-4" />
               </Link>
               <Link href="/download/macos/intel" className="site-button-secondary w-full sm:w-auto">
                 Intel Mac
@@ -114,8 +115,6 @@ export function InstallSurface() {
               </Link>
               <a
                 href={GITHUB_RELEASES_URL}
-                target="_blank"
-                rel="noopener noreferrer"
                 className="site-inline-link"
               >
                 GitHub releases
@@ -128,8 +127,8 @@ export function InstallSurface() {
               Release posture
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <span className="site-route-pill">signed</span>
-              <span className="site-route-pill">notarized</span>
+              <span className="site-route-pill">complete asset set required</span>
+              <span className="site-route-pill">checksums when published</span>
               <span className="site-route-pill">manual download</span>
             </div>
               <p className="mt-4 text-sm leading-7 text-[color:var(--site-text-soft)]">

@@ -8,6 +8,18 @@ const UI_PORT_RANGE = { min: 18900, max: 18999 };
 const UI_SERVER_START_TIMEOUT_MS = 15000;
 const UI_SERVER_START_ATTEMPTS = 3;
 const UI_SERVER_BACKOFF_MS = [750, 1500, 3000];
+const UI_SERVER_HEALTH_PATH = "/api/dashboard/health";
+const UI_SERVER_PROBE_TIMEOUT_MS = 2000;
+const UI_SERVER_PROBE_INTERVAL_MS = 250;
+const UI_SERVER_MAX_PROBE_BYTES = 64 * 1024;
+const UI_HEALTH_VALUES = new Set(["healthy", "degraded", "unhealthy", "unknown"]);
+const UI_READINESS_VALUES = new Set([
+  "ready",
+  "not_ready",
+  "initializing",
+  "unavailable",
+  "unknown",
+]);
 
 let serverProcess = null;
 let serverUrl = null;
@@ -22,6 +34,7 @@ let serverState = {
   lastError: null,
   lastExitCode: null,
   attempt: 0,
+  observedAt: null,
 };
 
 function notifyListeners() {
@@ -39,6 +52,7 @@ function updateServerState(updates) {
   serverState = {
     ...serverState,
     ...updates,
+    observedAt: new Date().toISOString(),
   };
   notifyListeners();
 }
@@ -186,12 +200,127 @@ function ensureStandaloneAssets() {
   }
 }
 
+function formatProbeFailure(error) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+  return "Desktop UI health check is unavailable.";
+}
+
+function publicStartupError(error) {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+
+  if (message.includes("did not become ready") || message.includes("health check")) {
+    return error.message;
+  }
+  if (message.includes("no available port") || message.includes("address already in use")) {
+    return "No local port is available for the desktop UI. Close other MUTX instances and retry.";
+  }
+  if (message.includes("standalone") && message.includes("not found")) {
+    return "Desktop UI files are missing. Reinstall MUTX or rebuild the desktop application.";
+  }
+  if (message.includes("exited before it became ready")) {
+    return "Desktop UI exited during startup. Restart MUTX; if it persists, reinstall the application.";
+  }
+
+  return "Desktop UI could not start. Restart MUTX; if it persists, reinstall the application.";
+}
+
+function contractValue(value, allowedValues) {
+  if (typeof value !== "string") {
+    return "unknown";
+  }
+  const normalized = value.trim().toLowerCase();
+  return allowedValues.has(normalized) ? normalized : "unknown";
+}
+
+function probeServerReadiness(url, timeoutMs = UI_SERVER_PROBE_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timedOut = false;
+    const healthUrl = new URL(UI_SERVER_HEALTH_PATH, `${url.replace(/\/$/, "")}/`);
+
+    const settle = (callback, value) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      callback(value);
+    };
+
+    const request = http.get(healthUrl, (response) => {
+      let body = "";
+
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => {
+        if (body.length >= UI_SERVER_MAX_PROBE_BYTES) {
+          return;
+        }
+        body += chunk.slice(0, UI_SERVER_MAX_PROBE_BYTES - body.length);
+      });
+      response.on("error", () => {
+        settle(reject, new Error("Desktop UI health response could not be read."));
+      });
+      response.on("end", () => {
+        if (response.statusCode !== 200) {
+          settle(
+            reject,
+            new Error(`Desktop UI health endpoint returned HTTP ${response.statusCode || "unknown"}.`),
+          );
+          return;
+        }
+
+        let payload;
+        try {
+          payload = JSON.parse(body);
+        } catch {
+          settle(reject, new Error("Desktop UI health endpoint returned an invalid response."));
+          return;
+        }
+
+        const health = contractValue(payload?.status, UI_HEALTH_VALUES);
+        const readiness = contractValue(payload?.database, UI_READINESS_VALUES);
+        if (health !== "healthy" || readiness !== "ready") {
+          settle(
+            reject,
+            new Error(`Desktop UI is not ready (health: ${health}; readiness: ${readiness}).`),
+          );
+          return;
+        }
+
+        settle(resolve, { health, readiness });
+      });
+    });
+
+    request.setTimeout(Math.max(1, timeoutMs), () => {
+      timedOut = true;
+      request.destroy();
+    });
+    request.on("error", () => {
+      settle(
+        reject,
+        new Error(
+          timedOut
+            ? "Desktop UI health check timed out."
+            : "Desktop UI health endpoint is unreachable.",
+        ),
+      );
+    });
+  });
+}
+
 function waitForServer(url, childProcess, timeoutMs = UI_SERVER_START_TIMEOUT_MS) {
   const start = Date.now();
   return new Promise((resolve, reject) => {
     let settled = false;
+    let retryTimer = null;
+    let lastFailure = null;
 
     const cleanup = () => {
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
       if (childProcess) {
         childProcess.removeListener("error", onError);
         childProcess.removeListener("exit", onExit);
@@ -228,18 +357,37 @@ function waitForServer(url, childProcess, timeoutMs = UI_SERVER_START_TIMEOUT_MS
         return;
       }
 
-      const req = http.get(url, (res) => {
-        res.resume();
-        settle(resolve);
-      });
+      const elapsedMs = Date.now() - start;
+      const remainingMs = timeoutMs - elapsedMs;
+      if (remainingMs <= 0) {
+        const reason = lastFailure
+          ? ` Last check: ${formatProbeFailure(lastFailure)}`
+          : "";
+        settle(
+          reject,
+          new Error(
+            `Desktop UI did not become ready.${reason} Restart MUTX; if it persists, reinstall the application.`,
+          ),
+        );
+        return;
+      }
 
-      req.on("error", () => {
-        if (Date.now() - start >= timeoutMs) {
-          settle(reject, new Error(`UI server did not start in time: ${url}`));
-          return;
-        }
-        setTimeout(check, 250);
-      });
+      void probeServerReadiness(url, Math.min(UI_SERVER_PROBE_TIMEOUT_MS, remainingMs))
+        .then(() => {
+          settle(resolve);
+        })
+        .catch((error) => {
+          lastFailure = error;
+          if (Date.now() - start >= timeoutMs) {
+            check();
+            return;
+          }
+          const retryDelayMs = Math.min(
+            UI_SERVER_PROBE_INTERVAL_MS,
+            Math.max(1, timeoutMs - (Date.now() - start)),
+          );
+          retryTimer = setTimeout(check, retryDelayMs);
+        });
     };
 
     check();
@@ -282,7 +430,9 @@ function attachServerListeners(childProcess, url) {
     if (!message) {
       return;
     }
-    updateServerState({ lastError: message });
+    updateServerState({
+      lastError: "Desktop UI reported a startup error. Restart MUTX if startup does not recover.",
+    });
     console.error("[ServerManager] Server stderr:", message);
   });
 
@@ -296,7 +446,7 @@ function attachServerListeners(childProcess, url) {
       state: "error",
       url: null,
       port: null,
-      lastError: error.message,
+      lastError: publicStartupError(error),
     });
   });
 
@@ -386,16 +536,30 @@ async function startUIServer(options = {}) {
   }
 
   startPromise = (async () => {
-    ensureStandaloneAssets();
-
-    const serverScript = getServerScript();
-    if (!serverScript) {
+    let serverScript;
+    try {
+      ensureStandaloneAssets();
+      serverScript = getServerScript();
+    } catch (error) {
+      const message = publicStartupError(error);
       updateServerState({
         ready: false,
         state: "error",
-        lastError: "Standalone Next.js server not found. Run `npm run build` first.",
+        url: null,
+        port: null,
+        lastError: message,
       });
-      throw new Error("Standalone Next.js server not found. Run `npm run build` first.");
+      throw new Error(message, { cause: error });
+    }
+
+    if (!serverScript) {
+      const message = "Desktop UI files are missing. Reinstall MUTX or rebuild the desktop application.";
+      updateServerState({
+        ready: false,
+        state: "error",
+        lastError: message,
+      });
+      throw new Error(message);
     }
 
     let lastError = null;
@@ -404,9 +568,8 @@ async function startUIServer(options = {}) {
       try {
         return await launchServerAttempt(serverScript, options, attempt);
       } catch (error) {
-        lastError = error;
-        const message =
-          error instanceof Error ? error.message : "UI server failed to start";
+        const message = publicStartupError(error);
+        lastError = new Error(message);
 
         console.error("[ServerManager] UI server startup failed:", message);
         terminateServerProcess();
@@ -458,6 +621,8 @@ function isServerRunning() {
 module.exports = {
   addStateListener,
   getServerState,
+  probeServerReadiness,
+  waitForServer,
   startUIServer,
   stopUIServer,
   getServerUrl,

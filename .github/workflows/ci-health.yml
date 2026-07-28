@@ -1,0 +1,147 @@
+name: CI Health
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+    branches:
+      - main
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: ci-health-main
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  main-incident:
+    name: Maintain Main CI Incident
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Create, refresh, or resolve the main CI incident
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const marker = '<!-- mutx-ci-main-incident -->'
+            const title = '[CI] Main validation is failing'
+            const run = context.payload.workflow_run
+            const owner = context.repo.owner
+            const repo = context.repo.repo
+
+            const completedRuns = await github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner,
+                repo,
+                workflow_id: run.workflow_id,
+                branch: 'main',
+                status: 'completed',
+                per_page: 100,
+              },
+            )
+            const newerRun = completedRuns.find(
+              (candidate) => candidate.run_number > run.run_number,
+            )
+            if (newerRun) {
+              core.notice(`Ignoring stale run ${run.run_number}; run ${newerRun.run_number} completed later.`)
+              return
+            }
+
+            const openIssues = await github.paginate(
+              github.rest.issues.listForRepo,
+              { owner, repo, state: 'open', per_page: 100 },
+            )
+            const incident = openIssues.find(
+              (issue) => !issue.pull_request && issue.body?.includes(marker),
+            )
+            const legacyIncidents = openIssues.filter(
+              (issue) =>
+                !issue.pull_request &&
+                issue.title === '❓ Unrecognized CI failure on `main`' &&
+                issue.body?.includes('_Tagged by the CI autofix workflow for human review._'),
+            )
+            const closeLegacyIncidents = async () => {
+              for (const legacy of legacyIncidents) {
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: legacy.number,
+                  state: 'closed',
+                  state_reason: 'not_planned',
+                })
+                core.notice(`Closed superseded legacy CI incident #${legacy.number}.`)
+              }
+            }
+
+            if (run.conclusion === 'success') {
+              if (incident) {
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: incident.number,
+                  state: 'closed',
+                  state_reason: 'completed',
+                  body: `${marker}\n\nMain CI recovered in [run ${run.run_number}](${run.html_url}) for \`${run.head_sha.slice(0, 12)}\`.`,
+                })
+                core.notice(`Resolved CI incident #${incident.number}.`)
+              } else if (legacyIncidents.length === 0) {
+                core.notice('Main CI is healthy and there is no open incident.')
+              }
+
+              await closeLegacyIncidents()
+              return
+            }
+
+            const jobs = await github.paginate(
+              github.rest.actions.listJobsForWorkflowRun,
+              { owner, repo, run_id: run.id, per_page: 100 },
+            )
+            const failedJobs = jobs
+              .filter((job) => !['success', 'skipped'].includes(job.conclusion))
+              .map((job) => `- [${job.name}](${job.html_url}) (\`${job.conclusion}\`)`)
+            const failureList = failedJobs.length
+              ? failedJobs.join('\n')
+              : `- The run concluded as \`${run.conclusion}\` before a job-level failure was available.`
+            const body = `${marker}
+
+            The authoritative CI workflow is failing on \`main\`.
+
+            - Run: [${run.run_number}](${run.html_url})
+            - Commit: \`${run.head_sha}\`
+            - Updated: ${new Date(run.updated_at).toISOString()}
+
+            Failed gates:
+
+            ${failureList}
+
+            This issue is updated in place for each current failure and is resolved automatically after the next successful main run.`
+              .split('\n')
+              .map((line) => line.trimStart())
+              .join('\n')
+
+            if (incident) {
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: incident.number,
+                title,
+                body,
+              })
+              core.notice(`Refreshed CI incident #${incident.number}.`)
+              await closeLegacyIncidents()
+              return
+            }
+
+            const created = await github.rest.issues.create({ owner, repo, title, body })
+            core.notice(`Created CI incident #${created.data.number}.`)
+            await closeLegacyIncidents()

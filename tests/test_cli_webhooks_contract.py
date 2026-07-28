@@ -29,32 +29,36 @@ def test_webhooks_list_hits_contract_route_and_forwards_filters(monkeypatch) -> 
 
     def fake_get(path: str, params: dict[str, Any] | None = None) -> DummyResponse:
         captured.append((path, params))
-        if path == "/v1/webhooks":
+        if path == "/v1/webhooks/":
             return DummyResponse(
                 200,
-                [
-                    {
-                        "id": "wh-123",
-                        "url": "https://example.com/hook",
-                        "is_active": True,
-                        "events": ["agent.status"],
-                    }
-                ],
+                {
+                    "items": [
+                        {
+                            "id": "wh-123",
+                            "url": "https://example.com/hook",
+                            "is_active": True,
+                            "events": ["agent.status"],
+                        }
+                    ]
+                },
             )
 
         return DummyResponse(
             200,
-            [
-                {
-                    "id": "delivery-1",
-                    "event": "agent.status",
-                    "success": True,
-                    "attempts": 1,
-                    "status_code": 204,
-                    "created_at": "2026-03-14T16:00:00",
-                    "delivered_at": "2026-03-14T16:00:01",
-                }
-            ],
+            {
+                "items": [
+                    {
+                        "id": "delivery-1",
+                        "event": "agent.status",
+                        "success": True,
+                        "attempts": 1,
+                        "status_code": 204,
+                        "created_at": "2026-03-14T16:00:00",
+                        "delivered_at": "2026-03-14T16:00:01",
+                    }
+                ]
+            },
         )
 
     monkeypatch.setattr("cli.commands.webhooks.current_config", lambda: DummyConfig())
@@ -70,7 +74,7 @@ def test_webhooks_list_hits_contract_route_and_forwards_filters(monkeypatch) -> 
 
     assert result.exit_code == 0
     assert captured == [
-        ("/v1/webhooks", {"limit": 25, "skip": 5}),
+        ("/v1/webhooks/", {"limit": 25, "skip": 5}),
         ("/v1/webhooks/wh-123/deliveries", {"limit": 5, "skip": 0}),
     ]
     assert "wh-123 | https://example.com/hook | state=active | delivery=healthy" in result.output
@@ -86,17 +90,19 @@ def test_webhooks_deliveries_hits_live_delivery_route_and_query_contract(monkeyp
         captured["params"] = params
         return DummyResponse(
             200,
-            [
-                {
-                    "id": "delivery-1",
-                    "event": "agent.status",
-                    "success": False,
-                    "attempts": 2,
-                    "status_code": 502,
-                    "delivered_at": None,
-                    "created_at": "2026-03-12T15:00:00",
-                }
-            ],
+            {
+                "items": [
+                    {
+                        "id": "delivery-1",
+                        "event": "agent.status",
+                        "success": False,
+                        "attempts": 2,
+                        "status_code": 502,
+                        "delivered_at": None,
+                        "created_at": "2026-03-12T15:00:00",
+                    }
+                ]
+            },
         )
 
     monkeypatch.setattr("cli.commands.webhooks.current_config", lambda: DummyConfig())

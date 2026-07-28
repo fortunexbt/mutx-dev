@@ -1,103 +1,90 @@
-"""
-Telemetry configuration routes.
+"""Authenticated, tenant-scoped telemetry backend configuration routes."""
 
-Provides endpoints for OpenTelemetry configuration status and backend setup.
-"""
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from typing import Literal
-
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
-
-from src.api.auth.dependencies import get_current_internal_user
-from src.api.services.telemetry_backend import (
-    configure_telemetry_backend,
-    get_telemetry_health,
-    get_current_config,
+from src.api.auth.dependencies import get_current_internal_user, require_roles
+from src.api.database import get_db
+from src.api.models import User
+from src.api.models.telemetry_schemas import (
+    TelemetryConfigRequest,
+    TelemetryConfigStatusResponse,
+    TelemetryConfigureResponse,
+    TelemetryHealthResponse,
 )
+from src.api.services.telemetry_backend import (
+    TelemetryEndpointError,
+    configure_telemetry_backend,
+    get_current_config,
+    get_runtime_telemetry_status,
+    get_telemetry_health,
+)
+
+
+async def require_internal_telemetry_admin(
+    current_user: User = Depends(require_roles("ADMIN")),
+    _internal_user: User = Depends(get_current_internal_user),
+) -> User:
+    """Require a persisted internal administrator for telemetry operations."""
+    return current_user
+
 
 router = APIRouter(
     prefix="/telemetry",
     tags=["telemetry"],
-    dependencies=[Depends(get_current_internal_user)],
+    dependencies=[Depends(require_internal_telemetry_admin)],
 )
 
 
-class TelemetryConfigRequest(BaseModel):
-    """Request model for telemetry configuration."""
-
-    otlp_endpoint: str
-    protocol: Literal["grpc", "http"] = "grpc"
-
-
-@router.get("/config")
-async def get_telemetry_config(request: Request):
-    """Get current telemetry configuration.
-
-    Returns the OTEL status including whether it's enabled,
-    the exporter type, and endpoint if configured.
-    """
-    from src.api.telemetry.telemetry import get_exporter_from_env
-
-    exporter = get_exporter_from_env()
-    exporter_type = "console"
-    if hasattr(exporter, "__class__"):
-        exporter_name = exporter.__class__.__name__
-        if "OTLP" in exporter_name:
-            exporter_type = "otlp"
-        elif "Zipkin" in exporter_name:
-            exporter_type = "zipkin"
-        elif "Jaeger" in exporter_name:
-            exporter_type = "jaeger"
-
-    config = get_current_config()
-    if config.get("endpoint") and exporter_type == "console":
-        exporter_type = "otlp"
-
-    return {
-        "otel_enabled": True,
-        "exporter_type": config.get("exporter_type", exporter_type),
-        "endpoint": config.get("endpoint"),
-    }
+@router.get("/config", response_model=TelemetryConfigStatusResponse)
+async def get_telemetry_config(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_internal_telemetry_admin),
+) -> TelemetryConfigStatusResponse:
+    """Return runtime exporter status and this tenant's saved collector target."""
+    config = await get_current_config(db, owner_id=current_user.id)
+    otel_enabled, exporter_type = get_runtime_telemetry_status()
+    return TelemetryConfigStatusResponse(
+        otel_enabled=otel_enabled,
+        exporter_type=exporter_type,
+        endpoint=config["endpoint"],
+        protocol=config["protocol"],
+        configured=config["configured"],
+        runtime_applied=False,
+    )
 
 
-@router.post("/config")
-async def configure_telemetry(request: TelemetryConfigRequest):
-    """Configure the telemetry backend OTLP endpoint.
-
-    Allows dynamic configuration of the OTLP endpoint and protocol
-    for exporting traces and metrics to Grafana/Jaeger/Tempo.
-
-    Args:
-        request: Contains otlp_endpoint (URL) and protocol (grpc or http).
-
-    Returns:
-        The updated telemetry configuration.
-    """
+@router.post("/config", response_model=TelemetryConfigureResponse)
+async def configure_telemetry(
+    payload: TelemetryConfigRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_internal_telemetry_admin),
+) -> TelemetryConfigureResponse:
+    """Validate and durably save this tenant's OTLP connectivity target."""
     try:
-        configure_telemetry_backend(
-            otlp_endpoint=request.otlp_endpoint,
-            protocol=request.protocol,
+        config = await configure_telemetry_backend(
+            db,
+            owner_id=current_user.id,
+            otlp_endpoint=payload.otlp_endpoint,
+            protocol=payload.protocol,
         )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except TelemetryEndpointError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    config = get_current_config()
-    health = get_telemetry_health()
+    health = await get_telemetry_health(db, owner_id=current_user.id)
+    return TelemetryConfigureResponse(
+        status="configured",
+        runtime_applied=False,
+        config=config,
+        health=health,
+    )
 
-    return {
-        "status": "configured",
-        "config": config,
-        "health": health,
-    }
 
-
-@router.get("/health")
-async def get_telemetry_backend_health():
-    """Get health status of the configured telemetry backend.
-
-    Returns:
-        Health status including whether the backend is configured
-        and reachable.
-    """
-    return get_telemetry_health()
+@router.get("/health", response_model=TelemetryHealthResponse)
+async def get_telemetry_backend_health(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_internal_telemetry_admin),
+) -> TelemetryHealthResponse:
+    """Probe only this tenant's configured collector through a pinned public IP."""
+    health = await get_telemetry_health(db, owner_id=current_user.id)
+    return TelemetryHealthResponse.model_validate(health)

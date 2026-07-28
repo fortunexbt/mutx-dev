@@ -9,7 +9,7 @@ import {
   getRunsEmptyState,
   getUsageEmptyState,
 } from '../../components/pico/picoAutopilot'
-import { applyMilestone, createDefaultPicoProgress, updateAutopilotSettings } from '../../lib/pico/academy'
+import { PICO_LESSONS } from '../../lib/pico/academy'
 
 describe('pico autopilot helpers', () => {
   const expectEmptyStateTitle = (state: { title?: string }, pattern: RegExp) => {
@@ -61,6 +61,9 @@ describe('pico autopilot helpers', () => {
       approvals: [
         {
           id: 'approval-1',
+          owner_id: 'owner-1',
+          reviewer_id: 'reviewer-1',
+          can_resolve: true,
           agent_id: 'agent-1',
           action_type: 'outbound_message_send',
           payload: { summary: 'Send the lead reply to alice@example.com.' },
@@ -97,12 +100,21 @@ describe('pico autopilot helpers', () => {
       timeline.some((item) => /Outbound Message Send pending/i.test(item.title)),
     ).toBe(true)
     expect(timeline.some((item) => item.impact.match(/line in the sand|human decision|surprising/i))).toBe(true)
+    expect(Object.fromEntries(timeline.map((item) => [item.kind, item.href]))).toMatchObject({
+      run: '#recent-runs',
+      alert: '#alerts-section',
+      approval: '#approvals-section',
+    })
+    expect(timeline.every((item) => item.href.startsWith('#'))).toBe(true)
   })
 
   it('explains why pending approvals matter', () => {
     expect(
       explainApprovalImpact({
         id: 'approval-2',
+        owner_id: 'owner-1',
+        reviewer_id: 'reviewer-1',
+        can_resolve: true,
         agent_id: 'agent-1',
         action_type: 'outbound_message_send',
         status: 'PENDING',
@@ -123,7 +135,7 @@ describe('pico autopilot helpers', () => {
       approvals: [],
       budget: null,
       usage: null,
-      approvalGateConfigured: false,
+      approvalGatePreferenceEnabled: false,
     })
 
     expect(status.hasLiveAgent).toBe(false)
@@ -140,6 +152,9 @@ describe('pico autopilot helpers', () => {
       approvals: [
         {
           id: 'approval-3',
+          owner_id: 'owner-1',
+          reviewer_id: 'reviewer-1',
+          can_resolve: true,
           agent_id: 'agent-1',
           action_type: 'outbound_message_send',
           status: 'PENDING',
@@ -149,7 +164,7 @@ describe('pico autopilot helpers', () => {
       ],
       budget: null,
       usage: null,
-      approvalGateConfigured: false,
+      approvalGatePreferenceEnabled: false,
     })
 
     expect(status.hasLiveAgent).toBe(true)
@@ -167,7 +182,7 @@ describe('pico autopilot helpers', () => {
       approvals: [],
       budget: null,
       usage: null,
-      approvalGateConfigured: false,
+      approvalGatePreferenceEnabled: false,
     })
 
     expect(getAlertsEmptyState(status, { label: 'Inspect runs', href: '/pico/autopilot' }).title).toMatch(/No live alerts right now/i)
@@ -194,7 +209,7 @@ describe('pico autopilot helpers', () => {
         usage_by_agent: [],
         usage_by_type: [],
       },
-      approvalGateConfigured: false,
+      approvalGatePreferenceEnabled: false,
     })
 
     expect(status.hasBudget).toBe(true)
@@ -202,13 +217,16 @@ describe('pico autopilot helpers', () => {
     expect(getUsageEmptyState(status, { label: 'Trigger usage', href: '/pico/academy/create-a-scheduled-workflow' }).title).toMatch(/Budget exists, but usage is empty/i)
   })
 
-  it('flags approval history when the local gate is still off', () => {
+  it('does not infer runtime enforcement from approval history or a local preference', () => {
     const status = analyzeAutopilotIntegration({
       runs: [],
       alerts: [],
       approvals: [
         {
           id: 'approval-4',
+          owner_id: 'owner-1',
+          reviewer_id: 'reviewer-1',
+          can_resolve: false,
           agent_id: 'agent-1',
           action_type: 'outbound_message_send',
           status: 'APPROVED',
@@ -218,37 +236,25 @@ describe('pico autopilot helpers', () => {
       ],
       budget: null,
       usage: null,
-      approvalGateConfigured: false,
+      approvalGatePreferenceEnabled: false,
     })
 
-    expect(getApprovalsEmptyState(status, { label: 'Configure gate', href: '/pico/academy/add-an-approval-gate' }).title).toMatch(/gate is off/i)
+    const emptyState = getApprovalsEmptyState(status, {
+      label: 'Exercise approvals',
+      href: '/pico/academy/add-an-approval-gate',
+    })
+
+    expect(emptyState.title).toMatch(/enforcement is unverified/i)
+    expect(emptyState.body).toMatch(/do not prove/i)
+    expect(emptyState.title).not.toMatch(/gate is (?:on|off|armed)/i)
   })
 
-  it('unlocks the approval gate milestone when the local gate is enabled after a real resolution', () => {
-    const progress = applyMilestone(
-      updateAutopilotSettings(createDefaultPicoProgress(), { approvalGateEnabled: true }),
-      'first_approval_gate_enabled',
+  it('labels lesson progress as an exercised approval workflow, not an enforced gate', () => {
+    const approvalLesson = PICO_LESSONS.find(
+      (lesson) => lesson.slug === 'add-an-approval-gate',
     )
 
-    const status = analyzeAutopilotIntegration({
-      runs: [],
-      alerts: [],
-      approvals: [
-        {
-          id: 'approval-5',
-          agent_id: 'agent-1',
-          action_type: 'outbound_message_send',
-          status: 'APPROVED',
-          requester: 'operator@mutx.dev',
-          created_at: '2026-04-11T01:20:00.000Z',
-        },
-      ],
-      budget: null,
-      usage: null,
-      approvalGateConfigured: progress.autopilot.approvalGateEnabled,
-    })
-
-    expect(progress.milestoneEvents).toContain('first_approval_gate_enabled')
-    expect(getApprovalsEmptyState(status, { label: 'Configure gate', href: '/pico/academy/add-an-approval-gate' }).title).not.toMatch(/gate is off/i)
+    expect(approvalLesson?.milestoneEvents).toEqual(['first_approval_workflow_exercised'])
+    expect(approvalLesson?.milestoneEvents).not.toContain('first_approval_gate_enabled')
   })
 })

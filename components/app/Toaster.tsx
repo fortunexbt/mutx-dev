@@ -1,12 +1,17 @@
 "use client";
 
 import { Toaster as SonnerToaster } from "sonner";
+import { useLocale } from "next-intl";
+
+import { getLocaleDirection } from "@/i18n/locale";
 
 export function Toaster() {
+  const direction = getLocaleDirection(useLocale());
+
   return (
     <SonnerToaster
       theme="dark"
-      position="bottom-right"
+      position={direction === "rtl" ? "bottom-left" : "bottom-right"}
       toastOptions={{
         style: {
           background: "#0f0f14",

@@ -22,12 +22,17 @@ DOCUMENT_TRACE_EVENT_TYPES = (
     "job_created",
     "artifact_registered",
     "artifact_uploaded",
+    "submission_staged",
+    "submission_failed",
+    "submission_retry",
+    "job_dispatched",
     "dispatch_started",
     "rlm_iteration",
     "tool_call",
     "artifact_synced",
     "job_completed",
     "job_failed",
+    "job_cancelled",
 )
 
 
@@ -339,13 +344,14 @@ def _execute_predict_rlm(manifest: dict[str, Any]) -> EngineExecutionResult:
             """Analyze the provided documents and produce a markdown report plus a structured summary."""
 
             documents: list[File] = dspy.InputField()
-            instructions: str | None = dspy.InputField()
+            user_instructions: str | None = dspy.InputField()
             report: File = dspy.OutputField()
             summary: DocumentAnalysisSummary = dspy.OutputField()
 
         rlm = PredictRLM(AnalyzeDocuments, lm=lm, sub_lm=sub_lm, skills=[pdf_skill])
         result = rlm(
-            documents=file_inputs("documents"), instructions=parameters.get("instructions")
+            documents=file_inputs("documents"),
+            user_instructions=parameters.get("instructions"),
         )
         output_files = [
             EngineManagedOutput(
@@ -367,7 +373,7 @@ def _execute_predict_rlm(manifest: dict[str, Any]) -> EngineExecutionResult:
 
             base_document: File = dspy.InputField()
             comparison_document: File = dspy.InputField()
-            instructions: str | None = dspy.InputField()
+            user_instructions: str | None = dspy.InputField()
             report: File = dspy.OutputField()
             summary: ContractComparisonSummary = dspy.OutputField()
 
@@ -375,7 +381,7 @@ def _execute_predict_rlm(manifest: dict[str, Any]) -> EngineExecutionResult:
         result = rlm(
             base_document=single_file("base_document"),
             comparison_document=single_file("comparison_document"),
-            instructions=parameters.get("instructions"),
+            user_instructions=parameters.get("instructions"),
         )
         output_files = [
             EngineManagedOutput(

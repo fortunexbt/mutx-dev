@@ -8,10 +8,12 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 
-from src.api.models.pico_onboarding import OnboardingState
-from src.api.routes import pico as pico_routes
+from src.api.models.pico_onboarding import OnboardingState, PicoChatResponse
+from src.api.services.pico_onboarding_sessions import append_chat_turn, new_onboarding_session
 
-KNOWLEDGE_ROOT = Path(__file__).resolve().parents[2] / "src" / "api" / "knowledge" / "pico-builder-pack"
+KNOWLEDGE_ROOT = (
+    Path(__file__).resolve().parents[2] / "src" / "api" / "knowledge" / "pico-builder-pack"
+)
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -21,7 +23,6 @@ async def starter_plan(db_session, test_user):
     await db_session.commit()
     await db_session.refresh(test_user)
     yield
-    pico_routes._sessions.clear()
 
 
 @pytest.mark.asyncio
@@ -123,22 +124,33 @@ async def test_generate_package_multiple_pain_points(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_generate_package_requires_existing_ready_session(client: AsyncClient):
-    session_id = "ready-session"
-    pico_routes._sessions[session_id] = {
-        "history": [],
-        "state": OnboardingState(
-            stack="hermes",
-            os="macos",
-            provider="openai",
-            goal="install",
-            networking="tailscale",
+async def test_generate_package_requires_existing_ready_session(
+    client: AsyncClient,
+    db_session,
+    test_user,
+):
+    record = new_onboarding_session()
+    persisted = await append_chat_turn(
+        db_session,
+        user=test_user,
+        record=record,
+        user_message="Build a Hermes package for my Mac.",
+        response=PicoChatResponse(
+            reply="Your package inputs are complete.",
+            onboarding_state=OnboardingState(
+                stack="hermes",
+                os="macos",
+                provider="openai",
+                goal="install",
+                networking="tailscale",
+            ),
         ),
-    }
+        request_id="ready-package-request",
+    )
 
     response = await client.post(
         "/v1/pico/generate-package",
-        json={"session_id": session_id},
+        json={"session_id": persisted.session_id},
     )
 
     assert response.status_code == 200
@@ -148,10 +160,16 @@ async def test_generate_package_requires_existing_ready_session(client: AsyncCli
         names = set(zf.namelist())
         assert "README.md" in names
         assert "install.sh" in names
+        assert "upstream.lock.json" in names
+        assert "config.yaml" not in names
         assert "kb/INSTALL_FLOW.md" in names
         assert "kb/UPDATE_NOTES.md" in names
         assert "kb/HERMES.md" in names
         assert "kb/TAILSCALE_PLAYBOOK.md" in names
+        assert "pico-session.json" in names
+
+        session_manifest = zf.read("pico-session.json").decode()
+        assert persisted.session_id in session_manifest
 
         assert zf.read("kb/INSTALL_FLOW.md").decode() == (
             KNOWLEDGE_ROOT / "INSTALL_FLOW.md"
@@ -159,9 +177,7 @@ async def test_generate_package_requires_existing_ready_session(client: AsyncCli
         assert zf.read("kb/UPDATE_NOTES.md").decode() == (
             KNOWLEDGE_ROOT / "UPDATE_NOTES.md"
         ).read_text("utf-8")
-        assert zf.read("kb/HERMES.md").decode() == (
-            KNOWLEDGE_ROOT / "HERMES.md"
-        ).read_text("utf-8")
+        assert zf.read("kb/HERMES.md").decode() == (KNOWLEDGE_ROOT / "HERMES.md").read_text("utf-8")
         assert zf.read("kb/TAILSCALE_PLAYBOOK.md").decode() == (
             KNOWLEDGE_ROOT / "TAILSCALE_PLAYBOOK.md"
         ).read_text("utf-8")
@@ -171,3 +187,6 @@ async def test_generate_package_requires_existing_ready_session(client: AsyncCli
         assert "kb/HERMES.md" in readme
         assert "kb/UPDATE_NOTES.md" in readme
         assert "kb/TAILSCALE_PLAYBOOK.md" in readme
+
+    assert response.headers["x-pico-onboarding-session"] == persisted.session_id
+    assert len(response.headers["x-pico-onboarding-state-sha256"]) == 64

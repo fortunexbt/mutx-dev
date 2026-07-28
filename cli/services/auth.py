@@ -39,7 +39,7 @@ class AuthService(APIService):
         )
 
         if response.status_code == 200:
-            tokens = response.json()
+            tokens = self._decode_json(response, expected_type=dict)
             self._store_tokens(tokens.get("access_token"), tokens.get("refresh_token"))
             return self.status()
 
@@ -70,7 +70,7 @@ class AuthService(APIService):
         )
 
         if response.status_code == 200:
-            tokens = response.json()
+            tokens = self._decode_json(response, expected_type=dict)
             self._store_tokens(tokens.get("access_token"), tokens.get("refresh_token"))
             return self.status()
 
@@ -92,8 +92,8 @@ class AuthService(APIService):
             json={"name": name, "email": email, "password": password},
         )
 
-        if response.status_code in {200, 201}:
-            tokens = response.json()
+        if response.status_code == 201:
+            tokens = self._decode_json(response, expected_type=dict)
             self._store_tokens(tokens.get("access_token"), tokens.get("refresh_token"))
             return self.status()
 
@@ -106,10 +106,17 @@ class AuthService(APIService):
         if not self.config.is_authenticated():
             return False
 
+        response = self._request(
+            "post",
+            "/v1/auth/logout",
+            allow_refresh=False,
+            json={"refresh_token": self.config.refresh_token},
+        )
+        self._expect_status(response, {200})
         self.config.clear_auth()
         return True
 
     def whoami(self) -> UserProfile:
         response = self._request("get", "/v1/auth/me")
         self._expect_status(response, {200})
-        return UserProfile.from_payload(response.json())
+        return UserProfile.from_payload(self._decode_json(response, expected_type=dict))

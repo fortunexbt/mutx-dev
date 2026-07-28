@@ -49,11 +49,17 @@ test.describe('Dashboard Agents List', () => {
     });
 
     // Mock the dashboard agents API with default data
-    await page.route('/api/dashboard/agents', async (route) => {
+    await page.route('**/api/dashboard/agents**', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(mockAgents),
+        body: JSON.stringify({
+          items: mockAgents,
+          total: mockAgents.length,
+          skip: 0,
+          limit: 20,
+          has_more: false,
+        }),
       });
     });
 
@@ -102,6 +108,107 @@ test.describe('Dashboard Agents List', () => {
     await expect(page.getByText(/no matching agents/i)).toBeVisible();
   });
 
+  test('keeps the global command palette shortcut and uses slash for local search', async ({ page }) => {
+    await openAgentsPage(page);
+
+    await page.keyboard.press('Control+K');
+    await expect(page.getByRole('dialog', { name: 'Go anywhere' })).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('/');
+    await expect(page.getByPlaceholder(/search agents/i)).toBeFocused();
+  });
+
+  test('provides keyboard-focusable inspect navigation to agent details', async ({ page }) => {
+    await openAgentsPage(page);
+
+    const inspectLink = page.getByRole('link', { name: 'Inspect test-agent-1' });
+    await expect(inspectLink).toHaveAttribute(
+      'href',
+      `/dashboard/agents/${mockAgents[0].id}`,
+    );
+    await inspectLink.focus();
+    await expect(inspectLink).toBeFocused();
+    await inspectLink.press('Enter');
+    await expect(page).toHaveURL(`/dashboard/agents/${mockAgents[0].id}`);
+  });
+
+  test('associates create-agent labels and submission errors with the form', async ({ page }) => {
+    await page.route('**/api/dashboard/agents**', async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: 'Agent registry unavailable' }),
+        });
+        return;
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: mockAgents,
+          total: mockAgents.length,
+          skip: 0,
+          limit: 20,
+          has_more: false,
+        }),
+      });
+    });
+
+    await openAgentsPage(page);
+    await page.getByRole('button', { name: 'Create Agent' }).click();
+
+    await expect(page.getByLabel('Name *')).toBeVisible();
+    await expect(page.getByLabel('Description')).toBeVisible();
+    await expect(page.getByLabel('Type')).toBeVisible();
+    await page.getByLabel('Name *').fill('unavailable-agent');
+    await page.getByRole('button', { name: 'Create Agent' }).last().click();
+
+    await expect(page.getByRole('alert')).toHaveText('Agent registry unavailable');
+    await expect(page.locator('#create-agent-form')).toHaveAttribute(
+      'aria-describedby',
+      'create-agent-form-error',
+    );
+  });
+
+  test('loads subsequent pages from the authoritative pagination envelope', async ({ page }) => {
+    const firstPage = mockAgents.slice(0, 2);
+    const secondPage = mockAgents.slice(2);
+    const requestedSkips: string[] = [];
+
+    await page.route('**/api/dashboard/agents**', async (route) => {
+      const url = new URL(route.request().url());
+      const skip = url.searchParams.get('skip') ?? '0';
+      requestedSkips.push(skip);
+      const items = skip === '0' ? firstPage : secondPage;
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items,
+          total: mockAgents.length,
+          skip: Number(skip),
+          limit: 2,
+          has_more: skip === '0',
+        }),
+      });
+    });
+
+    await openAgentsPage(page);
+
+    await expect(page.getByRole('heading', { name: 'test-agent-3' })).toHaveCount(0);
+    const loadMore = page.getByRole('button', { name: 'Load more (2 of 3)' });
+    await expect(loadMore).toBeVisible();
+    await loadMore.click();
+
+    await expect(page.getByRole('heading', { name: 'test-agent-3' })).toBeVisible();
+    expect(requestedSkips).toEqual(['0', '2']);
+    await expect(page.getByRole('button', { name: /load more/i })).toHaveCount(0);
+  });
+
   test('refresh button works', async ({ page }) => {
     await openAgentsPage(page);
 
@@ -110,12 +217,18 @@ test.describe('Dashboard Agents List', () => {
 
     // Track API calls
     let apiCallCount = 0;
-    await page.route('/api/dashboard/agents', async (route) => {
+    await page.route('**/api/dashboard/agents**', async (route) => {
       apiCallCount++;
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(mockAgents),
+        body: JSON.stringify({
+          items: mockAgents,
+          total: mockAgents.length,
+          skip: 0,
+          limit: 20,
+          has_more: false,
+        }),
       });
     });
 
@@ -142,11 +255,11 @@ test.describe('Dashboard Agents List', () => {
 
   test('displays empty state when no agents', async ({ page }) => {
     // Mock the API to return empty array - must come BEFORE goto
-    await page.route('/api/dashboard/agents', async (route) => {
+    await page.route('**/api/dashboard/agents**', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([]),
+        body: JSON.stringify({ items: [], total: 0, skip: 0, limit: 20, has_more: false }),
       });
     });
 

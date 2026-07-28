@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from mutx._http import normalize_api_base_url
 from mutx.telemetry import get_tracer
 
 if TYPE_CHECKING:
@@ -58,10 +59,11 @@ class MutxCrewAICallbackHandler:
             crew_name: Name of the crew for span attribution.
         """
         self.api_url = api_url.rstrip("/")
+        self.api_base_url = normalize_api_base_url(api_url)
         self.api_key = api_key
         self.crew_name = crew_name
         self._http = httpx.Client(
-            base_url=self.api_url,
+            base_url=self.api_base_url,
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=30.0,
         )
@@ -116,7 +118,7 @@ class MutxCrewAICallbackHandler:
         }
 
         try:
-            self._http.post("/v1/events", json=event)
+            self._http.post("events", json=event)
         except httpx.HTTPError:
             pass  # Fail silently to not interrupt crew execution
 
@@ -136,7 +138,7 @@ class MutxCrewAICallbackHandler:
         }
 
         try:
-            self._http.post("/v1/events", json=event)
+            self._http.post("events", json=event)
         except httpx.HTTPError:
             pass  # Fail silently
 
@@ -156,7 +158,7 @@ class MutxCrewAICallbackHandler:
         }
 
         try:
-            self._http.post("/v1/events", json=event)
+            self._http.post("events", json=event)
         except httpx.HTTPError:
             pass  # Fail silently
 
@@ -176,7 +178,7 @@ class MutxCrewAICallbackHandler:
         }
 
         try:
-            self._http.post("/v1/events", json=event)
+            self._http.post("events", json=event)
         except httpx.HTTPError:
             pass  # Fail silently
 

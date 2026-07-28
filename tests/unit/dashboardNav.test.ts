@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+
 import {
   ALL_DASHBOARD_NAV_ITEMS,
   DASHBOARD_NAV_GROUPS,
@@ -6,7 +9,10 @@ import {
   getDashboardNavPanel,
   isDashboardNavItemActive,
 } from '../../components/dashboard/dashboardNav'
-import { PRIMARY_DESKTOP_ROUTE_ORDER } from '../../components/desktop/desktopRouteConfig'
+import {
+  DASHBOARD_ROUTE_PATHS,
+  PRIMARY_DESKTOP_ROUTE_ORDER,
+} from '../../components/desktop/desktopRouteConfig'
 
 describe('dashboard navigation helpers', () => {
   const homeItem = DASHBOARD_NAV_ITEMS.find((item) => item.key === 'home')!
@@ -25,8 +31,27 @@ describe('dashboard navigation helpers', () => {
     expect(getDashboardNavHref('/app/runtime', sessionsItem)).toBe('/dashboard/sessions')
   })
 
-  it('uses public hrefs outside the dashboard shells', () => {
-    expect(getDashboardNavHref('/pricing', agentsItem)).toBe('/agents')
+  it('uses safe dashboard hrefs outside the dashboard shells', () => {
+    expect(getDashboardNavHref('/pricing', agentsItem)).toBe('/dashboard/agents')
+  })
+
+  it('limits browser navigation to the explicit real dashboard route contract', () => {
+    const dashboardRoutePaths = Object.values(DASHBOARD_ROUTE_PATHS)
+
+    for (const item of ALL_DASHBOARD_NAV_ITEMS) {
+      expect(item.href).toBe(DASHBOARD_ROUTE_PATHS[item.key])
+      expect(item.publicHref).toBe(item.href)
+      expect(dashboardRoutePaths).toContain(item.publicHref)
+      expect(item.publicHref).toMatch(/^\/dashboard(?:\/|$)/)
+      expect(existsSync(join(process.cwd(), 'app', item.href.slice(1), 'page.tsx'))).toBe(true)
+    }
+  })
+
+  it('leaves unavailable browser routes unlinked without disabling internal navigation', () => {
+    const unavailableAgentsItem = { ...agentsItem, publicHref: null }
+
+    expect(getDashboardNavHref('/pricing', unavailableAgentsItem)).toBeNull()
+    expect(getDashboardNavHref('/dashboard', unavailableAgentsItem)).toBe('/dashboard/agents')
   })
 
   it('maps route metadata keys onto canonical SPA panel identifiers', () => {
@@ -46,8 +71,32 @@ describe('dashboard navigation helpers', () => {
 
   it('treats nested route paths as active and ignores trailing slashes', () => {
     expect(isDashboardNavItemActive('/dashboard/agents/', agentsItem)).toBe(true)
-    expect(isDashboardNavItemActive('/agents/launch', agentsItem)).toBe(true)
+    expect(isDashboardNavItemActive('/dashboard/agents/launch', agentsItem)).toBe(true)
+    expect(isDashboardNavItemActive('/agents/launch', agentsItem)).toBe(false)
     expect(isDashboardNavItemActive('/dashboard/api-keys', agentsItem)).toBe(false)
+  })
+
+  it('uses canonical operator nouns for browser and desktop navigation', () => {
+    const titles = Object.fromEntries(
+      ALL_DASHBOARD_NAV_ITEMS.map((item) => [item.key, item.title]),
+    )
+
+    expect(titles).toMatchObject({
+      home: 'Overview',
+      agents: 'Agents',
+      deployments: 'Deployments',
+      runs: 'Runs',
+      sessions: 'Sessions',
+      observability: 'Observability',
+      approvals: 'Approvals',
+      audit: 'Audit',
+      apiKeys: 'API Keys',
+      budgets: 'Usage',
+      webhooks: 'Connectors',
+      security: 'Access',
+      control: 'Settings',
+      analytics: 'Analytics',
+    })
   })
 
   it('groups every primary nav item exactly once', () => {

@@ -7,6 +7,7 @@ export type PicoContactPayloadInput = {
   locale: string
   source: string
   honeypot: string
+  productUpdatesConsent: boolean
 }
 
 export function buildPicoContactPayload(input: PicoContactPayloadInput) {
@@ -16,8 +17,10 @@ export function buildPicoContactPayload(input: PicoContactPayloadInput) {
     company: input.company,
     message: input.message,
     tier: input.interest,
+    interest: input.interest,
     locale: input.locale,
     source: input.source,
     honeypot: input.honeypot,
+    productUpdatesConsent: input.productUpdatesConsent,
   }
 }

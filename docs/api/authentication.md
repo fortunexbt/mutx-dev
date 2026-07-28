@@ -1,14 +1,17 @@
 # Authentication
 
-MUTX uses JWT-based user auth for interactive sessions.
-
-Successful `register`, `login`, `local-bootstrap`, and `refresh` calls all return a token pair.
+MUTX uses JWT-based user auth for interactive sessions. `login`,
+`local-bootstrap`, and `refresh` return a token pair. Registration is always an
+account-creation request rather than a login: it returns a uniform accepted
+shape with null token fields and queues verification delivery for an unverified
+account. When verification is disabled, the user can log in immediately, but
+registration still does not issue tokens.
 
 ## Endpoints
 
 | Route | Purpose |
 | --- | --- |
-| `POST /v1/auth/register` | Create a user and return access + refresh tokens |
+| `POST /v1/auth/register` | Create or safely acknowledge an unverified account and queue verification delivery |
 | `POST /v1/auth/login` | Exchange email and password for a token pair |
 | `POST /v1/auth/local-bootstrap` | Localhost-only bootstrap for non-production local setups |
 | `POST /v1/auth/refresh` | Exchange a refresh token for a fresh token pair |
@@ -51,12 +54,22 @@ Example response:
 
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
+  "access_token": null,
+  "refresh_token": null,
   "token_type": "bearer",
-  "expires_in": 1800
+  "expires_in": null,
+  "verification_email_sent": true,
+  "requires_email_verification": true,
+  "return_path": "/dashboard"
 }
 ```
+
+The response is deliberately uniform to reduce account enumeration. Delivery is
+performed in a background task, so `verification_email_sent` means the task was
+queued rather than proving provider acceptance. If mail delivery is unavailable,
+configure Resend or SMTP and use `POST /v1/auth/resend-verification`. When
+verification is explicitly disabled, `requires_email_verification` is `false`,
+but the token fields remain null; use `POST /v1/auth/login` to authenticate.
 
 ## Login
 
@@ -69,7 +82,8 @@ curl -X POST "$BASE_URL/v1/auth/login" \
   }'
 ```
 
-`login` returns the same token payload shape as `register`.
+`login` returns the standard non-null token-pair payload. With verification enabled,
+password login remains blocked until `POST /v1/auth/verify-email` succeeds.
 
 ## Local Bootstrap
 
@@ -128,6 +142,7 @@ Example response:
   "email": "operator@example.com",
   "name": "Operator",
   "plan": "free",
+  "roles": ["VIEWER"],
   "created_at": "2026-03-22T12:00:00Z",
   "is_active": true,
   "is_email_verified": false
@@ -164,16 +179,20 @@ MUTX supports social login via external OAuth providers (e.g. GitHub, Google).
 ### Authorize
 
 ```bash
-curl "$BASE_URL/v1/auth/oauth/github/authorize?redirect_uri=https://localhost:3000/api/auth/oauth/github/callback&state=RANDOM_STATE"
+curl "$BASE_URL/v1/auth/oauth/github/authorize?redirect_uri=http://localhost:3000/api/auth/oauth/github/callback"
 ```
 
 Returns an `authorization_url` to redirect the user to:
 
 ```json
 {
-  "authorization_url": "https://github.com/login/oauth/authorize?..."
+  "authorization_url": "https://github.com/login/oauth/authorize?...",
+  "state": "SERVER_ISSUED_STATE"
 }
 ```
+
+The server creates and stores the state value. Return that exact value in the
+exchange request.
 
 ### Exchange
 
@@ -182,11 +201,12 @@ curl -X POST "$BASE_URL/v1/auth/oauth/github/exchange" \
   -H "Content-Type: application/json" \
   -d '{
     "code": "OAUTH_CODE",
-    "redirect_uri": "https://localhost:3000/api/auth/oauth/github/callback"
+    "redirect_uri": "http://localhost:3000/api/auth/oauth/github/callback",
+    "state": "SERVER_ISSUED_STATE"
   }'
 ```
 
-Returns the same token payload shape as `register` (`access_token`, `refresh_token`, `token_type`, `expires_in`).
+Returns the standard token-pair payload (`access_token`, `refresh_token`, `token_type`, `expires_in`).
 
 If the OAuth user does not yet exist in MUTX, it is created automatically.
 
@@ -212,17 +232,22 @@ On success, the callback returns a MUTX access token:
 {
   "access_token": "eyJhbG...",
   "token_type": "bearer",
-  "expires_in": 86400
+  "expires_in": 1800
 }
 ```
 
+`expires_in` is calculated from the server's configured access-token lifetime;
+the value above reflects the default 30-minute setting.
+
 ## OIDC Token Validation
 
-MUTX v1.4.0 adds OpenID Connect (OIDC) token validation for SSO integrations. When configured, bearer tokens issued by an external OIDC provider (Okta, Auth0, Keycloak, Google) are validated and mapped to the internal `SSOTokenUser` model.
+The mounted SSO callback validates a provider identity, binds it to a local user,
+and issues a MUTX dashboard JWT. Protected control-plane routes consume that
+internal JWT; they do not directly accept an arbitrary provider bearer token.
 
 ### Configuration
 
-Set the following environment variables to enable OIDC validation:
+The generic validation utility in `src/api/auth/oidc.py` is configured with:
 
 | Variable | Description | Example |
 | --- | --- | --- |
@@ -230,9 +255,12 @@ Set the following environment variables to enable OIDC validation:
 | `OIDC_CLIENT_ID` | Expected `aud` claim for your MUTX client | `0oa1abc2def3ghi4jkl5` |
 | `OIDC_JWKS_URI` | JWKS endpoint for public key retrieval | `https://your-org.okta.com/oauth2/v1/keys` |
 
-Set all three values together. They map to `src/api/auth/oidc.py`, the canonical
-OIDC validator. Provider-specific SSO callbacks also retain well-known OIDC
-config and JWKS URL templates:
+Set all three values together when calling the generic
+`validate_oidc_token(...)` utility. No mounted route currently invokes that
+generic validator automatically. The mounted SSO routes instead use
+provider-specific domain/client credentials (`OKTA_*`, `AUTH0_*`,
+`KEYCLOAK_*`, or `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`) and the following
+well-known/JWKS templates:
 
 ```python
 PROVIDER_OIDC_CONFIG = {
@@ -245,7 +273,7 @@ PROVIDER_OIDC_CONFIG = {
 
 ### Validation Flow
 
-1. **JWKS fetch** -- The server fetches the provider's JWKS from the configured URI and caches the document for one hour per URI.
+1. **JWKS fetch** -- The validator fetches the provider's JWKS and caches the document for one hour per URI.
 2. **Signature check** -- The token's RS256/ES256 signature is verified against the matching JWKS key (by `kid`).
 3. **Claims validation** -- The `iss` (issuer), `aud` (audience), and `exp` (expiry) claims are validated.
 
@@ -253,19 +281,21 @@ The configured OIDC path fails closed when signature or claim validation fails.
 The legacy provider-specific callback can still use `/userinfo` for opaque
 access tokens when the canonical `OIDC_*` settings are not enabled.
 
-### OIDC-to-SSOTokenUser Mapping
+### OIDC-to-dashboard principal mapping
 
-After verification, the OIDC token claims are mapped to an `SSOTokenUser` instance:
+After verification, the callback resolves the provider and `sub` pair through
+`external_auth_identities`, creates a local user when needed, and returns the
+same UUID-backed access token used by password and social OAuth login. Provider
+role claims are normalized for legacy compatibility but are not authorization
+input. Audit authorization always reloads `users.roles` from the database.
 
-| OIDC Claim | SSOTokenUser Field | Notes |
-| --- | --- | --- |
-| `sub` | `id` | Unique subject identifier |
-| `email` | `email` | Falls back to `preferred_username` |
-| `roles` / `groups` | `roles` | Extracted from multiple claim locations (see below) |
-| - | `is_active` | Always `True` for valid tokens |
-| - | `is_email_verified` | Always `True` for valid OIDC tokens |
+New users, including SSO and localhost-bootstrap users, receive only `VIEWER`.
+MUTX has no automatic admin promotion or self-service role assignment; a
+privileged role must be assigned explicitly through a controlled database
+administration process. A database role update or revocation applies on the
+next request, without waiting for the access token to expire.
 
-Role extraction checks multiple claim locations in order:
+The compatibility OIDC normalizer can extract claims from these locations:
 
 - `roles`
 - `groups`
@@ -273,9 +303,9 @@ Role extraction checks multiple claim locations in order:
 - `realm_access.roles` (Keycloak)
 - `resource_access.roles` (Keycloak)
 
-See `src/api/auth/oidc.py` for validation and claim normalization and
-`src/api/auth/dependencies.py` for the canonical route dependency facade and
-`SSOTokenUser` mapping.
+See `src/api/auth/oidc.py` for validation and claim normalization,
+`src/api/services/auth.py` for external identity resolution, and
+`src/api/auth/dependencies.py` for the database-backed role dependency.
 
 ## Token Lifetimes
 

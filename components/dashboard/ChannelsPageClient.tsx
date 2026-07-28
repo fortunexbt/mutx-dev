@@ -3,11 +3,16 @@
 import { useEffect, useState } from "react";
 import { Globe2, MessagesSquare, Radio } from "lucide-react";
 
-import { ApiRequestError, readJson } from "@/components/app/http";
+import { readJson } from "@/components/app/http";
+import {
+  dashboardRequestErrorMessage,
+  getDashboardRequestAccessFailure,
+} from "@/components/dashboard/dashboardRequestAccess";
 import {
   LiveAuthRequired,
   LiveEmptyState,
   LiveErrorState,
+  LiveForbidden,
   LiveKpiGrid,
   LiveLoading,
   LiveMiniStat,
@@ -21,6 +26,11 @@ import { StatusBadge } from "@/components/dashboard/StatusBadge";
 type ChannelPayload = {
   generatedAt: string;
   hasAssistant: boolean;
+  sourceStatus: {
+    overview: ChannelSourceStatus;
+    channels: ChannelSourceStatus;
+    sessions: ChannelSourceStatus;
+  };
   assistant: {
     agentId: string | null;
     name: string;
@@ -37,11 +47,11 @@ type ChannelPayload = {
     }>;
   } | null;
   summary: {
-    configuredChannels: number;
-    enabledChannels: number;
-    liveChannels: number;
-    activeSessions: number;
-    sources: number;
+    configuredChannels: number | null;
+    enabledChannels: number | null;
+    liveChannels: number | null;
+    activeSessions: number | null;
+    sources: number | null;
   };
   channels: Array<{
     id: string;
@@ -58,13 +68,12 @@ type ChannelPayload = {
   partials: string[];
 };
 
-function isAuthError(error: unknown) {
-  return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
-}
+type ChannelSourceStatus = "ok" | "partial" | "auth_error" | "error";
 
 export function ChannelsPageClient() {
   const [loading, setLoading] = useState(true);
   const [authRequired, setAuthRequired] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<ChannelPayload | null>(null);
 
@@ -74,6 +83,7 @@ export function ChannelsPageClient() {
     async function load() {
       setLoading(true);
       setAuthRequired(false);
+      setPermissionDenied(false);
       setError(null);
 
       try {
@@ -84,10 +94,13 @@ export function ChannelsPageClient() {
         }
       } catch (loadError) {
         if (!cancelled) {
-          if (isAuthError(loadError)) {
+          const accessFailure = getDashboardRequestAccessFailure(loadError);
+          if (accessFailure === "authentication") {
             setAuthRequired(true);
+          } else if (accessFailure === "permission") {
+            setPermissionDenied(true);
           } else {
-            setError(loadError instanceof Error ? loadError.message : "Failed to load channels");
+            setError(dashboardRequestErrorMessage(loadError, "Failed to load channels"));
           }
           setLoading(false);
         }
@@ -109,6 +122,9 @@ export function ChannelsPageClient() {
       />
     );
   }
+  if (permissionDenied) {
+    return <LiveForbidden title="Channel permission required" message="Your account cannot read assistant channel bindings or gateway posture." />;
+  }
   if (error) return <LiveErrorState title="Channel surface unavailable" message={error} />;
   if (!payload) {
     return (
@@ -122,8 +138,16 @@ export function ChannelsPageClient() {
   if (!payload.hasAssistant || !payload.assistant) {
     return (
       <LiveEmptyState
-        title="No assistant channels yet"
-        message="This route becomes useful once an owned assistant runtime exists and exposes channel state through the control plane."
+        title={
+          payload.sourceStatus.overview === "ok"
+            ? "No assistant channels yet"
+            : "Assistant channel coverage is incomplete"
+        }
+        message={
+          payload.sourceStatus.overview === "ok"
+            ? "This route becomes useful once an owned assistant runtime exists and exposes channel state through the control plane."
+            : "The assistant overview is unavailable or malformed, so the dashboard cannot verify that this workspace has no channel bindings."
+        }
       />
     );
   }
@@ -133,15 +157,43 @@ export function ChannelsPageClient() {
       <LiveKpiGrid>
         <LiveStatCard
           label="Configured"
-          value={String(payload.summary.configuredChannels)}
-          detail={`${payload.summary.enabledChannels} channels currently enabled for ${payload.assistant.name}.`}
-          status={payload.summary.enabledChannels > 0 ? "success" : "idle"}
+          value={
+            payload.summary.configuredChannels === null
+              ? "Unknown"
+              : String(payload.summary.configuredChannels)
+          }
+          detail={
+            payload.summary.enabledChannels === null
+              ? `Channel inventory coverage is incomplete for ${payload.assistant.name}.`
+              : `${payload.summary.enabledChannels} channels currently enabled for ${payload.assistant.name}.`
+          }
+          status={
+            payload.summary.enabledChannels === null
+              ? "warning"
+              : payload.summary.enabledChannels > 0
+                ? "success"
+                : "idle"
+          }
         />
         <LiveStatCard
           label="Live channels"
-          value={String(payload.summary.liveChannels)}
-          detail={`${payload.summary.activeSessions} active sessions are currently mapped back to channels.`}
-          status={payload.summary.liveChannels > 0 ? "running" : "idle"}
+          value={
+            payload.summary.liveChannels === null
+              ? "Unknown"
+              : String(payload.summary.liveChannels)
+          }
+          detail={
+            payload.summary.activeSessions === null
+              ? "Session coverage is incomplete; live channel totals are not verified."
+              : `${payload.summary.activeSessions} active sessions are currently mapped back to channels.`
+          }
+          status={
+            payload.summary.liveChannels === null
+              ? "warning"
+              : payload.summary.liveChannels > 0
+                ? "running"
+                : "idle"
+          }
         />
         <LiveStatCard
           label="Gateway"
@@ -157,9 +209,15 @@ export function ChannelsPageClient() {
         />
         <LiveStatCard
           label="Sources"
-          value={String(payload.summary.sources)}
+          value={payload.summary.sources === null ? "Unknown" : String(payload.summary.sources)}
           detail="Distinct session sources currently represented in the channel feed."
-          status={payload.summary.sources > 0 ? "success" : "idle"}
+          status={
+            payload.summary.sources === null
+              ? "warning"
+              : payload.summary.sources > 0
+                ? "success"
+                : "idle"
+          }
         />
       </LiveKpiGrid>
 
@@ -167,8 +225,16 @@ export function ChannelsPageClient() {
         <LivePanel title="Channel registry" meta={`${payload.channels.length} channels`}>
           {payload.channels.length === 0 ? (
             <LiveEmptyState
-              title="No channels configured"
-              message="Assistant channel entries will show up here once the runtime publishes them."
+              title={
+                payload.sourceStatus.channels === "ok"
+                  ? "No channels configured"
+                  : "Channel registry coverage is incomplete"
+              }
+              message={
+                payload.sourceStatus.channels === "ok"
+                  ? "Assistant channel entries will show up here once the runtime publishes them."
+                  : "The channel feed is unavailable or malformed, so this empty registry is not a verified zero."
+              }
             />
           ) : (
             <div className="space-y-3">

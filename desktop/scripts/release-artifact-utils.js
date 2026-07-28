@@ -14,10 +14,12 @@ const archDefinitions = {
   arm64: {
     arch: "arm64",
     appDir: "mac-arm64",
+    executableArch: "arm64",
   },
   x64: {
     arch: "x64",
     appDir: "mac",
+    executableArch: "x86_64",
   },
 };
 
@@ -37,6 +39,7 @@ function getArchArtifacts(arch) {
 
   return {
     arch,
+    executableArch: definition.executableArch,
     appPath: path.join(distDir, definition.appDir, `${productName}.app`),
     zipPath: path.join(distDir, buildArtifactName(arch, "zip")),
     zipBlockmapPath: path.join(distDir, `${buildArtifactName(arch, "zip")}.blockmap`),
@@ -73,6 +76,52 @@ function assertCodesignVerify(appPath, label) {
   const result = run("codesign", ["--verify", "--deep", "--strict", "--verbose=4", appPath]);
   if (result.status !== 0) {
     throw new Error(`${label} failed recursive signature verification:\n${getOutput(result)}`);
+  }
+}
+
+function assertSignatureTeam(appPath, label, expectedTeamId) {
+  if (!expectedTeamId) {
+    return;
+  }
+
+  const result = run("codesign", ["-dv", "--verbose=4", appPath]);
+  if (result.status !== 0) {
+    throw new Error(`${label} signature identity could not be read:\n${getOutput(result)}`);
+  }
+
+  const teamIdentifier = getOutput(result)
+    .split(/\r?\n/)
+    .find((line) => line.startsWith("TeamIdentifier="))
+    ?.slice("TeamIdentifier=".length);
+  if (teamIdentifier !== expectedTeamId) {
+    throw new Error(`${label} TeamIdentifier does not match the required Apple Team ID.`);
+  }
+}
+
+function parseExecutableArchitectures(output) {
+  return output
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function assertExecutableArchitecture(appPath, label, expectedArch) {
+  if (!expectedArch) {
+    return;
+  }
+
+  const executablePath = path.join(appPath, "Contents", "MacOS", productName);
+  ensureExists(executablePath, `${label} executable`);
+  const result = run("lipo", ["-archs", executablePath]);
+  if (result.status !== 0) {
+    throw new Error(`${label} executable architecture could not be read:\n${getOutput(result)}`);
+  }
+
+  const architectures = parseExecutableArchitectures(result.stdout || "");
+  if (architectures.length !== 1 || architectures[0] !== expectedArch) {
+    throw new Error(
+      `${label} executable architecture is ${architectures.join(", ") || "unknown"}; expected exactly ${expectedArch}.`,
+    );
   }
 }
 
@@ -140,11 +189,18 @@ function verifyApplicationsSymlink(mountPoint) {
   }
 }
 
-function verifyAppArtifact(appPath, label = `App ${path.basename(appPath)}`) {
+function verifyAppArtifact(
+  appPath,
+  label = `App ${path.basename(appPath)}`,
+  expectedTeamId,
+  expectedArch,
+) {
   assertCodesignVerify(appPath, label);
+  assertSignatureTeam(appPath, label, expectedTeamId);
+  assertExecutableArchitecture(appPath, label, expectedArch);
 }
 
-function verifyZipArtifact(zipPath, appName = productName) {
+function verifyZipArtifact(zipPath, appName = productName, expectedTeamId, expectedArch) {
   ensureExists(zipPath, `ZIP ${path.basename(zipPath)}`);
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "mutx-zip-verify-"));
@@ -156,29 +212,63 @@ function verifyZipArtifact(zipPath, appName = productName) {
     }
 
     const appPath = path.join(tempDir, `${appName}.app`);
-    assertCodesignVerify(appPath, `Extracted ZIP app ${path.basename(zipPath)}`);
+    verifyAppArtifact(
+      appPath,
+      `Extracted ZIP app ${path.basename(zipPath)}`,
+      expectedTeamId,
+      expectedArch,
+    );
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 }
 
-function verifyDmgArtifact(dmgPath, appName = productName) {
+function verifyDmgArtifact(dmgPath, appName = productName, expectedTeamId, expectedArch) {
   withMountedDmg(dmgPath, (mountPoint) => {
     verifyApplicationsSymlink(mountPoint);
     const appPath = path.join(mountPoint, `${appName}.app`);
-    assertCodesignVerify(appPath, `Mounted DMG app ${path.basename(dmgPath)}`);
+    verifyAppArtifact(
+      appPath,
+      `Mounted DMG app ${path.basename(dmgPath)}`,
+      expectedTeamId,
+      expectedArch,
+    );
   });
 }
 
-function verifyCurrentReleaseArtifacts({ archs = Object.keys(archDefinitions), includeDmgs = true } = {}) {
+function verifyCurrentReleaseArtifacts({
+  archs = Object.keys(archDefinitions),
+  expectedTeamId = process.env.MUTX_EXPECTED_TEAM_ID,
+  includeDmgs = true,
+} = {}) {
+  if (process.env.MUTX_REQUIRE_SIGNATURE_IDENTITY === "1" && !expectedTeamId) {
+    throw new Error(
+      "MUTX_EXPECTED_TEAM_ID is required for release signature identity verification.",
+    );
+  }
   const artifacts = getReleaseArtifacts(archs);
 
   artifacts.forEach((artifact) => {
-    verifyAppArtifact(artifact.appPath, `${artifact.arch} app`);
-    verifyZipArtifact(artifact.zipPath);
+    verifyAppArtifact(
+      artifact.appPath,
+      `${artifact.arch} app`,
+      expectedTeamId,
+      artifact.executableArch,
+    );
+    verifyZipArtifact(
+      artifact.zipPath,
+      undefined,
+      expectedTeamId,
+      artifact.executableArch,
+    );
 
     if (includeDmgs) {
-      verifyDmgArtifact(artifact.dmgPath);
+      verifyDmgArtifact(
+        artifact.dmgPath,
+        undefined,
+        expectedTeamId,
+        artifact.executableArch,
+      );
     }
   });
 }
@@ -193,7 +283,9 @@ module.exports = {
   getOutput,
   getReleaseArtifacts,
   productName,
+  parseExecutableArchitectures,
   run,
+  assertExecutableArchitecture,
   verifyAppArtifact,
   verifyCurrentReleaseArtifacts,
   verifyDmgArtifact,
