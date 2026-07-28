@@ -28,7 +28,9 @@ logger = logging.getLogger(__name__)
 
 
 def _default_faramesh_socket_path() -> str:
-    configured_path = os.environ.get("FAREMESH_SOCKET_PATH")
+    configured_path = os.environ.get("FAREMESH_SOCKET") or os.environ.get(
+        "FAREMESH_SOCKET_PATH"
+    )
     if configured_path:
         return configured_path
 

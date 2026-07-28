@@ -16,7 +16,7 @@ Faramesh integration provides:
 Faramesh Core current main and FPL current main are Apache-2.0. The pinned
 Faramesh Core v0.2.0 release and historical v1.2.9 tag are MPL-2.0; honor the
 license at the exact installed ref.
-https://github.com/faramesh/faramesh-core/blob/e230a9ac2d12d80ed6f632db42b6e1983ccbce82/LICENSE
+https://github.com/faramesh/faramesh-core/blob/01476cfb8bcbce83c199df3497af746a46318f8f/LICENSE
 https://github.com/faramesh/faramesh-core/blob/v0.2.0/LICENSE
 https://github.com/faramesh/faramesh-core/blob/v1.2.9/LICENSE
 """
@@ -27,6 +27,7 @@ import os
 from pathlib import Path
 import socket
 import time
+import uuid
 from dataclasses import dataclass, field
 
 from enum import Enum
@@ -44,7 +45,9 @@ FAREMESH_INSTALL_URL = (
 
 
 def _default_faramesh_socket_path() -> str:
-    configured_path = os.environ.get("FAREMESH_SOCKET_PATH")
+    configured_path = os.environ.get("FAREMESH_SOCKET") or os.environ.get(
+        "FAREMESH_SOCKET_PATH"
+    )
     if configured_path:
         return configured_path
 
@@ -111,6 +114,7 @@ class FarameshHealth:
 
 def _send_socket_request(socket_path: str, request: dict, timeout: float = 5.0) -> list[dict]:
     """Send a request to the Faramesh Unix socket."""
+    sock: socket.socket | None = None
     try:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.settimeout(timeout)
@@ -125,8 +129,6 @@ def _send_socket_request(socket_path: str, request: dict, timeout: float = 5.0) 
             if not chunk:
                 break
             response_data += chunk
-
-        sock.close()
 
         if not response_data:
             return []
@@ -143,6 +145,9 @@ def _send_socket_request(socket_path: str, request: dict, timeout: float = 5.0) 
     except (socket.error, socket.timeout, ConnectionRefusedError) as e:
         logger.debug(f"Faramesh socket error: {e}")
         return []
+    finally:
+        if sock is not None:
+            sock.close()
 
 
 class FarameshGateway:
@@ -188,19 +193,27 @@ class FarameshGateway:
 
     def _check_socket(self) -> bool:
         """Check if socket file exists."""
+        sock: socket.socket | None = None
         try:
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             sock.settimeout(0.5)
             sock.connect(self._socket_path)
-            sock.close()
             return True
         except (socket.error, ConnectionRefusedError):
             return False
+        finally:
+            if sock is not None:
+                sock.close()
 
     def _check_daemon(self) -> bool:
         """Check if daemon is responding."""
-        responses = _send_socket_request(self._socket_path, {"type": "ping"}, timeout=1.0)
-        return len(responses) > 0
+        responses = _send_socket_request(self._socket_path, {"type": "status"}, timeout=1.0)
+        return any(
+            isinstance(response, dict)
+            and not response.get("error")
+            and response.get("running") is True
+            for response in responses
+        )
 
     def get_health(self) -> FarameshHealth:
         """Get Faramesh daemon health status."""
@@ -216,14 +229,13 @@ class FarameshGateway:
             )
 
             for resp in responses:
-                if isinstance(resp, dict):
-                    health.daemon_reachable = True
-                    health.version = resp.get("version")
-                    health.policy_name = resp.get("policy_name")
-                    health.decisions_total = resp.get("decisions_total", 0)
-                    health.denied_today = resp.get("denied_today", 0)
-                    health.deferred_today = resp.get("deferred_today", 0)
-                    health.pending_approvals = resp.get("pending_approvals", 0)
+                if not isinstance(resp, dict) or resp.get("error"):
+                    continue
+                health.daemon_reachable = resp.get("running") is True
+                health.policy_name = resp.get("policy_version")
+
+            if health.daemon_reachable:
+                health.pending_approvals = len(self.get_pending_approvals())
 
         return health
 
@@ -258,11 +270,12 @@ class FarameshGateway:
         )
 
         request = {
-            "type": "evaluate",
+            "type": "govern",
+            "call_id": str(uuid.uuid4()),
             "tool_id": action.tool_id,
             "agent_id": action.agent_id,
             "session_id": action.session_id,
-            "tool_args": action.tool_args,
+            "args": action.tool_args,
         }
 
         start_time = time.time()
@@ -276,8 +289,15 @@ class FarameshGateway:
                     tool_id=resp.get("tool_id", tool_id),
                     agent_id=resp.get("agent_id", agent_id),
                     rule_id=resp.get("rule_id"),
-                    reason=resp.get("reason", ""),
-                    latency_ms=latency_ms,
+                    reason=(
+                        resp.get("reason")
+                        or (
+                            resp.get("structured_denial", {}).get("reason", "")
+                            if isinstance(resp.get("structured_denial"), dict)
+                            else ""
+                        )
+                    ),
+                    latency_ms=resp.get("latency_ms", latency_ms),
                     defer_token=resp.get("defer_token"),
                     timestamp=resp.get("timestamp"),
                 )
@@ -295,15 +315,17 @@ class FarameshGateway:
             True if approved successfully
         """
         request = {
-            "type": "approve",
+            "type": "approve_defer",
             "defer_token": defer_token,
+            "approved": True,
+            "reason": "approved via MUTX",
         }
 
         responses = _send_socket_request(self._socket_path, request, timeout=5.0)
 
         for resp in responses:
             if isinstance(resp, dict):
-                return resp.get("approved", False)
+                return resp.get("ok") is True
 
         return False
 
@@ -319,8 +341,9 @@ class FarameshGateway:
             True if denied successfully
         """
         request = {
-            "type": "deny",
+            "type": "approve_defer",
             "defer_token": defer_token,
+            "approved": False,
             "reason": reason,
         }
 
@@ -328,7 +351,7 @@ class FarameshGateway:
 
         for resp in responses:
             if isinstance(resp, dict):
-                return resp.get("denied", False)
+                return resp.get("ok") is True
 
         return False
 
@@ -343,8 +366,7 @@ class FarameshGateway:
             List of recent FarameshResponse objects
         """
         request = {
-            "type": "audit_tail",
-            "limit": limit,
+            "type": "audit_subscribe",
         }
 
         responses = _send_socket_request(self._socket_path, request, timeout=5.0)
@@ -364,6 +386,8 @@ class FarameshGateway:
                         timestamp=resp.get("timestamp"),
                     )
                 )
+                if limit > 0 and len(decisions) >= limit:
+                    break
 
         return decisions
 
@@ -374,14 +398,26 @@ class FarameshGateway:
         Returns:
             List of pending defer items
         """
-        request = {"type": "pending"}
+        request = {"type": "agent", "op": "pending"}
 
         responses = _send_socket_request(self._socket_path, request, timeout=5.0)
 
         pending = []
         for resp in responses:
-            if isinstance(resp, dict) and resp.get("defer_token"):
-                pending.append(resp)
+            if not isinstance(resp, dict):
+                continue
+            items = resp.get("items")
+            if isinstance(items, list):
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    normalized = dict(item)
+                    normalized["defer_token"] = (
+                        item.get("defer_token")
+                        or item.get("approval_id")
+                        or item.get("token")
+                    )
+                    pending.append(normalized)
 
         return pending
 
@@ -395,43 +431,17 @@ class FarameshGateway:
         Returns:
             Tuple of (success, bin_path)
         """
-        import subprocess
+        from cli.faramesh_runtime import ensure_faramesh_installed
 
-        try:
-            result = subprocess.run(
-                ["curl", "-fsSL", FAREMESH_INSTALL_URL],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-
-            if result.returncode != 0:
-                return False, None
-
-            install_script = result.stdout
-
-            cmd = ["bash", "-s", "--", "--version", FAREMESH_INSTALL_VERSION]
-            if non_interactive:
-                cmd.append("--no-interactive")
-
-            install_result = subprocess.run(
-                cmd,
-                input=install_script,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-
-            if install_result.returncode == 0:
-                self._installed = True
-                bin_path = self._find_bin()
-                return True, bin_path
-
-            return False, None
-
-        except Exception as e:
-            logger.error(f"Faramesh install failed: {e}")
-            return False, None
+        success, result = ensure_faramesh_installed(
+            install_if_missing=True,
+            non_interactive=non_interactive,
+        )
+        if success:
+            self._installed = True
+            return True, result
+        logger.error("Faramesh install failed: %s", result)
+        return False, None
 
     def _find_bin(self) -> Optional[str]:
         """Find the faramesh binary."""
@@ -440,9 +450,11 @@ class FarameshGateway:
         if shutil.which("faramesh"):
             return shutil.which("faramesh")
 
-        for path in ["/usr/local/bin/faramesh", "/usr/bin/faramesh"]:
-            import os
+        local_bin = Path.home() / ".local" / "bin" / "faramesh"
+        if local_bin.is_file():
+            return str(local_bin)
 
+        for path in ["/usr/local/bin/faramesh", "/usr/bin/faramesh"]:
             if os.path.exists(path):
                 return path
 

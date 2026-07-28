@@ -56,21 +56,28 @@ has been removed.
 
 ### Faramesh Core and FPL
 
+- **Verified:** 2026-07-22
 - **Core repository:** https://github.com/faramesh/faramesh-core
 - **FPL repository:** https://github.com/faramesh/fpl-lang
 - **Core current-main license:** Apache-2.0 at
-  `e230a9ac2d12d80ed6f632db42b6e1983ccbce82`
+  `01476cfb8bcbce83c199df3497af746a46318f8f`
 - **Pinned installer release:** `v0.2.0`
   (`ae3ebc9066d65e4e930164881c2f2ce2be554c7f`), licensed MPL-2.0
+- **Latest published Core release:** `v0.2.0`; the installer remains pinned
+  because no newer GitHub release exists
 - **Core latest semver tag:** `v1.2.9`
   (`c85237e4e6b13745169291f60b9c6b985285dbaa`), licensed MPL-2.0 at that tag
 - **FPL current-main license:** Apache-2.0
 - **Current FPL audit ref:**
-  `b7aa0b7ad56f60428d692278a435c5e6640cec2b`
+  `c78b5a44215aa810cb86c46fbefa032a8aa10364`
+- **FPL releases/tags:** none published; the EBNF grammar is unchanged from the
+  previous audited ref and hashes to
+  `599f498b2d204e018eb3f0313512f68d17adc80cee2e16c012649fb57d6cb3b2`
 
 MUTX integrates with the Faramesh daemon and FPL policy format through
 `cli/faramesh_runtime.py`, `cli/commands/governance.py`, `cli/policies/*.fpl`,
-and `src/runtime/gateways/faramesh.py`. Faramesh is listed by AARM as
+`src/api/services/faramesh_supervisor.py`, and
+`src/runtime/gateways/faramesh.py`. Faramesh is listed by AARM as
 **Aligned**, not **Conformant**; MUTX therefore does not use the integration as
 proof of AARM conformance.
 

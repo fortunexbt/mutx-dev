@@ -4,6 +4,7 @@ from unittest.mock import patch, MagicMock
 
 from cli.faramesh_runtime import (
     FAREMESH_INSTALL_REF,
+    FAREMESH_INSTALL_SCRIPT_SHA256,
     FAREMESH_INSTALL_VERSION,
     FarameshDaemonHealth,
     FarameshDecision,
@@ -20,10 +21,12 @@ from cli.faramesh_runtime import (
 
 
 class TestFarameshInstall:
+    @patch("cli.faramesh_runtime.hashlib.sha256")
     @patch("cli.faramesh_runtime.find_faramesh_bin")
     @patch("cli.faramesh_runtime.subprocess.run")
-    def test_uses_immutable_installer_and_pinned_release(self, mock_run, mock_bin):
+    def test_uses_immutable_installer_and_pinned_release(self, mock_run, mock_bin, mock_sha256):
         mock_bin.side_effect = [None, "/home/user/.local/bin/faramesh"]
+        mock_sha256.return_value.hexdigest.return_value = FAREMESH_INSTALL_SCRIPT_SHA256
         mock_run.side_effect = [
             MagicMock(returncode=0),
             MagicMock(returncode=0),
@@ -36,6 +39,7 @@ class TestFarameshInstall:
         assert bin_path == "/home/user/.local/bin/faramesh"
         download_command = mock_run.call_args_list[0].args[0]
         assert FAREMESH_INSTALL_REF in download_command[2]
+        mock_sha256.assert_called_once()
         install_command = mock_run.call_args_list[2].args[0]
         assert install_command[1:3] == ["--version", FAREMESH_INSTALL_VERSION]
         assert "--no-interactive" in install_command
@@ -124,16 +128,24 @@ class TestGetDaemonStatus:
         result = get_daemon_status()
 
         assert result["reachable"] is False
-        assert result["subscribed"] is False
 
     @patch("cli.faramesh_runtime._send_socket_request")
-    def test_returns_subscribed_when_daemon_responds(self, mock_send):
-        mock_send.return_value = [{"subscribed": True}]
+    def test_returns_status_when_daemon_responds(self, mock_send):
+        mock_send.return_value = [
+            {
+                "running": True,
+                "policy_loaded": True,
+                "policy_version": "abc123",
+                "uptime_seconds": 4,
+            }
+        ]
 
         result = get_daemon_status()
 
         assert result["reachable"] is True
-        assert result["subscribed"] is True
+        assert result["policy_loaded"] is True
+        assert mock_send.call_args.args[1] == {"type": "status"}
+        assert mock_send.call_args.kwargs["timeout"] == 1.0
 
 
 class TestGetRecentDecisions:
@@ -177,6 +189,7 @@ class TestGetRecentDecisions:
         assert decisions[0].tool_id == "stripe/refund"
         assert decisions[1].effect == "DENY"
         assert decisions[1].tool_id == "shell/run"
+        assert mock_send.call_args.args[1] == {"type": "audit_subscribe"}
 
 
 class TestGetPendingDefers:
@@ -196,12 +209,16 @@ class TestGetPendingDefers:
         mock_reachable.return_value = True
         mock_send.return_value = [
             {
-                "defer_token": "tok123",
-                "agent_id": "agent1",
-                "tool_id": "stripe/refund",
-                "status": "pending",
-                "reason": "high value",
-            },
+                "items": [
+                    {
+                        "defer_token": "tok123",
+                        "agent_id": "agent1",
+                        "tool_id": "stripe/refund",
+                        "status": "pending",
+                        "reason": "high value",
+                    }
+                ]
+            }
         ]
 
         defers = get_pending_defers()
@@ -209,6 +226,7 @@ class TestGetPendingDefers:
         assert len(defers) == 1
         assert defers[0].defer_token == "tok123"
         assert defers[0].status == "pending"
+        assert mock_send.call_args.args[1] == {"type": "agent", "op": "pending"}
 
 
 class TestGetFarameshHealth:

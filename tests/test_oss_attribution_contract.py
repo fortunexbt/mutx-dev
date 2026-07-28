@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from src.security.compliance import AARMComplianceChecker
 
@@ -35,12 +35,12 @@ def test_upstream_versions_licenses_and_refs_are_pinned() -> None:
         "faramesh-core": (
             None,
             "Apache-2.0",
-            "e230a9ac2d12d80ed6f632db42b6e1983ccbce82",
+            "01476cfb8bcbce83c199df3497af746a46318f8f",
         ),
         "fpl-lang": (
             None,
             "Apache-2.0",
-            "b7aa0b7ad56f60428d692278a435c5e6640cec2b",
+            "c78b5a44215aa810cb86c46fbefa032a8aa10364",
         ),
         "mission-control": (
             "v2.1.0",
@@ -112,6 +112,25 @@ def test_evidence_uses_immutable_source_and_license_links() -> None:
     assert faramesh["installer_license"] == "MPL-2.0"
     assert faramesh["installer_ref"] in faramesh["installer_source_url"]
     assert faramesh["installer_ref"] in faramesh["installer_license_url"]
+    assert faramesh["verified_at"] == "2026-07-22"
+    assert faramesh["installer_script_sha256"] == (
+        "9cce09b37079c6d0e391e9744577f151fc0fa4f71792659d81683a2f92e59f20"
+    )
+    assert set(faramesh["release_asset_sha256"]) == {
+        "darwin-amd64",
+        "darwin-arm64",
+        "linux-amd64",
+        "linux-arm64",
+    }
+
+    fpl = projects["fpl-lang"]
+    assert fpl["verified_at"] == "2026-07-22"
+    assert fpl["latest_published_release"] is None
+    assert fpl["latest_semver_tag"] is None
+    assert fpl["grammar_sha256"] == (
+        "599f498b2d204e018eb3f0313512f68d17adc80cee2e16c012649fb57d6cb3b2"
+    )
+    assert fpl["grammar_changed_since_previous_audit"] is False
 
 
 def test_required_apache_and_mpl_license_texts_are_verbatim() -> None:
@@ -143,32 +162,21 @@ def test_faramesh_installers_are_immutable_and_version_pinned() -> None:
 
 
 def test_faramesh_gateway_passes_pinned_version_to_installer() -> None:
-    from src.runtime.gateways.faramesh import FAREMESH_INSTALL_VERSION, FarameshGateway
+    from src.runtime.gateways.faramesh import FarameshGateway
 
     gateway = FarameshGateway()
-    with (
-        patch("subprocess.run") as run,
-        patch.object(gateway, "_find_bin", return_value="/usr/local/bin/faramesh"),
-    ):
-        run.side_effect = [
-            MagicMock(returncode=0, stdout="#!/bin/sh\n", stderr=""),
-            MagicMock(returncode=0, stdout="", stderr=""),
-        ]
-
+    with patch(
+        "cli.faramesh_runtime.ensure_faramesh_installed",
+        return_value=(True, "/usr/local/bin/faramesh"),
+    ) as ensure_installed:
         installed, bin_path = gateway.install()
 
     assert installed is True
     assert bin_path == "/usr/local/bin/faramesh"
-    installer_call = run.call_args_list[1]
-    assert installer_call.args[0] == [
-        "bash",
-        "-s",
-        "--",
-        "--version",
-        FAREMESH_INSTALL_VERSION,
-        "--no-interactive",
-    ]
-    assert installer_call.kwargs["input"] == "#!/bin/sh\n"
+    ensure_installed.assert_called_once_with(
+        install_if_missing=True,
+        non_interactive=True,
+    )
 
 
 def test_direct_port_ledger_has_durable_evidence() -> None:
