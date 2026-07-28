@@ -183,7 +183,7 @@ Check:
 
 ### NanoClaw
 
-- `/setup` run in the wrong place
+- v1 `/setup` guidance used against a v2 checkout
 - Docker / Apple Container missing
 - OneCLI migration not completed
 - skill branch or channel fork not merged

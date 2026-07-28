@@ -3,13 +3,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from cli.openclaw_runtime import (
+    _build_openclaw_install_command,
+    _is_supported_openclaw_node_version,
     OpenClawAgentBinding,
     OpenClawGatewayHealth,
     build_openclaw_surface_command,
     ensure_personal_assistant_binding,
     get_gateway_health,
     inspect_importable_openclaw_runtime,
+    install_openclaw,
     list_local_sessions,
     merge_runtime_binding,
     persist_openclaw_runtime_snapshot,
@@ -25,6 +30,67 @@ from cli.runtime_registry import (
     reset_wizard_state,
     write_pointer,
 )
+
+
+def test_openclaw_npm_install_is_release_pinned() -> None:
+    command = _build_openclaw_install_command(
+        install_method="npm",
+        non_interactive=True,
+    )
+
+    assert "--install-method npm" in command
+    assert "--version 2026.7.1" in command
+    assert "/2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4/scripts/install.sh" in command
+    assert command.endswith("--no-prompt")
+    assert "latest" not in command
+
+
+def test_openclaw_git_install_fetches_an_immutable_script() -> None:
+    command = _build_openclaw_install_command(
+        install_method="git",
+        non_interactive=True,
+    )
+
+    commit = "2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4"
+    assert f"/{commit}/scripts/install.sh" in command
+    assert f"--version {commit}" in command
+    assert command.endswith("--no-prompt")
+
+
+def test_openclaw_node_runtime_contract_matches_upstream() -> None:
+    assert _is_supported_openclaw_node_version("v22.22.3") is True
+    assert _is_supported_openclaw_node_version("24.15.0") is True
+    assert _is_supported_openclaw_node_version("v25.9.0") is True
+    assert _is_supported_openclaw_node_version("v22.22.2") is False
+    assert _is_supported_openclaw_node_version("v23.11.1") is False
+    assert _is_supported_openclaw_node_version("v24.14.9") is False
+
+
+def test_autonomy_runbook_keeps_node_and_npm_on_the_shared_node24_lane() -> None:
+    runbook = (Path(__file__).resolve().parents[1] / "docs" / "autonomy-runbook.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "/node24/bin/node" in runbook
+    assert "/node24/bin/npm" in runbook
+    assert "/node22/bin/npm" not in runbook
+    assert "Node 24.15+ is the shared supported intersection" in runbook
+
+
+@pytest.mark.parametrize("install_method", ["npm", "git"])
+def test_official_installer_can_bootstrap_node(monkeypatch, install_method: str) -> None:
+    commands: list[str] = []
+    monkeypatch.setattr(
+        "cli.openclaw_runtime._require_supported_openclaw_node",
+        lambda: pytest.fail("the official installer must own its Node bootstrap"),
+    )
+    monkeypatch.setattr("cli.openclaw_runtime._run_bash", commands.append)
+    monkeypatch.setattr("cli.openclaw_runtime.find_openclaw_bin", lambda: "/usr/bin/openclaw")
+
+    resolved = install_openclaw(install_method=install_method, non_interactive=True)
+
+    assert resolved == "/usr/bin/openclaw"
+    assert commands and f"--install-method {install_method}" in commands[0]
 
 
 def test_get_gateway_health_reports_needs_onboard_when_cli_exists_without_config(

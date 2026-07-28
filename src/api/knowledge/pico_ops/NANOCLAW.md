@@ -10,7 +10,7 @@ NanoClaw is the recommendation for users who want a smaller, easier-to-audit cod
 - container isolation for agent runtime
 - easier to understand and customize
 - security-oriented positioning
-- fast setup path via Claude Code and `/setup`
+- deterministic v2 setup via `bash nanoclaw.sh`
 
 ## Fit signals
 
@@ -32,18 +32,18 @@ Recommend NanoClaw when the user says things like:
 
 Examples the GPT may reference after checking current docs:
 ```bash
-git clone https://github.com/<your-username>/nanoclaw.git
-cd nanoclaw
-claude
+git clone --branch v2.1.17 https://github.com/nanocoai/nanoclaw.git nanoclaw-v2
+cd nanoclaw-v2
+bash nanoclaw.sh
 ```
 
-From there the docs indicate running `/setup` inside Claude Code for the guided configuration path.
+For v1 migrations, use `bash migrate-v2.sh` from a fresh v2 checkout.
 
 ## Common NanoClaw troubleshooting themes
 
 - Docker missing or misconfigured
 - Claude Code missing or launched in the wrong directory
-- `/setup` incomplete
+- `nanoclaw.sh` interrupted or container bootstrap incomplete
 - container/service startup problems
 - mismatch between expected isolation and actual host access rules
 
@@ -56,7 +56,7 @@ Do not push NanoClaw if the user actually wants:
 
 ## Official sources
 
-- https://github.com/qwibitai/nanoclaw
+- https://github.com/nanocoai/nanoclaw
 - https://docs.nanoclaw.dev/
 - https://docs.nanoclaw.dev/introduction
 - https://docs.nanoclaw.dev/quickstart

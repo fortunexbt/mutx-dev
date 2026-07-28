@@ -101,7 +101,7 @@ If `gh` is missing or not authenticated, the run still completes locally and rec
 
 4. For `runtime-openclaw` lane specifically:
    - Verify the OpenClaw health endpoint responds: `curl http://localhost:8080/health`
-   - Confirm Node version requirement in `package.json` or runtime config matches the declared runtime (Node 22.14+)
+   - Confirm Node version requirement in `package.json` or runtime config matches the declared runtime (Node 24.15+ recommended)
 
 5. Merge if all checks pass. The dispatch workflow will close the issue automatically when the PR is merged.
 
@@ -295,97 +295,50 @@ This rebuilds the queue from live GitHub issue data.
 
 ---
 
-## Node Runtime Separation
+## Node Runtime Alignment
 
-MUTX and OpenClaw require different Node versions and must be kept on separate PATHs.
+MUTX and OpenClaw share Node 24.15+ as their recommended runtime lane. Use that lane for both unless you are deliberately testing one of OpenClaw's other supported majors.
 
 ### Requirements
 
 | Component | Node Version |
 |-----------|-------------|
-| MUTX (CLI, SDK, dashboard build) | Node 20 LTS |
-| OpenClaw (runtime substrate) | Node 22.14+ or Node 24 |
+| MUTX (CLI, SDK, dashboard build) | Node 24.15+ |
+| OpenClaw (runtime substrate) | Node 24.15+ recommended; 22.22.3+ and 25.9+ supported |
 
-OpenClaw uses ESM-native features and native Addons that are not available in Node 20.
+Node 24.15+ is the shared supported intersection and the repo's CI baseline.
 
-### Separation Strategy
+### Default Shared Toolchain
 
-Use explicit absolute paths or shell aliases. Never rely on a single `node` binary in PATH.
-
-#### Option A: Absolute Paths in Scripts
+Keep `node` and `npm` on the same installation prefix:
 
 ```bash
-# MUTX tools
-/node20/bin/node --version   # 20.x.x
-/node20/bin/npm --version
-
-# OpenClaw runtime
-/node22/bin/node --version   # 22.14+ or 24.x.x
-/node22/bin/npm --version
+/node24/bin/node --version   # 24.15+ recommended
+/node24/bin/npm --version    # 11.12.1+ for this repo
 ```
 
-#### Option B: Shell Aliases
+With `nvm`:
 
 ```bash
-# ~/.bashrc or ~/.zshrc
-alias node-mutx='/usr/local/bin/node20'
-alias npm-mutx='/usr/local/bin/npm20'
-alias node-openclaw='/usr/local/bin/node22'
-alias npm-openclaw='/usr/local/bin/npm22'
-```
-
-#### Option C: nvm with Explicit Version Calls
-
-```bash
-# Load nvm
 export NVM_DIR="$HOME/.nvm"
-
-# MUTX
-nvm use 20
-node --version  # 20.x.x
-
-# OpenClaw
-nvm use 22.14
-node --version  # 22.14.x
+nvm install 24.15
+nvm use 24.15
+node --version  # 24.15.x or newer 24.x
+npm --version
 ```
 
-#### Option D: Docker Containers (Recommended for Production)
+### Optional Isolation
 
-Run OpenClaw in a container with Node 22, MUTX CLI in a separate container with Node 20.
+If you test OpenClaw on Node 22.22.3+ or 25.9+, isolate that runtime with `nvm`, `mise`, or a container. Do not mix a `node` executable from one prefix with `npm` from another.
 
-```yaml
-# docker-compose.yml excerpt
-services:
-  mutx-cli:
-    image: node:20-slim
-    working_dir: /app
-    volumes:
-      - .:/app
-    command: ["node", "src/cli/index.js"]
-
-  openclaw-runtime:
-    image: node:22-slim
-    working_dir: /app
-    volumes:
-      - ./openclaw:/app
-    command: ["node", "src/openclaw/index.js"]
-```
-
-### Verifying Separation
+### Verification
 
 ```bash
-# Verify MUTX Node version
-node-mutx --version   # Must be 20.x.x
-
-# Verify OpenClaw Node version
-node-openclaw --version  # Must be 22.14+ or 24.x.x
-
-# In CI (GitHub Actions), check with:
-node --version  # This is the default runner node (currently Node 20)
+node --version  # 24.15+ for the shared lane
+npm --version   # 11.12.1+ and lower than 12 for MUTX
+npm run typecheck
 ```
 
-### CI特别注意
+### CI Note
 
-The GitHub-hosted `ubuntu-latest` runner has Node 20 pre-installed. The dispatch workflow uses the hosted runner for MUTX operations (which is correct). OpenClaw runtime health checks must use an explicit Node 22 path or a separate runner/self-hosted runner.
-
-If OpenClaw health checks run on the hosted runner and fail due to Node version mismatch, that is expected -- do not try to "fix" the hosted runner Node version. Use a separate self-hosted runner or container for OpenClaw runtime health checks.
+Repository workflows provision Node 24 explicitly with `actions/setup-node`; do not rely on the runner's preinstalled version. Jobs that exercise a different OpenClaw major must select that version explicitly and remain isolated from the MUTX build job.

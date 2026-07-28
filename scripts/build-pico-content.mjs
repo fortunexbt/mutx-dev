@@ -18,13 +18,20 @@ const STACKS = [
   { id: 'picoclaw', name: 'PicoClaw', filename: 'PICOCLAW.md' },
 ]
 
+const githubToken = process.env.GITHUB_TOKEN?.trim()
 const GITHUB_HEADERS = {
   Accept: 'application/vnd.github+json',
   'User-Agent': 'mutx-pico-content-sync',
+  ...(githubToken ? { Authorization: `Bearer ${githubToken}` } : {}),
 }
 
 function compactWhitespace(value) {
   return value.replace(/\s+/g, ' ').trim()
+}
+
+function displaySourcePath(sourcePath) {
+  const relativePath = path.relative(ROOT, sourcePath)
+  return relativePath && !relativePath.startsWith('..') ? relativePath : sourcePath
 }
 
 function formatDateLabel(value) {
@@ -527,7 +534,7 @@ function buildTutorContent() {
     examplePrompts: [
       'Hermes opens locally but the VPS run fails. What should I verify before changing anything?',
       'OpenClaw onboard completed, but the Control UI still does not load. What is the clean verification path?',
-      'NanoClaw `/setup` ran in Claude Code, but the container path still feels broken. What should I isolate first?',
+      'NanoClaw v2 `nanoclaw.sh` ran, but the container path still feels broken. What should I isolate first?',
       'PicoClaw launcher works on localhost only. Should I change the bind address or keep it private with Tailscale?',
     ],
   }
@@ -624,7 +631,7 @@ async function buildContent() {
     visibleDocCount: manifest.docs.filter((doc) => doc.visible).length,
     lessonCount: lessons.length,
     totalLessonMinutes,
-    sourcePaths: packDirectories,
+    sourcePaths: packDirectories.map(displaySourcePath),
     currentProductNotes: extractBullets(getMarkdownSection(readme, 'Current product notes worth knowing')),
   }
 

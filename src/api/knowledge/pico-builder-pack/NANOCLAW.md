@@ -10,7 +10,7 @@ NanoClaw is the recommendation for users who want a smaller, easier-to-audit cod
 - container isolation for agent runtime
 - easier to understand and customize
 - security-oriented positioning
-- fast setup path via Claude Code and `/setup`
+- deterministic v2 setup path via `bash nanoclaw.sh`
 - fork-first customization model
 - skills over feature bloat
 
@@ -33,64 +33,51 @@ Recommend NanoClaw when the user says things like:
 
 ## Current install realities
 
-- the current quick start is fork or clone, `cd` into the repo, start `claude`, then run `/setup`
-- commands prefixed with `/` are Claude Code skills and must be run inside the Claude Code prompt, not in the regular shell
-- Node.js 20+ and Claude Code are required
+- the current v2 quick start is clone, `cd` into the repo, then run `bash nanoclaw.sh` directly in the shell
+- `nanoclaw.sh` owns the deterministic bootstrap and invokes Claude Code only when judgment is required
+- Node.js 20+, Docker, Claude Code, and OneCLI are current prerequisites
 - Docker is the default container runtime and works on macOS/Linux/Windows via WSL2
 - Apple Container is macOS-only
 - OneCLI Agent Vault is the modern credential path; current docs pin that shift to v1.2.35+
-- `/setup` can install OneCLI automatically if needed
+- `nanoclaw.sh` can bootstrap Node, pnpm, Docker, OneCLI, the agent container, and the first channel
 - WSL users should clone into the Linux filesystem (`~/nanoclaw`), not `/mnt/c/...`
-- skills are now git branches and channels live in separate fork repos
+- v2 uses the setup script and channel adapters; do not reuse v1 branch-marketplace instructions
 - diagnostics are opt-in during setup and update flows
 
-## Skill architecture to respect
+## Version boundary to respect
 
-- feature skills = git branches merged into your fork
-- utility skills = self-contained skill directories
-- operational skills = instruction-only workflows like setup/debug
-- container skills = runtime skills inside agent containers
-
-Do not answer as if the old marketplace-only skill model is still the main path.
+NanoClaw v2 replaces the old `claude` → `/setup` entry path with `bash nanoclaw.sh`. Keep v1 migration guidance separate and never mix the two command models.
 
 ## Common NanoClaw command surfaces
 
 Examples the GPT may reference after checking current docs:
 
 ```bash
-git clone https://github.com/<your-username>/nanoclaw.git
-cd nanoclaw
-claude
+git clone --branch v2.1.17 https://github.com/nanocoai/nanoclaw.git nanoclaw-v2
+cd nanoclaw-v2
+bash nanoclaw.sh
 node --version
 docker --version
 onecli --help
 ```
 
-Inside Claude Code, the guided path starts with:
-
-```text
-/setup
-/debug
-/customize
-```
-
-Depending on channel/fork choices, users may also hit skills like `/add-telegram`, `/add-whatsapp`, `/init-onecli`, or Apple-Container-related flows.
+For an existing v1 installation, use the separate `bash migrate-v2.sh` flow from a fresh v2 checkout.
 
 ## Operator adaptation cues
 
-- beginner: spell out where the shell ends and the Claude Code prompt begins
-- intermediate: keep the order strict: prerequisites -> clone/fork -> `claude` -> `/setup` -> verify service -> add skills/channels
-- advanced: if they already know Git and containers, focus on OneCLI, branch/fork state, and service health
+- beginner: run `nanoclaw.sh` in a real terminal and let its guided flow own setup
+- intermediate: keep the order strict: prerequisites -> pinned clone -> `nanoclaw.sh` -> verify container -> pair channels
+- advanced: focus on OneCLI, container health, adapter state, and the v1-to-v2 boundary
 
 ## Common NanoClaw troubleshooting themes
 
 - Docker missing or misconfigured
 - Claude Code missing or launched in the wrong directory
-- `/setup` run in the wrong place
+- `nanoclaw.sh` launched from the wrong checkout or interrupted mid-bootstrap
 - OneCLI Agent Vault not running or not configured
 - container/service startup problems
 - wrong assumption that normal shell commands can replace Claude Code skills
-- stale channel forks after breaking changes
+- stale v1 customization assumptions after moving to v2
 - WhatsApp re-merge or auth breakage after release changes
 
 ## Recommendation caution
@@ -103,7 +90,7 @@ Do not push NanoClaw if the user actually wants:
 
 ## Official sources
 
-- https://github.com/qwibitai/nanoclaw
+- https://github.com/nanocoai/nanoclaw
 - https://docs.nanoclaw.dev/
 - https://docs.nanoclaw.dev/introduction
 - https://docs.nanoclaw.dev/quickstart

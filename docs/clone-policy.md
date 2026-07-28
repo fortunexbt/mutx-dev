@@ -27,7 +27,7 @@ rsync -a --exclude='.git' --exclude='node_modules' --exclude='.next' \
 MUTX and OpenClaw require different Node versions. PATH must not shadow one with the other.
 
 - **MUTX toolchain** (build/test): Node 24 (CI standard)
-- **OpenClaw runtime**: Node 22.14+ (agent execution)
+- **OpenClaw runtime**: Node 24.15+ recommended; 22.22.3+ and 25.9+ supported
 
 Explicitly qualify `node` paths in scripts and cron jobs. Do not rely on default `node` being correct.
 
