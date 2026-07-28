@@ -74,6 +74,7 @@ export NEXT_PUBLIC_SITE_URL=https://app.invalid.test
 export CORS_ORIGINS=https://site.invalid.test,https://app.invalid.test
 export ALLOWED_HOSTS=api.invalid.test,api.mutx.dev,app.mutx.dev,nginx,api,localhost,127.0.0.1
 export MUTX_API_HOST=api.invalid.test
+export REQUIRE_EMAIL_VERIFICATION=false
 export WEB_CONCURRENCY=1
 export MUTX_SSL_DIR="${SSL_DIR}"
 

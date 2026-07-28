@@ -36,7 +36,9 @@ smaller `requirements-runtime.lock`. Both files are universal, fully resolved,
 SHA-256-pinned outputs from uv 0.11.33, and installs run with both
 `--require-hashes` and `--only-binary=:all:`. This prevents a repeated commit
 from silently selecting new transitive dependencies or unreviewed source-build
-toolchains. Regenerate both locks after changing `requirements.txt`,
+toolchains. The backend dependency set targets Python 3.11 and 3.12; the
+separately packaged CLI and SDK retain their broader declared compatibility.
+Regenerate both locks after changing `requirements.txt`,
 `test-requirements.txt`, or Python project metadata:
 
 ```bash

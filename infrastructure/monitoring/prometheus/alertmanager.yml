@@ -39,7 +39,6 @@ receivers:
           authorization:
             type: Bearer
             credentials_file: /etc/alertmanager/secrets/self_heal_webhook_token
-          timeout: 30s
 
 # Inhibition rules
 inhibit_rules:

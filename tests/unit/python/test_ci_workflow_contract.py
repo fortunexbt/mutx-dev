@@ -121,7 +121,6 @@ def test_ci_versions_and_monorepo_gates_match_supported_runtimes() -> None:
     )
     assert "python -m pip install 'pytest==9.0.3' 'PyYAML==6.0.3'" in (workflow_contract_commands)
     assert jobs["python-validation"]["strategy"]["matrix"]["python-version"] == [
-        "3.10",
         "3.11",
         "3.12",
     ]
