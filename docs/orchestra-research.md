@@ -8,7 +8,8 @@ MUTX ships a pinned integration with Orchestra Research's `AI-Research-SKILLs` r
 
 Upstream source of truth:
 - repo: `https://github.com/Orchestra-Research/AI-Research-SKILLs`
-- pinned commit: `05f1958727bfc2bc22240f41d060504473c4f236`
+- pinned release: `v1.7.2`
+- pinned commit: `773a52944ba4747a18bd4ae9ade53fff041adcbc`
 - license: `MIT`
 
 MUTX does not rewrite the upstream skill content into first-party docs. Instead it ships:
@@ -17,6 +18,18 @@ MUTX does not rewrite the upstream skill content into first-party docs. Instead 
 - starter templates that preload those bundles into OpenClaw-backed assistants
 - swarm blueprints for multi-agent orchestration
 - a sync script that copies the upstream skill tree into the MUTX-managed runtime root
+
+The checked-in manifest is reproducibly generated from the immutable release
+checkout and contains all 98 v1.7.2 skills. That includes the Agent-Native
+Research Artifact compiler, live research manager, and rigor reviewer added
+after MUTX's original integration.
+
+Regenerate and verify the catalog from an audited checkout:
+
+```bash
+python scripts/build_orchestra_research_catalog.py --source /path/to/AI-Research-SKILLs
+python scripts/build_orchestra_research_catalog.py --source /path/to/AI-Research-SKILLs --check
+```
 
 ## What ships
 
@@ -45,6 +58,7 @@ MUTX does not rewrite the upstream skill content into first-party docs. Instead 
 - `orchestra_rag_lab`
 - `orchestra_post_training_lab`
 - `orchestra_inference_lab`
+- `orchestra_multimodal_guardrails`
 
 These are still OpenClaw/MUTX assistants under the hood. The difference is the default skill payload and the attached orchestration metadata.
 
@@ -55,6 +69,7 @@ These are still OpenClaw/MUTX assistants under the hood. The difference is the d
 - `trainer-eval-safety`
 - `rag-ship-room`
 - `inference-ops-lane`
+- `multimodal-review-loop`
 
 These are recommendation objects, not auto-spawned clusters. They exist to make orchestration explicit instead of tribal.
 

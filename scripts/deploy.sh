@@ -1,14 +1,7 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-cd "$(dirname "$0")/.."
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-echo "Building production Docker images..."
-
-docker-compose -f docker-compose.production.yml build
-
-echo "Deploying to production..."
-
-docker-compose -f docker-compose.production.yml up -d
-
-echo "Deployment complete!"
+echo "scripts/deploy.sh delegates to the verified production deployment contract."
+exec bash "${ROOT_DIR}/scripts/deploy-production.sh" "$@"

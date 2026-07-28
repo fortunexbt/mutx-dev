@@ -5,10 +5,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.models import UsageEvent
+from src.api.models.numeric import require_finite_float
 from src.api.models.plan_tiers import PlanTier
 
 PLAN_CREDITS: dict[PlanTier, float] = {
@@ -60,5 +61,11 @@ async def get_usage_credits(
     if period_end is not None:
         filters.append(UsageEvent.created_at < period_end)
 
-    result = await db.execute(select(func.sum(UsageEvent.credits_used)).where(and_(*filters)))
-    return float(result.scalar_one() or 0.0)
+    result = await db.execute(select(UsageEvent.credits_used).where(and_(*filters)))
+    total = 0.0
+    for index, raw_credits in enumerate(result.scalars()):
+        total += require_finite_float(
+            raw_credits,
+            path=f"$.billing.events[{index}].credits_used",
+        )
+    return require_finite_float(total, path="$.billing.credits_used")

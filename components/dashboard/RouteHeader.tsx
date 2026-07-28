@@ -38,12 +38,13 @@ export function RouteHeader({
 }: RouteHeaderProps) {
   return (
     <header
+      data-dashboard-ui="route-header"
       className={cn(
-        "dashboard-entry relative grid gap-5 border-b border-[#34342e] pb-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end md:gap-6 lg:pb-6",
+        "dashboard-entry relative grid min-w-0 gap-5 border-b border-[#34342e] pb-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end md:gap-6 lg:pb-6",
         className,
       )}
     >
-      <span className="absolute -bottom-px left-0 h-px w-20 bg-[#ff571c]" aria-hidden="true" />
+      <span className="absolute -bottom-px start-0 h-px w-20 bg-[#ff571c]" aria-hidden="true" />
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2.5">
           <span
@@ -57,7 +58,7 @@ export function RouteHeader({
           {hint ? (
             <FeatureHint
               {...hint}
-              align="left"
+              align="start"
               className={cn(hint.className, "[&_summary]:text-[11px]")}
             />
           ) : null}
@@ -74,18 +75,19 @@ export function RouteHeader({
       </div>
 
       {stats.length > 0 ? (
-        <dl className="grid w-full grid-cols-1 gap-x-6 gap-y-3 border-t border-[#34342e] pt-4 min-[24rem]:grid-cols-2 md:w-auto md:border-l md:border-t-0 md:pl-5 md:pt-0">
+        <dl className="grid min-w-0 w-full grid-cols-1 gap-x-6 gap-y-3 border-t border-[#34342e] pt-4 min-[384px]:grid-cols-2 md:w-auto md:border-s md:border-t-0 md:ps-5 md:pt-0">
           {stats.map((stat, index) => (
             <div key={`${stat.label}-${stat.value}`} className="relative py-1">
               <dt className="font-[family:var(--font-mono)] text-[11px] font-semibold uppercase leading-4 tracking-[0.14em] text-[#918b80]">
-                <span className="mr-2 text-[#ff6a32]" aria-hidden="true">
+                <span className="me-2 text-[#ff6a32]" aria-hidden="true">
                   {String(index + 1).padStart(2, "0")}
                 </span>
                 {stat.label}
               </dt>
               <dd
+                dir="auto"
                 className={cn(
-                  "mt-1.5 font-[family:var(--font-mono)] text-[12px] font-medium tabular-nums",
+                  "mt-1.5 break-words font-[family:var(--font-mono)] text-[12px] font-medium tabular-nums",
                   STAT_TONES[stat.tone || "neutral"],
                 )}
               >

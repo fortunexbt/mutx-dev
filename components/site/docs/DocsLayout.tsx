@@ -60,7 +60,8 @@ function NavItem({ item, pathname }: NavItemProps) {
   const itemPath = item.route;
 
   // Active if current pathname starts with this item's path (handles nested slugs)
-  const isActive = normPath === itemPath || normPath.startsWith(itemPath + '/');
+  const isCurrent = normPath === itemPath;
+  const isActive = isCurrent || normPath.startsWith(itemPath + '/');
 
   // Determine if any descendant is active (for auto-expand)
   function isAncestorActive(items: DocNavItem[]): boolean {
@@ -191,12 +192,16 @@ function NavItem({ item, pathname }: NavItemProps) {
 
   return (
     <div className="docs-nav-section">
-      <div className={`docs-nav-row${hasChildren ? ' has-children' : ''}`}>
+      <div
+        className={`docs-nav-row${hasChildren ? ' has-children' : ''}`}
+        data-depth={Math.min(item.depth, 3)}
+      >
         {showChevron && (
           <button
+            type="button"
             className={`docs-nav-chevron-btn${open ? ' open' : ''}`}
             onClick={toggle}
-            aria-label={open ? 'Collapse' : 'Expand'}
+            aria-label={`${open ? 'Collapse' : 'Expand'} ${item.title}`}
             aria-expanded={open}
           >
             <svg
@@ -217,14 +222,14 @@ function NavItem({ item, pathname }: NavItemProps) {
             </svg>
           </button>
         )}
+        {!showChevron && <span className="docs-nav-chevron-spacer" aria-hidden="true" />}
         <Link
           href={item.route}
           className={`docs-nav-link${isActive ? ' active' : ''}${
             item.depth > 0 ? ' docs-nav-link-nested' : ''
           }`}
-          style={{ paddingLeft: showChevron ? '4px' : `${item.depth * 16 + 16}px` }}
           onClick={() => onNavigate?.()}
-          aria-current={isActive ? 'page' : undefined}
+          aria-current={isCurrent ? 'page' : undefined}
         >
           {renderIcon(item.icon)}
           <span className={item.icon ? 'docs-nav-label' : undefined}>{item.title}</span>
@@ -375,7 +380,7 @@ export function DocsLayout({ nav, children, title = 'MUTX' }: DocsLayoutProps) {
           <button
             ref={mobileToggleRef}
             type="button"
-            className="docs-mobile-nav-toggle p-1.5 -ml-1.5 text-gb-text-2 hover:text-white transition-colors rounded"
+            className="docs-mobile-nav-toggle"
             aria-label={mobileNavOpen ? 'Close documentation navigation' : 'Open documentation navigation'}
             aria-expanded={mobileNavOpen}
             aria-controls="docs-mobile-navigation"
@@ -411,9 +416,12 @@ export function DocsLayout({ nav, children, title = 'MUTX' }: DocsLayoutProps) {
         <div className="flex-1" />
 
         <button
+          type="button"
           className="docs-search-trigger"
           onClick={() => document.documentElement.setAttribute('data-docs-search-open', '1')}
           aria-label="Search docs (Cmd+K)"
+          aria-haspopup="dialog"
+          aria-controls="docs-search-dialog"
         >
           <svg
             width="14"
@@ -449,6 +457,7 @@ export function DocsLayout({ nav, children, title = 'MUTX' }: DocsLayoutProps) {
           className="docs-header-link"
         >
           GitHub
+          <span className="sr-only"> (opens in a new tab)</span>
         </a>
         <span className="docs-header-divider" style={{ color: 'var(--gb-text-3)' }}>·</span>
         <Link href="/" className="docs-header-link">
@@ -456,7 +465,8 @@ export function DocsLayout({ nav, children, title = 'MUTX' }: DocsLayoutProps) {
         </Link>
         <span className="docs-header-divider" style={{ color: 'var(--gb-text-3)' }}>·</span>
         <a href="https://pico.mutx.dev" target="_blank" rel="noopener noreferrer" className="docs-header-link">
-          Pico beta
+          PicoMUTX
+          <span className="sr-only"> (opens in a new tab)</span>
         </a>
       </header>
 
@@ -482,7 +492,7 @@ export function DocsLayout({ nav, children, title = 'MUTX' }: DocsLayoutProps) {
               aria-modal={mobileNavOpen ? true : undefined}
               tabIndex={-1}
             >
-              <nav aria-label="Docs nav">
+              <nav aria-label="Documentation sections">
                 {nav.map((item) => (
                   <NavItem key={item.route} item={item} pathname={pathname} />
                 ))}

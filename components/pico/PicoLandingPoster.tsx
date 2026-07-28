@@ -1,24 +1,22 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { ArrowRight, ArrowUpRight } from 'lucide-react'
 
 import s from './PicoLandingPoster.module.css'
 import { PicoContactForm } from './PicoContactForm'
 import { PicoLangSwitcher } from './PicoLangSwitcher'
+import { usePicoHref } from '@/lib/pico/navigation'
 
-const PRICING_TIERS = ['trial', 'starter', 'pro', 'enterprise'] as const
+const PRICING_TIERS = ['free', 'starter', 'pro', 'enterprise'] as const
 
 export function PicoLandingPoster() {
   const t = useTranslations('pico')
+  const pricingT = useTranslations('pico.pricingPage')
+  const toHref = usePicoHref()
   const [formOpen, setFormOpen] = useState(false)
-  const [ready, setReady] = useState(false)
-
-  useEffect(() => {
-    setReady(true)
-  }, [])
   const steps = Array.from({ length: 3 }, (_, index) => ({
     title: t(`platform.howItWorks.${index}.title`),
     body: t(`platform.howItWorks.${index}.body`),
@@ -86,23 +84,28 @@ export function PicoLandingPoster() {
   const pricingTiers = PRICING_TIERS.map((tier, index) => ({
     index: `0${index + 1}`,
     key: tier,
-    name: t(`pricing.tiers.${tier}.name`),
-    price: t(`pricing.tiers.${tier}.price`),
-    period: t(`pricing.tiers.${tier}.period`),
-    description: t(`pricing.tiers.${tier}.description`),
-    priceNote: t(`pricing.tiers.${tier}.priceNote`),
-    cta: t(`pricing.tiers.${tier}.cta`),
-    anchorPrice:
-      tier === 'trial' ? null : t(`pricing.tiers.${tier}.anchorPrice`),
+    name: pricingT(`livePlans.tiers.${tier}.name`),
+    price: pricingT(`livePlans.tiers.${tier}.price`),
+    period: pricingT(`livePlans.tiers.${tier}.period`),
+    description: pricingT(`livePlans.tiers.${tier}.description`),
+    priceNote: (pricingT.raw(`livePlans.tiers.${tier}.features`) as string[])
+      .slice(0, 2)
+      .join(' · '),
+    cta: pricingT(`livePlans.tiers.${tier}.cta`),
+    href: tier === 'free'
+      ? toHref('/onboarding')
+      : tier === 'enterprise'
+        ? 'https://calendly.com/mutxdev'
+        : `${toHref('/pricing')}?plan=${tier}`,
     recommended: tier === 'starter',
   }))
 
   return (
     <div data-testid="pico-landing" className={s.page}>
-      <PicoContactForm open={formOpen} onClose={() => setFormOpen(false)} source="pico-waitlist" />
+      <PicoContactForm open={formOpen} onClose={() => setFormOpen(false)} source="pico-contact" />
 
       <header className={s.nav}>
-        <Link href="/" className={s.brand} aria-label={t('nav.brand')}>
+        <Link href={toHref('/')} className={s.brand} aria-label={t('nav.brand')}>
           <span aria-hidden="true">PX</span>
           <strong>Pico</strong>
           <small>{t('nav.brandTag')}</small>
@@ -110,7 +113,7 @@ export function PicoLandingPoster() {
         <nav aria-label={t('nav.sectionsLabel')}>
           <a href="#method">{t('platform.eyebrow')}</a>
           <PicoLangSwitcher />
-          <button type="button" onClick={() => setFormOpen(true)} disabled={!ready}>{t('nav.cta')}</button>
+          <Link href={toHref('/onboarding')} className={s.navCta}>{t('nav.cta')}</Link>
         </nav>
       </header>
 
@@ -127,19 +130,22 @@ export function PicoLandingPoster() {
             <p className={s.lede}>{t('hero.subtitle')}</p>
             <p className={s.support}>{t('problem.body')}</p>
             <div className={s.heroActions}>
-              <button type="button" onClick={() => setFormOpen(true)} disabled={!ready}>
-                {t('hero.cta')} <ArrowRight aria-hidden="true" />
-              </button>
+              <Link href={toHref('/onboarding')} className={s.primaryAction}>
+                {t('hero.cta')} <ArrowRight className="rtl-directional-icon" aria-hidden="true" />
+              </Link>
               <a href="#method">{t('hero.ctaSecondary')}</a>
             </div>
             <p className={s.rollout}>{t('hero.meta')}</p>
           </div>
 
           <div className={s.diagnosticWrap}>
-            <div className={s.diagnostic} aria-label={t('platform.body')}>
+            <div
+              className={s.diagnostic}
+              aria-label={`${t('beforeAfter.eyebrow')}: ${t('platform.body')}`}
+            >
               <header className={s.diagnosticHeader}>
                 <div>
-                  <span>PX-104 / {t('problem.eyebrow')}</span>
+                  <span>{t('platform.sampleLabel')} / {t('problem.eyebrow')}</span>
                   <strong>{t('platform.title')}</strong>
                 </div>
                 <p><i aria-hidden="true" /> {t('platform.howItWorks.1.title')}</p>
@@ -172,7 +178,7 @@ export function PicoLandingPoster() {
                 <code>agent.py → Python 3.11</code>
               </footer>
             </div>
-            <p className={s.recordNote}>{t('trustBar.items.0')}</p>
+            <p className={s.recordNote}>{t('platform.sampleLabel')} · {t('trustBar.items.0')}</p>
           </div>
         </section>
 
@@ -203,7 +209,7 @@ export function PicoLandingPoster() {
 
             <aside className={s.evidence} aria-label={t('beforeAfter.title')}>
               <header>
-                <span>{t('beforeAfter.eyebrow')} / PX-104</span>
+                <span>{t('platform.sampleLabel')}</span>
                 <strong>{t('beforeAfter.title')}</strong>
               </header>
               <div className={s.evidenceRows}>
@@ -254,10 +260,10 @@ export function PicoLandingPoster() {
         <section id="pricing" className={s.pricing} aria-labelledby="pricing-title">
           <header className={s.pricingHeader}>
             <div>
-              <p>{t('pricing.eyebrow')}</p>
-              <h2 id="pricing-title">{t('pricing.title')}</h2>
+              <p>{pricingT('livePlans.label')}</p>
+              <h2 id="pricing-title">{pricingT('livePlans.title')}</h2>
             </div>
-            <p>{t('pricing.lead')}</p>
+            <p>{pricingT('livePlans.body')}</p>
           </header>
 
           <div className={s.pricingGrid}>
@@ -269,23 +275,21 @@ export function PicoLandingPoster() {
               >
                 <header>
                   <span>{tier.index}</span>
-                  {tier.recommended ? <em>{t('pricing.recommendedLabel')}</em> : null}
+                  {tier.recommended ? <em>{pricingT('livePlans.badgePopular')}</em> : null}
                 </header>
                 <div className={s.pricingName}>
                   <h3>{tier.name}</h3>
                   <p>
-                    <strong>{tier.price}</strong>
-                    <span>{tier.period}</span>
+                    <bdi dir="ltr"><strong>{tier.price}</strong><span>{tier.period}</span></bdi>
                   </p>
                 </div>
                 <p className={s.pricingDescription}>{tier.description}</p>
                 <p className={s.pricingNote}>
-                  {tier.anchorPrice ? <del>{tier.anchorPrice}</del> : null}
                   <span>{tier.priceNote}</span>
                 </p>
-                <button type="button" onClick={() => setFormOpen(true)} disabled={!ready}>
-                  {tier.cta} <ArrowRight aria-hidden="true" />
-                </button>
+                <Link href={tier.href} className={s.pricingAction}>
+                  {tier.cta} <ArrowRight className="rtl-directional-icon" aria-hidden="true" />
+                </Link>
               </article>
             ))}
           </div>
@@ -299,8 +303,11 @@ export function PicoLandingPoster() {
           <div className={s.finalCopy}>
             <p>{t('finalCta.body')}</p>
             <div className={s.finalActions}>
-              <button type="button" onClick={() => setFormOpen(true)} disabled={!ready}>
-                {t('nav.cta')} <ArrowRight aria-hidden="true" />
+              <Link href={toHref('/onboarding')} className={s.primaryAction}>
+                {t('finalCta.ctaButton')} <ArrowRight className="rtl-directional-icon" aria-hidden="true" />
+              </Link>
+              <button type="button" onClick={() => setFormOpen(true)} className={s.secondaryAction}>
+                {t('pricingPage.secondaryCta')}
               </button>
               <Link href="/">
                 MUTX <ArrowUpRight aria-hidden="true" />

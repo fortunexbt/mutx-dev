@@ -1,37 +1,42 @@
 # Activation Guide
 
-This repo is now set up with the team definitions and a GitHub-native control-tower scaffold. You do not need to run anything locally.
+This repository includes an operator-controlled autonomy substrate. Autonomous
+execution runs from a trusted local host and hands changes to GitHub through
+reviewable pull requests. The former scheduled GitHub-hosted dispatch and
+shipping workflows were retired; CI validates code but never authors or pushes
+it.
 
 ## What Is Already In Repo
 
 - agent definitions under `agents/`
 - ownership map in `agents/registry.yml`
-- control-tower workflow in `.github/workflows/autonomous-shipping.yml`
-- GitHub-hosted dispatcher in `.github/workflows/autonomous-dispatch.yml`
+- bounded local daemon and lane runners under `scripts/autonomy/`
 - scoped intake template in `.github/ISSUE_TEMPLATE/agent-task.yml`
-- updated CI and PR template for truthful validation
+- immutable CI and PR templates for truthful validation
 
 ## Smallest Real Deployment
 
-1. Protect `main` in GitHub.
-2. Enable auto-merge for PRs.
-3. Create labels from `docs/autonomy/OPERATING_MODEL.md`.
-4. Add repo variables for the hosted runner executor.
-5. Add `GITHUB_MODELS_TOKEN` as a GitHub Actions secret for the default hosted executor, or set `AUTONOMY_EXECUTOR_SETUP_CMD` if your coding tool needs installation on the GitHub runner.
-6. Optionally set `AUTONOMY_AGENT_CMD_TEMPLATE` in repo or org variables to override the default coding command.
-7. Optionally set `AUTONOMY_OPEN_PR=true` if the executor should auto-commit, push, and open a draft PR when changes exist.
-8. Let `.github/workflows/autonomous-dispatch.yml` claim `autonomy:ready` issues, generate a work order, and invoke the executor on `ubuntu-latest`.
+1. Protect `main` and require `CI / Required Validation` in GitHub.
+2. Create the labels from `docs/autonomy/OPERATING_MODEL.md`.
+3. Provision a trusted operator host with GitHub CLI authentication, Python
+   3.11+, and Node 24.15+.
+4. Configure the executor variables below on that host. Keep model credentials
+   out of repository variables and workflow files.
+5. Start the daemon with `scripts/autonomy/daemon-launcher.sh start`.
+6. Run `scripts/autonomy/daemon-watchdog.sh` from a local service manager or a
+   2–5 minute cron interval.
+7. Monitor `.autonomy/daemon-status.json` and `reports/autonomy-status.jsonl`.
+8. Require every authored branch to pass CI and review before merge.
 
-## Hosted Runner Shape
+## Operator Host Shape
 
-- GitHub-hosted `ubuntu-latest`
-- ephemeral checkout each run
-- GitHub CLI authenticated with `GITHUB_TOKEN`
-- Python 3.11 and Node 20 available in workflow
+- trusted, access-controlled host
+- dedicated repository checkout and bounded worktrees
+- GitHub CLI authenticated as the operator or a least-privilege bot
+- Python 3.11+ and Node 24.15+
 
 ## Executor Variables
 
-- `AUTONOMY_EXECUTOR_SETUP_CMD`: optional install/bootstrap shell command for the hosted runner
 - `AUTONOMY_AGENT_CMD_TEMPLATE`: command template invoked after branch prep
 - `AUTONOMY_OPEN_PR`: `true` or `false`
 - `AUTONOMY_BASE_BRANCH`: optional, defaults to `main`
@@ -40,25 +45,24 @@ This repo is now set up with the team definitions and a GitHub-native control-to
 - `AUTONOMY_MAX_PATCH_BYTES`: optional, defaults to `50000`
 - `AUTONOMY_MAX_CHANGED_FILES`: optional, defaults to `6`
 - `AUTONOMY_REVIEWER_MAP`: optional JSON object mapping reviewer-agent ids to GitHub logins
-- `AUTONOMY_STALE_CLAIM_MINUTES`: optional, defaults to `120`
 
-## Required Secret
+## Executor Credentials
 
-- `GITHUB_MODELS_TOKEN`: preferred for the default hosted executor in `scripts/autonomy/hosted_llm_executor.py`
+- `GITHUB_MODELS_TOKEN`: preferred by `scripts/autonomy/hosted_llm_executor.py`
+- `OPENAI_API_KEY`: alternate provider when GitHub Models is not used
 
-## Optional Secret
-
-- `OPENAI_API_KEY`: alternate provider for the same hosted executor if you do not use GitHub Models
+Set credentials only in the trusted host environment or its secret manager.
+They are not CI secrets because no checked-in workflow runs the executor.
 
 Example:
 
 ```text
-AUTONOMY_EXECUTOR_SETUP_CMD=pip install openai
 AUTONOMY_AGENT_CMD_TEMPLATE=python scripts/autonomy/github_hosted_agent.py --agent {agent} --brief {brief} --work-order {work_order}
 AUTONOMY_OPEN_PR=true
 ```
 
-If `AUTONOMY_AGENT_CMD_TEMPLATE` is unset but `GITHUB_MODELS_TOKEN` or `OPENAI_API_KEY` is present, the workflow falls back to:
+If `AUTONOMY_AGENT_CMD_TEMPLATE` is unset but `GITHUB_MODELS_TOKEN` or
+`OPENAI_API_KEY` is present, the local executor falls back to:
 
 ```text
 python scripts/autonomy/hosted_llm_executor.py --agent {agent} --brief {brief} --work-order {work_order}
@@ -70,9 +74,10 @@ If `AUTONOMY_REVIEWER_MAP` is set, the executor also assigns the mapped GitHub l
 
 When the executor opens or updates a PR, it also posts the required handoff comment: `@codex please review` (idempotent if already present).
 
-If an issue stays labeled `autonomy:claimed` past `AUTONOMY_STALE_CLAIM_MINUTES` and no open PR exists for the claimed branch, the dispatch workflow automatically releases the claim and comments on the issue.
-
-The dispatch workflow writes `autonomy-queue-health.json` each run and uploads it as a workflow artifact. It hard-fails when both open `autonomy:ready` issues and open PRs are zero, and logs a queue-handoff violation when ready issues exist but open PRs are zero.
+The daemon records queue and lane health in `.autonomy/daemon-status.json` and
+`reports/autonomy-status.jsonl`. Stale local running items are recovered by the
+queue-state contract; GitHub issue labels remain an operator-owned signal and
+must not be treated as a distributed lock.
 
 ## Dispatch Logic
 

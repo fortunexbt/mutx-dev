@@ -78,11 +78,11 @@ Requirements:
 
 Keep CI aligned with what the repo actually supports today.
 
-- `scripts/test.sh` is the authoritative repo-wide validation entrypoint for CI.
-- Python API truth comes from `pytest tests/api`, lint/format checks, and compile checks.
-- Frontend truth comes from generated API types, lint, build, and the checked-in Playwright smoke suite.
+- `.github/workflows/ci.yml` is the authoritative validation flow; branch protection should require its single `CI / Required Validation` result.
+- Python API truth comes from the full supported 3.10-3.12 pytest matrix, lint/format checks, and compile checks.
+- Frontend truth comes from generated API types, unit tests, lint, typecheck, the production build, and the checked-in Playwright smoke suite.
 - Playwright is currently a production-smoke lane, not a generic localhost integration lane. If the suite assumes hosted behavior (for example Turnstile bootstrapping), CI should provide the matching test shim instead of failing on expected external-service gaps.
-- Infra validation should live in dedicated workflows/targets (`make tf-validate`, `make monitor-validate`, drift workflows) rather than silently piggybacking on unrelated app PRs.
+- Infra validation is an explicit changed-surface job in the authoritative CI flow; live Terraform drift stays in its credentialed, opt-in workflow.
 - When a validation lane starts failing for config drift rather than product breakage, either fix the fixture/assumption immediately or remove that lane from required CI until it is truthful again.
 
 ## What Not To Automate Yet

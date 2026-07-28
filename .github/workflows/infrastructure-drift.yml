@@ -8,10 +8,52 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: infrastructure-drift
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
+  upstream-drift:
+    name: Upstream metadata drift
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+
+      - name: Compare registry with GitHub metadata
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          python scripts/check_upstream_drift.py
+          --allow-drift
+          --markdown-output "$GITHUB_STEP_SUMMARY"
+          --json-output upstream-drift-report.json
+
+      - name: Upload machine-readable report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: upstream-drift-report
+          path: upstream-drift-report.json
+          if-no-files-found: warn
+          retention-days: 30
+
   readiness:
     name: Terraform drift readiness
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - name: Report drift schedule state
         env:
@@ -28,26 +70,34 @@ jobs:
     name: Terraform drift (${{ matrix.environment }})
     needs: readiness
     if: github.event_name == 'workflow_dispatch' || vars.ENABLE_TERRAFORM_DRIFT == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        environment: [staging, production]
+        include:
+          - environment: staging
+            tfvars_secret: TF_VARS_STAGING
+          - environment: production
+            tfvars_secret: TF_VARS_PRODUCTION
 
     env:
       TF_IN_AUTOMATION: "true"
       TF_VAR_do_token: ${{ secrets.DO_TOKEN }}
+      TF_VARS: ${{ secrets[matrix.tfvars_secret] }}
       AWS_ACCESS_KEY_ID: ${{ secrets.TF_STATE_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_STATE_SECRET_ACCESS_KEY }}
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Validate required secrets
         run: |
           missing=0
-          for var in TF_VAR_do_token AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+          for var in TF_VAR_do_token TF_VARS AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
             if [ -z "${!var}" ]; then
               echo "::error::Missing secret/env: $var"
               missing=1
@@ -57,9 +107,15 @@ jobs:
             exit 1
           fi
 
+      - name: Materialize protected Terraform inputs
+        run: |
+          umask 077
+          printf '%s\n' "${TF_VARS}" > "${RUNNER_TEMP}/terraform-${{ matrix.environment }}.tfvars"
+
       - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v4
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
+          terraform_version: '1.15.8'
           terraform_wrapper: false
 
       - name: Terraform init (remote backend)
@@ -75,8 +131,7 @@ jobs:
           set +e
           terraform -chdir=infrastructure/terraform plan \
             -detailed-exitcode \
-            -var-file=environments/${{ matrix.environment }}/terraform.tfvars \
-            -out=tfplan-${{ matrix.environment }}.bin
+            -var-file="${RUNNER_TEMP}/terraform-${{ matrix.environment }}.tfvars"
           exit_code=$?
           set -e
 
@@ -92,25 +147,6 @@ jobs:
             echo "drift=false" >> "$GITHUB_OUTPUT"
             echo "No drift detected in ${{ matrix.environment }}"
           fi
-
-      - name: Render human-readable plan
-        if: always()
-        run: |
-          if [ -f infrastructure/terraform/tfplan-${{ matrix.environment }}.bin ]; then
-            terraform -chdir=infrastructure/terraform show -no-color \
-              tfplan-${{ matrix.environment }}.bin > tfplan-${{ matrix.environment }}.txt
-          else
-            echo "No plan output was generated" > tfplan-${{ matrix.environment }}.txt
-          fi
-
-      - name: Upload plan artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-plan-${{ matrix.environment }}
-          path: |
-            infrastructure/terraform/tfplan-${{ matrix.environment }}.bin
-            infrastructure/terraform/tfplan-${{ matrix.environment }}.txt
 
       - name: Fail on drift
         if: steps.plan.outputs.drift == 'true'

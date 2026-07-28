@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 
 import {
   picoClasses,
@@ -55,9 +56,9 @@ function isolateBackground(root: HTMLElement) {
     ariaHidden: string | null
     inert: boolean
   }> = []
-  let current: HTMLElement | null = root
+  let current: HTMLElement = root
 
-  while (current && current !== document.body) {
+  while (current !== document.body) {
     const parentElement: HTMLElement | null = current.parentElement
     if (!parentElement) break
 
@@ -88,69 +89,12 @@ function isolateBackground(root: HTMLElement) {
   }
 }
 
-function buildRouteStep(currentItem: PicoWelcomeTourNavItem, pageTitle: string): TourStep {
-  if (currentItem.href === '/academy') {
-    return {
-      eyebrow: '02 Lesson first',
-      title: 'Work on one setup step at a time.',
-      body: 'Open the current lesson, finish the visible step, and leave the rest of the archive alone until setup is stable.',
-      bullets: [
-        'The map explains the order.',
-        'The current lesson should stay easy to find.',
-        `Current page: ${pageTitle}.`,
-      ],
-    }
-  }
-
-  if (currentItem.href === '/tutor') {
-    return {
-      eyebrow: '02 One blocker',
-      title: 'Tutor is for the exact next move.',
-      body: 'Ask about the command, file path, provider setting, or validation step that is blocking setup.',
-      bullets: [
-        'If the sequence is wrong, return to Academy.',
-        'If the runtime is already running, open Autopilot.',
-        `Current page: ${pageTitle}.`,
-      ],
-    }
-  }
-
-  if (currentItem.href === '/autopilot') {
-    return {
-      eyebrow: '02 Runtime',
-      title: 'Use Autopilot after a real run exists.',
-      body: 'Use this page when the answer depends on runs, alerts, approvals, spend, or current runtime state.',
-      bullets: [
-        'Return to Academy when setup is still incomplete.',
-        'Get human help when hosting, keys, or rollout details are unclear.',
-        `Current page: ${pageTitle}.`,
-      ],
-    }
-  }
-
-  if (currentItem.href === '/support') {
-    return {
-      eyebrow: '02 Human help',
-      title: 'Use support when setup needs guidance.',
-      body: 'Bring the lesson, error, or runtime notes you have. A human can help with API keys, hosting, integrations, and custom implementation.',
-      bullets: [
-        'Most users should not have to solve hosting alone.',
-        'Carry the lesson slug, error, and current runtime notes.',
-        `Current page: ${pageTitle}.`,
-      ],
-    }
-  }
-
-  return {
-    eyebrow: '02 First run',
-    title: 'Onboarding gets you to one working runtime.',
-    body: 'Install the runtime, run one prompt, then prepare the Markdown packet your agent can read next.',
-    bullets: [
-      'Leave preferences alone until the first run works.',
-      'Academy gives the exact setup steps.',
-      `Current page: ${pageTitle}.`,
-    ],
-  }
+function getRouteKey(href: string) {
+  if (href === '/academy') return 'academy'
+  if (href === '/tutor') return 'tutor'
+  if (href === '/autopilot') return 'autopilot'
+  if (href === '/support') return 'support'
+  return 'onboarding'
 }
 
 export function PicoWelcomeTour({
@@ -161,6 +105,7 @@ export function PicoWelcomeTour({
   nextItem,
   pageTitle,
 }: PicoWelcomeTourProps) {
+  const t = useTranslations('pico.welcomeTour')
   const [stepIndex, setStepIndex] = useState(0)
   const dialogRef = useRef<HTMLElement>(null)
   const initialFocusRef = useRef<HTMLButtonElement>(null)
@@ -247,30 +192,38 @@ export function PicoWelcomeTour({
   }, [open])
 
   const steps = useMemo<TourStep[]>(
-    () => [
-      {
-        eyebrow: '01 Page',
-        title: 'Each Pico page has one main job.',
-        body: 'Use the page for the setup step in front of you. Do not turn every screen into a research project.',
-        bullets: [
-          `You are in Chapter ${currentItem.chapter}: ${currentItem.label}.`,
-          previousItem ? `Back: ${previousItem.label}.` : 'Back: onboarding.',
-          nextItem ? `Next: ${nextItem.label}.` : 'Next: support.',
-        ],
-      },
-      buildRouteStep(currentItem, pageTitle),
-      {
-        eyebrow: '03 Output',
-        title: 'Save the output before moving on.',
-        body: 'The agent packet works better when setup leaves behind a command, a result, and a short note about what changed.',
-        bullets: [
-          'If the blocker is exact, ask Tutor.',
-          'If the runtime is already live, open Autopilot.',
-          'If setup needs judgment, ask Support with the notes you have.',
-        ],
-      },
-    ],
-    [currentItem, nextItem, pageTitle, previousItem],
+    () => {
+      const routeKey = getRouteKey(currentItem.href)
+      return [
+        {
+          eyebrow: t('page.eyebrow'),
+          title: t('page.title'),
+          body: t('page.body'),
+          bullets: [
+            t('page.current', { chapter: currentItem.chapter, label: currentItem.label }),
+            previousItem ? t('page.back', { label: previousItem.label }) : t('page.backOnboarding'),
+            nextItem ? t('page.next', { label: nextItem.label }) : t('page.nextSupport'),
+          ],
+        },
+        {
+          eyebrow: t(`routes.${routeKey}.eyebrow`),
+          title: t(`routes.${routeKey}.title`),
+          body: t(`routes.${routeKey}.body`),
+          bullets: [
+            t(`routes.${routeKey}.bullets.0`),
+            t(`routes.${routeKey}.bullets.1`),
+            t('routes.currentPage', { pageTitle }),
+          ],
+        },
+        {
+          eyebrow: t('output.eyebrow'),
+          title: t('output.title'),
+          body: t('output.body'),
+          bullets: ([0, 1, 2] as const).map((index) => t(`output.bullets.${index}`)),
+        },
+      ]
+    },
+    [currentItem, nextItem, pageTitle, previousItem, t],
   )
 
   const step = steps[stepIndex]
@@ -296,12 +249,12 @@ export function PicoWelcomeTour({
         <div className="border-b border-[color:var(--pico-border)] px-5 py-4 sm:px-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className={picoClasses.label}>Quick help</p>
+              <p className={picoClasses.label}>{t('dialog.label')}</p>
               <h2
                 id={titleId}
                 className="mt-2 font-[family:var(--font-site-display)] text-3xl tracking-[-0.06em] text-[color:var(--pico-text)]"
               >
-                Learn the flow once, then close it.
+                {t('dialog.title')}
               </h2>
             </div>
             <button
@@ -309,9 +262,9 @@ export function PicoWelcomeTour({
               ref={initialFocusRef}
               onClick={onClose}
               className={picoClasses.tertiaryButton}
-              aria-label="Close quick tour"
+              aria-label={t('dialog.closeLabel')}
             >
-              Close
+              {t('dialog.close')}
             </button>
           </div>
         </div>
@@ -324,7 +277,7 @@ export function PicoWelcomeTour({
               aria-live="polite"
               aria-atomic="true"
             >
-              Step {stepIndex + 1} of {steps.length} · {step.eyebrow}
+              {t('dialog.step', { current: stepIndex + 1, total: steps.length, eyebrow: step.eyebrow })}
             </p>
             <h3 className="mt-3 font-[family:var(--font-site-display)] text-3xl tracking-[-0.05em] text-[color:var(--pico-text)]">
               {step.title}
@@ -369,11 +322,11 @@ export function PicoWelcomeTour({
                 className={picoClasses.tertiaryButton}
                 disabled={stepIndex === 0}
               >
-                Back
+                {t('dialog.back')}
               </button>
               {stepIndex === steps.length - 1 ? (
                 <button type="button" onClick={onClose} className={picoClasses.primaryButton}>
-                  Finish
+                  {t('dialog.finish')}
                 </button>
               ) : (
                 <button
@@ -381,7 +334,7 @@ export function PicoWelcomeTour({
                   onClick={() => setStepIndex((current) => Math.min(current + 1, steps.length - 1))}
                   className={picoClasses.primaryButton}
                 >
-                  Next
+                  {t('dialog.next')}
                 </button>
               )}
             </div>

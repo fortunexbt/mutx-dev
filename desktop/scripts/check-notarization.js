@@ -68,28 +68,28 @@ function readSignatureDetails(appPath) {
 
 function findApps() {
   return getReleaseArtifacts()
-    .map((artifact) => artifact.appPath)
-    .filter((artifactPath) => fs.existsSync(artifactPath))
-    .sort((left, right) => fs.statSync(right).mtimeMs - fs.statSync(left).mtimeMs);
+    .filter((artifact) => fs.existsSync(artifact.appPath))
+    .sort(
+      (left, right) => fs.statSync(right.appPath).mtimeMs - fs.statSync(left.appPath).mtimeMs,
+    );
 }
 
 function findDmgs() {
   return getReleaseArtifacts()
-    .map((artifact) => artifact.dmgPath)
-    .filter((artifactPath) => fs.existsSync(artifactPath))
+    .filter((artifact) => fs.existsSync(artifact.dmgPath))
     .sort((left, right) => {
-      const leftTime = fs.statSync(left).mtimeMs;
-      const rightTime = fs.statSync(right).mtimeMs;
+      const leftTime = fs.statSync(left.dmgPath).mtimeMs;
+      const rightTime = fs.statSync(right.dmgPath).mtimeMs;
       return rightTime - leftTime;
     });
 }
 
-function checkApp(appPath) {
+function checkApp(appPath, expectedArch) {
   const details = readSignatureDetails(appPath);
   let signatureOk = true;
   let signatureMessage = "valid signature";
   try {
-    verifyAppArtifact(appPath, `${path.basename(appPath)} bundle`);
+    verifyAppArtifact(appPath, `${path.basename(appPath)} bundle`, undefined, expectedArch);
   } catch (error) {
     signatureOk = false;
     signatureMessage = formatError(error);
@@ -109,11 +109,11 @@ function checkApp(appPath) {
   return ok;
 }
 
-function checkDmg(dmgPath) {
+function checkDmg(dmgPath, expectedArch) {
   let mountedAppOk = true;
   let mountedAppMessage = "valid nested signature";
   try {
-    verifyDmgArtifact(dmgPath);
+    verifyDmgArtifact(dmgPath, undefined, undefined, expectedArch);
   } catch (error) {
     mountedAppOk = false;
     mountedAppMessage = formatError(error);
@@ -144,15 +144,15 @@ function main() {
 
   const failures = [];
 
-  apps.forEach((appPath) => {
-    if (!checkApp(appPath)) {
-      failures.push(appPath);
+  apps.forEach((artifact) => {
+    if (!checkApp(artifact.appPath, artifact.executableArch)) {
+      failures.push(artifact.appPath);
     }
   });
 
-  dmgs.forEach((dmgPath) => {
-    if (!checkDmg(dmgPath)) {
-      failures.push(dmgPath);
+  dmgs.forEach((artifact) => {
+    if (!checkDmg(artifact.dmgPath, artifact.executableArch)) {
+      failures.push(artifact.dmgPath);
     }
   });
 

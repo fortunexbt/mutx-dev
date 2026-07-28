@@ -4,15 +4,19 @@ import type { ReactNode } from 'react'
 import dynamic from 'next/dynamic'
 import {
   Activity,
+  ArrowUpRight,
   BarChart3,
   BellRing,
   Bot,
   Brain,
+  ClipboardCheck,
   FileText,
+  Gavel,
   GitBranchPlus,
   History,
   Key,
   LayoutGrid,
+  LockKeyhole,
   Network,
   Radar,
   ShieldCheck,
@@ -25,12 +29,19 @@ import {
 
 import { LoadingState } from '@/components/dashboard/LoadingState'
 import { RouteHeader } from '@/components/dashboard/RouteHeader'
-import { DashboardSectionPage } from '@/components/dashboard/DashboardSectionPage'
-import type { InterfaceMode } from '@/lib/store'
+import { type InterfaceMode, useMissionControl } from '@/lib/store'
 import {
   type DashboardPanelId,
   isPanelAccessibleInMode,
 } from '@/lib/dashboardPanels'
+
+export type DashboardSubscription = 'free' | 'pro' | 'enterprise' | null
+
+export function hasFullModeAccess(
+  subscription: DashboardSubscription,
+): subscription is 'pro' | 'enterprise' {
+  return subscription === 'pro' || subscription === 'enterprise'
+}
 
 const AgentsPageClient = dynamic(
   () => import('@/components/app/AgentsPageClient').then((mod) => mod.AgentsPageClient),
@@ -47,6 +58,14 @@ const AnalyticsPageClient = dynamic(
 const ApiKeysPageClient = dynamic(
   () => import('@/components/dashboard/ApiKeysPageClient').then((mod) => mod.ApiKeysPageClient),
   { loading: () => <LoadingState variant='cards' count={3} /> },
+)
+const ApprovalsPageClient = dynamic(
+  () => import('@/components/dashboard/ApprovalsPageClient').then((mod) => mod.ApprovalsPageClient),
+  { loading: () => <LoadingState variant='rows' count={5} /> },
+)
+const AuditPageClient = dynamic(
+  () => import('@/components/dashboard/AuditPageClient').then((mod) => mod.AuditPageClient),
+  { loading: () => <LoadingState variant='rows' count={5} /> },
 )
 const AutonomyPageClient = dynamic(
   () => import('@/components/dashboard/AutonomyPageClient').then((mod) => mod.AutonomyPageClient),
@@ -182,24 +201,108 @@ function ShellRoute({
   )
 }
 
-function UpgradeNudge({
+export function UpgradeNudge({
   panel,
   subscription,
 }: {
   panel: DashboardPanelId
-  subscription: 'free' | 'pro' | 'enterprise' | null
+  subscription: DashboardSubscription
 }) {
+  const setInterfaceMode = useMissionControl((state) => state.setInterfaceMode)
+  const canUseFullMode = hasFullModeAccess(subscription)
+  const panelLabel = panel.replaceAll('-', ' ')
+
   return (
-    <DashboardSectionPage
-      title='Full Mode Required'
-      description={`The ${panel} panel is gated in essential mode so the shell stays focused on the core workflow.`}
-      badge='essential mode'
-      checks={[
-        'Switch the interface mode to full once you need the broader dashboard surface.',
-        `Current subscription: ${subscription || 'free'}.`,
-        'Essential mode keeps overview, agents, tasks, chat, activity, logs, and settings available.',
-      ]}
-    />
+    <section
+      aria-labelledby='full-mode-title'
+      className='dashboard-entry overflow-hidden rounded-[6px] border border-[#34342e] bg-[linear-gradient(145deg,#151612_0%,#0c0d0b_72%)] shadow-[0_24px_80px_rgba(0,0,0,0.28)]'
+    >
+      <div className='grid gap-8 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.42fr)] lg:items-end'>
+        <div className='max-w-3xl'>
+          <div className='flex flex-wrap items-center gap-2 font-[family:var(--font-mono)] text-[10px] font-semibold uppercase tracking-[0.16em] text-[#aaa397]'>
+            <span className='inline-flex items-center gap-1.5 rounded-[3px] border border-[#4d3a2d] bg-[#1c100a] px-2.5 py-1 text-[#ff9b73]'>
+              <LockKeyhole className='h-3.5 w-3.5' aria-hidden='true' />
+              Essential view
+            </span>
+            <span>{subscription ? `${subscription} plan` : 'Plan unavailable'}</span>
+          </div>
+
+          <h1
+            id='full-mode-title'
+            className='mt-5 max-w-2xl font-[family:var(--font-site-display)] text-[clamp(2rem,5vw,4rem)] leading-[0.94] tracking-[-0.065em] text-[#eee9dc]'
+          >
+            {canUseFullMode
+              ? 'Open the full workspace.'
+              : subscription === 'free'
+                ? 'This panel belongs to full mode.'
+                : 'Plan access could not be verified.'}
+          </h1>
+          <p className='mt-5 max-w-2xl text-sm leading-7 text-[#aaa397] sm:text-[15px]'>
+            {canUseFullMode
+              ? `Your plan includes the ${panelLabel} panel. Switch views here and continue without leaving the current route.`
+              : subscription === 'free'
+                ? `The ${panelLabel} panel is available on Pro and Enterprise. Essential mode keeps the core fleet, task, session, activity, log, approval, and settings workflows available.`
+                : 'The workspace did not infer a free plan from a failed check. Retry the entitlement request before changing your subscription.'}
+          </p>
+
+          <div className='mt-7 flex flex-wrap gap-3'>
+            {canUseFullMode ? (
+              <button
+                type='button'
+                aria-label={`Switch ${panelLabel} panel to full mode`}
+                onClick={() => setInterfaceMode('full')}
+                className='inline-flex min-h-11 items-center gap-2 rounded-[4px] bg-[#ff571c] px-4 text-sm font-semibold text-[#090a08] transition-colors hover:bg-[#ff7445] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff8d66] motion-reduce:transition-none'
+              >
+                Switch to full mode
+                <ArrowUpRight className='h-4 w-4' aria-hidden='true' />
+              </button>
+            ) : subscription === 'free' ? (
+              <a
+                href='/pico/pricing?plan=pro'
+                aria-label={`Compare plans for ${panelLabel} panel`}
+                className='inline-flex min-h-11 items-center gap-2 rounded-[4px] bg-[#ff571c] px-4 text-sm font-semibold text-[#090a08] transition-colors hover:bg-[#ff7445] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff8d66] motion-reduce:transition-none'
+              >
+                Compare plans
+                <ArrowUpRight className='h-4 w-4' aria-hidden='true' />
+              </a>
+            ) : (
+              <button
+                type='button'
+                aria-label={`Retry plan check for ${panelLabel} panel`}
+                onClick={() => window.location.reload()}
+                className='inline-flex min-h-11 items-center gap-2 rounded-[4px] bg-[#ff571c] px-4 text-sm font-semibold text-[#090a08] transition-colors hover:bg-[#ff7445] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff8d66] motion-reduce:transition-none'
+              >
+                Retry plan check
+                <ArrowUpRight className='h-4 w-4' aria-hidden='true' />
+              </button>
+            )}
+            <a
+              href='/dashboard'
+              aria-label='Return to dashboard overview'
+              className='inline-flex min-h-11 items-center gap-2 rounded-[4px] border border-[#45443c] bg-[#0c0d0b] px-4 text-sm font-medium text-[#d6d0c3] transition-colors hover:border-[#656258] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847] motion-reduce:transition-none'
+            >
+              Return to overview
+            </a>
+          </div>
+        </div>
+
+        <dl className='grid gap-px overflow-hidden rounded-[5px] border border-[#34342e] bg-[#34342e]'>
+          {[
+            ['Requested panel', panelLabel],
+            ['Current view', 'Essential'],
+            ['Current plan', subscription || 'Unavailable'],
+            ['Required plan', 'Pro or Enterprise'],
+          ].map(([label, value]) => (
+            <div key={label} className='flex items-center justify-between gap-5 bg-[#0c0d0b] px-4 py-3.5'>
+              <dt className='font-[family:var(--font-mono)] text-[10px] uppercase tracking-[0.14em] text-[#918b80]'>
+                {label}
+              </dt>
+              <dd className='text-end text-sm font-medium capitalize text-[#eee9dc]'>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </section>
   )
 }
 
@@ -215,7 +318,7 @@ function renderPanel(panel: DashboardPanelId) {
           badge='workspace overview'
           stats={[
             { label: 'Route', value: '/dashboard' },
-            { label: 'Data', value: 'Live API', tone: 'success' },
+            { label: 'Data', value: 'Aggregated sources' },
           ]}
         >
           <DashboardOverviewPageClient />
@@ -317,20 +420,52 @@ function renderPanel(panel: DashboardPanelId) {
           <MonitoringPageClient />
         </ShellRoute>
       )
+    case 'approvals':
+      return (
+        <ShellRoute
+          title='Approval queue'
+          description='Review requester intent and execution context, then resolve pending control-plane actions against the canonical approval envelope.'
+          icon={Gavel}
+          iconTone='text-amber-300 bg-amber-400/10'
+          badge='human control gate'
+          stats={[
+            { label: 'Source', value: '/v1/approvals', tone: 'success' },
+            { label: 'Decisions', value: 'Role enforced', tone: 'warning' },
+          ]}
+        >
+          <ApprovalsPageClient />
+        </ShellRoute>
+      )
+    case 'audit':
+      return (
+        <ShellRoute
+          title='Audit evidence'
+          description='Filter attributable control-plane events, inspect redacted context, and export verified evidence for one run or session.'
+          icon={ClipboardCheck}
+          iconTone='text-emerald-300 bg-emerald-400/10'
+          badge='governance ledger'
+          stats={[
+            { label: 'Source', value: '/v1/audit/events', tone: 'success' },
+            { label: 'Access', value: 'Audit role', tone: 'warning' },
+          ]}
+        >
+          <AuditPageClient />
+        </ShellRoute>
+      )
     case 'activity':
       return (
         <ShellRoute
-          title='Activity'
-          description='Operational activity, alert pressure, and recent system state in the same shell as runs and governance.'
-          icon={Activity}
-          iconTone='text-cyan-300 bg-cyan-400/10'
-          badge='activity surface'
+          title='History'
+          description='Review recent control-plane runs and inspect the recorded activity and trace events for each execution.'
+          icon={History}
+          iconTone='text-slate-200 bg-white/10'
+          badge='execution activity'
           stats={[
-            { label: 'Scope', value: 'Events + health' },
-            { label: 'Source', value: 'Live API', tone: 'success' },
+            { label: 'Source', value: 'Runs API' },
+            { label: 'Data', value: 'Live', tone: 'success' },
           ]}
         >
-          <MonitoringPageClient />
+          <LogsPageClient mode='history' />
         </ShellRoute>
       )
     case 'traces':
@@ -604,7 +739,7 @@ function renderPanel(panel: DashboardPanelId) {
           icon={BellRing}
           iconTone='text-amber-300 bg-amber-400/10'
           badge='signal inbox'
-          stats={[{ label: 'Scope', value: 'Signals only' }, { label: 'Data', value: 'Live API', tone: 'success' }]}
+          stats={[{ label: 'Scope', value: 'Signals only' }, { label: 'Data', value: 'Aggregated signals' }]}
         >
           <NotificationsPageClient />
         </ShellRoute>
@@ -617,7 +752,7 @@ function renderPanel(panel: DashboardPanelId) {
           icon={Activity}
           iconTone='text-cyan-300 bg-cyan-400/10'
           badge='derived brief'
-          stats={[{ label: 'Scope', value: 'Read-only synthesis' }, { label: 'Data', value: 'Live API', tone: 'success' }]}
+          stats={[{ label: 'Scope', value: 'Read-only synthesis' }, { label: 'Data', value: 'Derived snapshot' }]}
         >
           <StandupPageClient />
         </ShellRoute>
@@ -632,7 +767,7 @@ export function DashboardContentRouter({
 }: {
   panel: DashboardPanelId
   interfaceMode: InterfaceMode
-  subscription: 'free' | 'pro' | 'enterprise' | null
+  subscription: DashboardSubscription
 }) {
   if (!isPanelAccessibleInMode(panel, interfaceMode)) {
     return <UpgradeNudge panel={panel} subscription={subscription} />

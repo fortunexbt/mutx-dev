@@ -163,7 +163,7 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   border-top: 1px solid var(--rule);
-  border-left: 1px solid var(--rule);
+  border-inline-start: 1px solid var(--rule);
 }
 
 .linkGrid nav {
@@ -171,7 +171,7 @@
   min-width: 0;
   flex-direction: column;
   padding: 1.35rem;
-  border-right: 1px solid var(--rule);
+  border-inline-end: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
 }
 
@@ -190,12 +190,12 @@
   color: #bfc3ba;
   font-size: 0.9rem;
   text-decoration: none;
-  transition: color 160ms ease, padding-left 160ms ease;
+  transition: color 160ms ease, padding-inline-start 160ms ease;
 }
 
 .linkGrid nav > a:hover,
 .linkGrid nav > a:focus-visible {
-  padding-left: 0.35rem;
+  padding-inline-start: 0.35rem;
   color: var(--bone);
 }
 
@@ -252,6 +252,10 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+:global([dir='rtl']) .directionalIcon {
+  transform: scaleX(-1);
 }
 
 @media (max-width: 900px) {

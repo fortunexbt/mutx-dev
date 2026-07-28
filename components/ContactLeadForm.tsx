@@ -1,6 +1,6 @@
 'use client'
 
-import { type FormEvent, useId, useMemo, useState } from 'react'
+import { type FormEvent, useId, useRef, useState } from 'react'
 import { AlertCircle, CheckCircle2, Loader2, Send } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -29,6 +29,16 @@ const MESSAGE_PLACEHOLDERS: Record<string, string> = {
   general: 'Summarize the context, what you need, and how MUTX can help.',
 }
 
+type ContactSubmissionAttempt = { content: string; key: string }
+
+export function resolveContactSubmissionAttempt(
+  current: ContactSubmissionAttempt | null,
+  content: string,
+  createKey = () => window.crypto.randomUUID(),
+): ContactSubmissionAttempt {
+  return current?.content === content ? current : { content, key: createKey() }
+}
+
 export function ContactLeadForm({ source = 'contact-page', className }: ContactLeadFormProps) {
   const emailErrorId = useId()
   const messageErrorId = useId()
@@ -44,30 +54,47 @@ export function ContactLeadForm({ source = 'contact-page', className }: ContactL
   const [success, setSuccess] = useState('')
   const [emailInvalid, setEmailInvalid] = useState(false)
   const [messageInvalid, setMessageInvalid] = useState(false)
-
-  const inquiryLabel = useMemo(
-    () => INQUIRY_TYPES.find((item) => item.value === inquiryType)?.label ?? 'General',
-    [inquiryType],
-  )
+  const messageRef = useRef<HTMLTextAreaElement>(null)
+  const submissionAttemptRef = useRef<{ content: string; key: string } | null>(null)
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setLoading(true)
     setError('')
     setSuccess('')
 
+    const normalizedMessage = message.trim()
+    if (!normalizedMessage) {
+      setMessageInvalid(true)
+      messageRef.current?.focus()
+      return
+    }
+
+    setLoading(true)
+
     try {
+      const requestPayload = {
+        email,
+        name,
+        company: organization,
+        message: normalizedMessage,
+        source,
+        interest: inquiryType,
+        honeypot,
+        productUpdatesConsent: false,
+      }
+      const canonicalContent = JSON.stringify(requestPayload)
+      submissionAttemptRef.current = resolveContactSubmissionAttempt(
+        submissionAttemptRef.current,
+        canonicalContent,
+      )
+
       const response = await fetch('/api/leads', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          name,
-          company: organization,
-          message: `Inquiry type: ${inquiryLabel}\n\n${message.trim()}`,
-          source: `${source}:${inquiryType}`,
-          honeypot,
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': submissionAttemptRef.current.key,
+        },
+        body: canonicalContent,
       })
 
       const payload = await response.json().catch(() => ({}))
@@ -77,16 +104,22 @@ export function ContactLeadForm({ source = 'contact-page', className }: ContactL
         (typeof payload?.error === 'string' ? payload.error : null) ||
         'Failed to send contact request'
 
-      if (!response.ok) {
+      if (!response.ok || payload?.persisted !== true) {
         throw new Error(errorMessage)
       }
 
+      submissionAttemptRef.current = null
       setInquiryType('general')
       setEmail('')
       setName('')
       setOrganization('')
       setMessage('')
-      setSuccess(payload?.message || 'Message received. The MUTX team will follow up.')
+      setEmailInvalid(false)
+      setMessageInvalid(false)
+      setSuccess(
+        payload?.message_to_submitter ||
+          'Your message was saved. Automated confirmation and team notification are best-effort.',
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send contact request')
     } finally {
@@ -97,15 +130,25 @@ export function ContactLeadForm({ source = 'contact-page', className }: ContactL
   return (
     <div data-testid="contact-lead-form" className={cn(marketing.panel, marketing.panelPadded, className)}>
       {success ? (
-        <div className={marketing.success} role="status">
-          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
-          <div>
-            <p className="font-medium">{success}</p>
-            <p className="mt-1 text-sm">If it is urgent, email hello@mutx.dev directly.</p>
+        <div className={marketing.formWrap}>
+          <div className={marketing.success} role="status" aria-live="polite" aria-atomic="true">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-medium">{success}</p>
+              <p className="mt-1 text-sm">Your inquiry is complete and can be submitted again if needed.</p>
+            </div>
+          </div>
+          <div className={marketing.utilityLinks}>
+            <button type="button" onClick={() => setSuccess('')} className={marketing.inlineLink}>
+              Send another inquiry
+            </button>
+            <a href="mailto:hello@mutx.dev" className={marketing.inlineLink}>
+              Email hello@mutx.dev
+            </a>
           </div>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className={marketing.formWrap}>
+        <form onSubmit={handleSubmit} className={marketing.formWrap} aria-busy={loading}>
           <input
             type="text"
             name="company_website"
@@ -119,6 +162,7 @@ export function ContactLeadForm({ source = 'contact-page', className }: ContactL
           <label className={marketing.field}>
             <span className={marketing.fieldLabel}>Inquiry type (required)</span>
             <select
+              name="interest"
               required
               value={inquiryType}
               onChange={(event) => setInquiryType(event.target.value)}
@@ -136,9 +180,11 @@ export function ContactLeadForm({ source = 'contact-page', className }: ContactL
             <label className={marketing.field}>
               <span className={marketing.fieldLabel}>Name (optional)</span>
               <input
+                name="name"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 autoComplete="name"
+                maxLength={100}
                 placeholder="Your name"
                 className={marketing.input}
               />
@@ -147,6 +193,7 @@ export function ContactLeadForm({ source = 'contact-page', className }: ContactL
             <label className={marketing.field}>
               <span className={marketing.fieldLabel}>Work email (required)</span>
               <input
+                name="email"
                 type="email"
                 required
                 value={email}
@@ -156,6 +203,8 @@ export function ContactLeadForm({ source = 'contact-page', className }: ContactL
                 }}
                 onInvalid={() => setEmailInvalid(true)}
                 autoComplete="email"
+                maxLength={255}
+                dir="ltr"
                 aria-invalid={emailInvalid || undefined}
                 aria-describedby={emailInvalid ? emailErrorId : undefined}
                 placeholder="you@company.com"
@@ -172,9 +221,11 @@ export function ContactLeadForm({ source = 'contact-page', className }: ContactL
           <label className={marketing.field}>
             <span className={marketing.fieldLabel}>Organization (optional)</span>
             <input
+              name="company"
               value={organization}
               onChange={(event) => setOrganization(event.target.value)}
               autoComplete="organization"
+              maxLength={200}
               placeholder="Firm, company, studio, or fund"
               className={marketing.input}
             />
@@ -183,6 +234,8 @@ export function ContactLeadForm({ source = 'contact-page', className }: ContactL
           <label className={marketing.field}>
             <span className={marketing.fieldLabel}>Message (required)</span>
             <textarea
+              ref={messageRef}
+              name="message"
               required
               value={message}
               onChange={(event) => {
@@ -193,6 +246,7 @@ export function ContactLeadForm({ source = 'contact-page', className }: ContactL
               aria-invalid={messageInvalid || undefined}
               aria-describedby={messageInvalid ? messageErrorId : undefined}
               placeholder={MESSAGE_PLACEHOLDERS[inquiryType]}
+              maxLength={2000}
               rows={6}
               className={marketing.textarea}
             />

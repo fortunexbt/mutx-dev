@@ -14,10 +14,6 @@ def _service() -> AuthService:
     return AuthService(config=current_config(), client_factory=get_client)
 
 
-def _echo_service_error(error: CLIServiceError) -> None:
-    click.echo(f"Error: {error}", err=True)
-
-
 @auth_group.command(name="login")
 @click.option("--email", "-e", prompt=True, help="Email address")
 @click.option("--password", "-p", prompt=True, hide_input=True, help="Password")
@@ -32,7 +28,7 @@ def login_command(email: str, password: str, api_url: str | None):
         )
         click.echo("Logged in successfully.")
     except CLIServiceError as exc:
-        _echo_service_error(exc)
+        raise click.ClickException(str(exc)) from exc
 
 
 @auth_group.command(name="register")
@@ -41,17 +37,23 @@ def login_command(email: str, password: str, api_url: str | None):
 @click.option("--password", "-p", prompt=True, hide_input=True, help="Password")
 def register_command(name: str, email: str, password: str):
     try:
-        _service().register(name=name, email=email, password=password)
-        click.echo("Registered and logged in successfully.")
+        status = _service().register(name=name, email=email, password=password)
     except CLIServiceError as exc:
-        _echo_service_error(exc)
+        raise click.ClickException(str(exc)) from exc
+    if status.authenticated:
+        click.echo("Registered and logged in successfully.")
+    else:
+        click.echo("Registered. Verify your email, then run 'mutx auth login'.")
 
 
 @auth_group.command(name="logout")
 def logout_command():
-    if not _service().logout():
-        click.echo("No local access token is stored.")
-        return
+    try:
+        if not _service().logout():
+            click.echo("No local access token is stored.")
+            return
+    except CLIServiceError as exc:
+        raise click.ClickException(str(exc)) from exc
     click.echo("Logged out successfully.")
 
 
@@ -61,7 +63,7 @@ def whoami_command():
         user = _service().whoami()
         click.echo(f"{user.email} | {user.name} | {user.plan}")
     except CLIServiceError as exc:
-        _echo_service_error(exc)
+        raise click.ClickException(str(exc)) from exc
 
 
 @auth_group.command(name="status")

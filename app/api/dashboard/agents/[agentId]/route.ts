@@ -23,14 +23,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return ownershipError
     }
 
+    const encodedAgentId = encodeURIComponent(agentId)
+
     const { searchParams } = new URL(request.url)
     const path = searchParams.get('path') || ''
     const targetUrl =
       path === 'logs'
-        ? `${getApiBaseUrl()}/v1/agents/${agentId}/logs`
+        ? `${getApiBaseUrl()}/v1/agents/${encodedAgentId}/logs`
         : path === 'metrics'
-          ? `${getApiBaseUrl()}/v1/agents/${agentId}/metrics`
-          : `${getApiBaseUrl()}/v1/agents/${agentId}`
+          ? `${getApiBaseUrl()}/v1/agents/${encodedAgentId}/metrics`
+          : `${getApiBaseUrl()}/v1/agents/${encodedAgentId}`
 
     return proxyJson(request, targetUrl, {
       method: 'GET',
@@ -58,7 +60,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return ownershipError
     }
 
-    return proxyJson(request, `${getApiBaseUrl()}/v1/agents/${agentId}`, {
+    return proxyJson(request, `${getApiBaseUrl()}/v1/agents/${encodeURIComponent(agentId)}`, {
       method: 'DELETE',
       fallbackMessage: 'Failed to delete agent',
     })
@@ -79,18 +81,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return ownershipError
     }
 
+    const encodedAgentId = encodeURIComponent(agentId)
+
     const { searchParams } = new URL(request.url)
     const action = searchParams.get('action')
 
     if (action === 'stop') {
-      return proxyJson(request, `${getApiBaseUrl()}/v1/agents/${agentId}/stop`, {
+      return proxyJson(request, `${getApiBaseUrl()}/v1/agents/${encodedAgentId}/stop`, {
         method: 'POST',
         fallbackMessage: 'Failed to stop agent',
       })
     }
 
     if (action === 'deploy') {
-      return proxyJson(request, `${getApiBaseUrl()}/v1/agents/${agentId}/deploy`, {
+      return proxyJson(request, `${getApiBaseUrl()}/v1/agents/${encodedAgentId}/deploy`, {
         method: 'POST',
         fallbackMessage: 'Failed to deploy agent',
       })

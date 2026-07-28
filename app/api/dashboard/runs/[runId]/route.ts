@@ -13,7 +13,7 @@ export async function GET(
 ) {
   return withErrorHandling(async () => {
     const { runId } = await params;
-    return proxyJson(request, `${getApiBaseUrl()}/v1/runs/${runId}`, {
+    return proxyJson(request, `${getApiBaseUrl()}/v1/runs/${encodeURIComponent(runId)}`, {
       method: "GET",
       fallbackMessage: "Failed to fetch run",
     });

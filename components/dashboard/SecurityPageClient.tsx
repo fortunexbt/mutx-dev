@@ -3,10 +3,15 @@
 import { useEffect, useState } from "react";
 import { KeyRound, Lock, ShieldCheck } from "lucide-react";
 
-import { ApiRequestError, normalizeCollection, readJson } from "@/components/app/http";
+import { normalizeCollection, readJson } from "@/components/app/http";
+import {
+  dashboardRequestErrorMessage,
+  getDashboardRequestAccessFailure,
+} from "@/components/dashboard/dashboardRequestAccess";
 import {
   LiveAuthRequired,
   LiveErrorState,
+  LiveForbidden,
   LiveKpiGrid,
   LiveLoading,
   LivePanel,
@@ -17,21 +22,14 @@ import {
 } from "@/components/dashboard/livePrimitives";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 
-type ApiKeyRecord = {
-  id: string;
-  name?: string;
-  description?: string | null;
-  key_prefix?: string | null;
-  status?: string | null;
-  scopes?: string[];
-  created_at?: string | null;
-  expires_at?: string | null;
-  last_used_at?: string | null;
-};
+import type { components } from "@/app/types/api";
+
+type ApiKeyRecord = components["schemas"]["APIKeyResponse"];
 
 export function SecurityPageClient() {
   const [loading, setLoading] = useState(true);
   const [authRequired, setAuthRequired] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [keys, setKeys] = useState<ApiKeyRecord[]>([]);
 
@@ -42,6 +40,7 @@ export function SecurityPageClient() {
       setLoading(true);
       setError(null);
       setAuthRequired(false);
+      setPermissionDenied(false);
 
       try {
         const response = await readJson<unknown>("/api/api-keys");
@@ -51,13 +50,13 @@ export function SecurityPageClient() {
         }
       } catch (loadError) {
         if (!cancelled) {
-          if (
-            loadError instanceof ApiRequestError &&
-            (loadError.status === 401 || loadError.status === 403)
-          ) {
+          const accessFailure = getDashboardRequestAccessFailure(loadError);
+          if (accessFailure === "authentication") {
             setAuthRequired(true);
+          } else if (accessFailure === "permission") {
+            setPermissionDenied(true);
           } else {
-            setError(loadError instanceof Error ? loadError.message : "Failed to load security state");
+            setError(dashboardRequestErrorMessage(loadError, "Failed to load security state"));
           }
           setLoading(false);
         }
@@ -79,9 +78,14 @@ export function SecurityPageClient() {
       />
     );
   }
+  if (permissionDenied) {
+    return <LiveForbidden title="Security permission required" message="Your account cannot inspect API-key or credential lifecycle state." />;
+  }
   if (error) return <LiveErrorState title="Security surface unavailable" message={error} />;
 
-  const liveKeys = keys.filter((key) => !key.expires_at || new Date(key.expires_at).getTime() > Date.now());
+  const liveKeys = keys.filter(
+    (key) => key.is_active && (!key.expires_at || new Date(key.expires_at).getTime() > Date.now()),
+  );
 
   return (
     <div className="space-y-4">
@@ -89,7 +93,7 @@ export function SecurityPageClient() {
         <LiveStatCard
           label="Credentials"
           value={String(keys.length)}
-          detail={`${liveKeys.length} appear active or unexpired.`}
+          detail={`${liveKeys.length} active and unexpired.`}
           status={asDashboardStatus(liveKeys.length > 0 ? "healthy" : "idle")}
         />
         <LiveStatCard
@@ -112,16 +116,19 @@ export function SecurityPageClient() {
                 <div key={key.id} className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-white">{key.name || key.key_prefix || key.id}</p>
-                      <p className="mt-1 text-xs text-slate-500">{key.description || key.id}</p>
+                      <p className="text-sm font-medium text-white">{key.name}</p>
+                      <p className="mt-1 break-all font-mono text-xs text-slate-500">{key.id}</p>
                     </div>
-                    <StatusBadge status={asDashboardStatus(key.status || "idle")} label={key.status || "unknown"} />
+                    <StatusBadge
+                      status={key.is_active ? "success" : "idle"}
+                      label={key.is_active ? "active" : "revoked"}
+                    />
                   </div>
                   <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
                     <div>created {formatDateTime(key.created_at)}</div>
-                    <div>last used {key.last_used_at ? formatRelativeTime(key.last_used_at) : "never"}</div>
+                    <div>last used {key.last_used ? formatRelativeTime(key.last_used) : "never"}</div>
                     <div>expires {key.expires_at ? formatDateTime(key.expires_at) : "no expiry"}</div>
-                    <div>scopes {(key.scopes ?? []).join(", ") || "default"}</div>
+                    <div>lifecycle {key.is_active ? "enabled" : "revoked"}</div>
                   </div>
                 </div>
               ))

@@ -8,6 +8,11 @@ from httpx import AsyncClient
 import src.api.routes.governance_credentials as gov_cred
 
 
+@pytest.fixture(autouse=True)
+def developer_principal(test_user):
+    test_user.roles = ["DEVELOPER"]
+
+
 class FakeBroker:
     """In-memory credential broker for testing."""
 

@@ -25,6 +25,7 @@ import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import {
   LiveAuthRequired,
   LiveErrorState,
+  LiveForbidden,
   LiveLoading,
   LiveMiniStat,
   LiveMiniStatGrid,
@@ -36,8 +37,31 @@ import {
 import { dashboardTokens } from "@/components/dashboard/tokens";
 import { type components } from "@/app/types/api";
 
-type Agent = components["schemas"]["AgentResponse"];
+type Agent = components["schemas"]["AgentDetailResponse"];
 type BusyAction = "refresh" | "stop" | "deploy" | "delete" | null;
+type LoadFailureKind = "forbidden" | "not-found" | "server" | "other" | null;
+type AgentLifecycleAction = "deploy" | "stop" | "delete";
+
+function agentAllowsLifecycleAction(status: string, action: AgentLifecycleAction) {
+  if (status === "running") return action === "stop" || action === "delete";
+  if (["stopped", "failed"].includes(status)) {
+    return action === "deploy" || action === "delete";
+  }
+  if (status === "creating") return action === "delete";
+  return false;
+}
+
+function agentErrorMessage(error: unknown, fallback: string) {
+  if (!(error instanceof ApiRequestError)) {
+    return fallback;
+  }
+
+  if (error.status === 401) return "Your session expired. Sign in again to operate this agent.";
+  if (error.status === 403) return "You do not have permission to operate this agent.";
+  if (error.status === 404) return "This agent no longer exists.";
+  if (error.status >= 500) return `The control plane could not complete this request. ${fallback}`;
+  return error.message || fallback;
+}
 
 function shortId(value: string) {
   return value.length <= 16 ? value : `${value.slice(0, 8)}...${value.slice(-4)}`;
@@ -78,7 +102,7 @@ function ActionButton({
       disabled={disabled || busy}
       className={`inline-flex items-center gap-2 rounded-[12px] border px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${actionToneClass(tone)}`}
     >
-      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Icon className="h-4 w-4" />}
+      {busy ? <Loader2 className="h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" /> : <Icon className="h-4 w-4" />}
       {label}
     </button>
   );
@@ -92,6 +116,7 @@ export default function AgentDetailPage() {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadFailureKind, setLoadFailureKind] = useState<LoadFailureKind>(null);
   const [authRequired, setAuthRequired] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
@@ -110,13 +135,28 @@ export default function AgentDetailPage() {
       setAgent(payload);
       setAuthRequired(false);
       setError(null);
+      setLoadFailureKind(null);
     } catch (loadError) {
       if (loadError instanceof ApiRequestError && loadError.status === 401) {
         setAuthRequired(true);
         setAgent(null);
         setError(null);
+        setLoadFailureKind(null);
+      } else if (loadError instanceof ApiRequestError && loadError.status === 404) {
+        setAuthRequired(false);
+        setAgent(null);
+        setError(null);
+        setLoadFailureKind("not-found");
       } else {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load agent");
+        setAuthRequired(false);
+        setError(agentErrorMessage(loadError, "Failed to load agent."));
+        setLoadFailureKind(
+          loadError instanceof ApiRequestError && loadError.status === 403
+            ? "forbidden"
+            : loadError instanceof ApiRequestError && loadError.status >= 500
+              ? "server"
+              : "other",
+        );
       }
     } finally {
       if (!preserveLoading) {
@@ -137,7 +177,20 @@ export default function AgentDetailPage() {
     try {
       await runner();
     } catch (actionFailure) {
-      setActionError(actionFailure instanceof Error ? actionFailure.message : "Agent action failed");
+      if (actionFailure instanceof ApiRequestError && actionFailure.status === 401) {
+        setAuthRequired(true);
+        setAgent(null);
+      } else if (actionFailure instanceof ApiRequestError && actionFailure.status === 403) {
+        setAgent(null);
+        setError(agentErrorMessage(actionFailure, "Agent action denied."));
+        setLoadFailureKind("forbidden");
+        setDeleteDialogOpen(false);
+      } else if (actionFailure instanceof ApiRequestError && actionFailure.status === 404) {
+        setAgent(null);
+        setLoadFailureKind("not-found");
+      } else {
+        setActionError(agentErrorMessage(actionFailure, "Agent action failed."));
+      }
     } finally {
       setBusyAction(null);
     }
@@ -150,18 +203,18 @@ export default function AgentDetailPage() {
 
   const handleStop = () =>
     handleAction("stop", async () => {
-      const payload = await writeJson<Agent>(`/api/dashboard/agents/${encodeURIComponent(agentId)}?action=stop`, {
+      await writeJson<unknown>(`/api/dashboard/agents/${encodeURIComponent(agentId)}?action=stop`, {
         method: "POST",
       });
-      setAgent(payload);
+      await loadAgent({ preserveLoading: true });
     });
 
   const handleDeploy = () =>
     handleAction("deploy", async () => {
-      const payload = await writeJson<Agent>(`/api/dashboard/agents/${encodeURIComponent(agentId)}?action=deploy`, {
+      await writeJson<unknown>(`/api/dashboard/agents/${encodeURIComponent(agentId)}?action=deploy`, {
         method: "POST",
       });
-      setAgent(payload);
+      await loadAgent({ preserveLoading: true });
     });
 
   const handleDelete = () =>
@@ -177,8 +230,9 @@ export default function AgentDetailPage() {
     window.setTimeout(() => setCopied(false), 1800);
   };
 
-  const canDeploy = agent ? ["stopped", "failed", "error", "deployed"].includes(agent.status) : false;
-  const canStop = agent?.status === "running";
+  const canDeploy = agent ? agentAllowsLifecycleAction(agent.status, "deploy") : false;
+  const canStop = agent ? agentAllowsLifecycleAction(agent.status, "stop") : false;
+  const canDelete = agent ? agentAllowsLifecycleAction(agent.status, "delete") : false;
 
   const routeHeader = (
     <RouteHeader
@@ -218,11 +272,43 @@ export default function AgentDetailPage() {
     );
   }
 
+  if (loadFailureKind === "not-found") {
+    return (
+      <div className="space-y-4">
+        {routeHeader}
+        <EmptyState
+          title="Agent not found"
+          message="This agent no longer exists or was removed from the current tenant."
+          icon={<Bot className="h-7 w-7" />}
+        />
+      </div>
+    );
+  }
+
+  if (loadFailureKind === "forbidden") {
+    return (
+      <div className="space-y-4">
+        {routeHeader}
+        <LiveForbidden
+          title="Agent permission required"
+          message={error || "Your account cannot inspect or operate this agent. Lifecycle controls are unavailable."}
+        />
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div className="space-y-4">
         {routeHeader}
-        <LiveErrorState title="Agent detail unavailable" message={error} />
+        <LiveErrorState
+          title={
+            loadFailureKind === "server"
+                ? "Agent control plane unavailable"
+                : "Agent detail unavailable"
+          }
+          message={error}
+        />
       </div>
     );
   }
@@ -245,21 +331,49 @@ export default function AgentDetailPage() {
       {routeHeader}
 
       {actionError ? (
-        <div className="rounded-[16px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+        <div role="alert" className="rounded-[16px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
           {actionError}
         </div>
       ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
         <ActionButton label="Back to Agents" icon={ArrowLeft} onClick={() => router.push("/dashboard/agents")} />
-        <ActionButton label="Refresh" icon={RefreshCcw} busy={busyAction === "refresh"} onClick={handleRefresh} />
+        <ActionButton
+          label="Refresh"
+          icon={RefreshCcw}
+          busy={busyAction === "refresh"}
+          disabled={busyAction !== null}
+          onClick={handleRefresh}
+        />
         {canStop ? (
-          <ActionButton label="Stop Agent" icon={Power} tone="warning" busy={busyAction === "stop"} onClick={handleStop} />
+          <ActionButton
+            label="Stop Agent"
+            icon={Power}
+            tone="warning"
+            busy={busyAction === "stop"}
+            disabled={busyAction !== null}
+            onClick={handleStop}
+          />
         ) : null}
         {canDeploy ? (
-          <ActionButton label="Deploy Agent" icon={Rocket} tone="primary" busy={busyAction === "deploy"} onClick={handleDeploy} />
+          <ActionButton
+            label="Deploy Agent"
+            icon={Rocket}
+            tone="primary"
+            busy={busyAction === "deploy"}
+            disabled={busyAction !== null}
+            onClick={handleDeploy}
+          />
         ) : null}
-        <ActionButton label="Delete Agent" icon={Trash2} tone="danger" disabled={busyAction !== null} onClick={() => setDeleteDialogOpen(true)} />
+        {canDelete ? (
+          <ActionButton
+            label="Delete Agent"
+            icon={Trash2}
+            tone="danger"
+            disabled={busyAction !== null}
+            onClick={() => setDeleteDialogOpen(true)}
+          />
+        ) : null}
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">

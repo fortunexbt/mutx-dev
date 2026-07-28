@@ -107,9 +107,65 @@ def test_login_reports_unreachable_api_without_traceback(monkeypatch) -> None:
         ],
     )
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert config.api_url == "https://api.mutx.dev"
+    assert "Could not reach API" in result.output
+    assert "Logged in successfully" not in result.output
     assert "Traceback" not in result.output
+
+
+def test_auth_login_service_failure_exits_nonzero_without_success(monkeypatch) -> None:
+    config = LoginConfig()
+    monkeypatch.setattr("cli.main.CLIConfig", lambda: config)
+    monkeypatch.setattr("cli.commands.auth.current_config", lambda: config)
+    monkeypatch.setattr(
+        "cli.commands.auth.get_client",
+        lambda _: SimpleNamespace(
+            post=lambda path, json: DummyResponse(503, {"detail": "Authentication unavailable"})
+        ),
+    )
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "auth",
+            "login",
+            "--email",
+            "operator@example.com",
+            "--password",
+            "StrongPass1!",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "Authentication unavailable" in result.output
+    assert "Logged in successfully" not in result.output
+
+
+def test_logout_service_failure_exits_nonzero_and_preserves_local_tokens(monkeypatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_post(path: str, json: dict[str, str]) -> DummyResponse:
+        captured.update(path=path, json=json)
+        return DummyResponse(503, {"detail": "Logout unavailable"})
+
+    config = LoginConfig()
+    config.api_key = "access-token"
+    config.refresh_token = "refresh-token"
+    monkeypatch.setattr("cli.main.CLIConfig", lambda: config)
+    monkeypatch.setattr("cli.main.get_client", lambda _: SimpleNamespace(post=fake_post))
+
+    result = CliRunner().invoke(cli, ["logout"])
+
+    assert result.exit_code == 1
+    assert captured == {
+        "path": "/v1/auth/logout",
+        "json": {"refresh_token": "refresh-token"},
+    }
+    assert "Logout unavailable" in result.output
+    assert "Logged out successfully" not in result.output
+    assert config.api_key == "access-token"
+    assert config.refresh_token == "refresh-token"
 
 
 def test_api_service_refreshes_tokens_after_401() -> None:

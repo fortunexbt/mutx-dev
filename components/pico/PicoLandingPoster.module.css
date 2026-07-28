@@ -112,6 +112,11 @@
   color: var(--bone);
 }
 
+.nav nav > a.navCta {
+  min-width: 10rem;
+  background: var(--orange);
+}
+
 .hero {
   position: relative;
   display: grid;
@@ -233,6 +238,19 @@
 .heroActions a,
 .finalActions a {
   border-inline-start: 0;
+}
+
+.heroActions a.primaryAction,
+.finalActions a.primaryAction {
+  border-inline-start: 1px solid var(--carbon);
+  background: var(--carbon);
+  color: var(--bone);
+}
+
+.finalActions button.secondaryAction {
+  border-inline-start: 0;
+  background: transparent;
+  color: var(--carbon);
 }
 
 .heroActions button:hover,
@@ -934,6 +952,12 @@
   gap: 0.4rem;
 }
 
+.pricingName bdi {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
 .pricingName strong {
   font-family: var(--font-site-display), var(--font-display), sans-serif;
   font-size: clamp(2.7rem, 3.8vw, 4.5rem);
@@ -991,7 +1015,8 @@
   color: #ff6a32;
 }
 
-.pricingCard > button {
+.pricingCard > button,
+.pricingCard > a.pricingAction {
   display: flex;
   min-height: 3.8rem;
   align-items: center;
@@ -1008,24 +1033,29 @@
   letter-spacing: 0.08em;
   line-height: 1.35;
   text-align: start;
+  text-decoration: none;
   text-transform: uppercase;
   cursor: pointer;
   transition: background-color 160ms ease, color 160ms ease;
 }
 
-.pricingCard[data-recommended="true"] > button {
+.pricingCard[data-recommended="true"] > button,
+.pricingCard[data-recommended="true"] > a.pricingAction {
   border-color: var(--orange);
   background: var(--orange);
   color: var(--carbon);
 }
 
 .pricingCard > button:hover,
-.pricingCard > button:focus-visible {
+.pricingCard > button:focus-visible,
+.pricingCard > a.pricingAction:hover,
+.pricingCard > a.pricingAction:focus-visible {
   background: var(--trace);
   color: var(--carbon);
 }
 
-.pricingCard > button svg {
+.pricingCard > button svg,
+.pricingCard > a.pricingAction svg {
   width: 0.9rem;
   height: 0.9rem;
   flex: none;
@@ -1347,6 +1377,7 @@
   .heroActions button,
   .heroActions a,
   .pricingCard > button,
+  .pricingCard > a.pricingAction,
   .finalActions button,
   .finalActions a {
     transition: none;

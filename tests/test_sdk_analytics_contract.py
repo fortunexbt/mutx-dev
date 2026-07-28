@@ -170,13 +170,13 @@ class TestAnalyticsSyncMethods:
     """Tests for sync Analytics methods using httpx.MockTransport."""
 
     def _client(self, handler):
-        return httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+        return httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
 
     def test_get_summary_success(self):
         payload = _analytics_summary_payload()
 
         def handler(request: httpx.Request) -> httpx.Response:
-            assert request.url.path == "/analytics/summary"
+            assert request.url.path == "/v1/analytics/summary"
             return httpx.Response(200, json=payload)
 
         analytics = Analytics(self._client(handler))
@@ -227,7 +227,7 @@ class TestAnalyticsSyncMethods:
         payload = _timeseries_payload(metric="api_calls", interval="day")
 
         def handler(request: httpx.Request) -> httpx.Response:
-            assert request.url.path == "/analytics/timeseries"
+            assert request.url.path == "/v1/analytics/timeseries"
             return httpx.Response(200, json=payload)
 
         analytics = Analytics(self._client(handler))
@@ -257,7 +257,7 @@ class TestAnalyticsSyncMethods:
         }
 
         def handler(request: httpx.Request) -> httpx.Response:
-            assert request.url.path == "/analytics/costs"
+            assert request.url.path == "/v1/analytics/costs"
             return httpx.Response(200, json=costs_payload)
 
         analytics = Analytics(self._client(handler))
@@ -288,7 +288,7 @@ class TestAnalyticsSyncMethods:
         }
 
         def handler(request: httpx.Request) -> httpx.Response:
-            assert request.url.path == "/analytics/budget"
+            assert request.url.path == "/v1/analytics/budget"
             return httpx.Response(200, json=budget_payload)
 
         analytics = Analytics(self._client(handler))
@@ -299,7 +299,7 @@ class TestAnalyticsSyncMethods:
         assert result["remaining"] == 654.33
 
     def test_sync_methods_raise_on_async_client(self):
-        async_client = httpx.AsyncClient(base_url="https://api.test")
+        async_client = httpx.AsyncClient(base_url="https://api.test/v1/")
         analytics = Analytics(async_client)
 
         with pytest.raises(RuntimeError, match="sync httpx.Client"):
@@ -409,7 +409,7 @@ class TestAnalyticsAsyncMethods:
 
     @pytest.mark.asyncio
     async def test_async_methods_raise_on_sync_client(self):
-        sync_client = httpx.Client(base_url="https://api.test")
+        sync_client = httpx.Client(base_url="https://api.test/v1/")
         analytics = Analytics(sync_client)
 
         with pytest.raises(RuntimeError, match="async httpx.AsyncClient"):

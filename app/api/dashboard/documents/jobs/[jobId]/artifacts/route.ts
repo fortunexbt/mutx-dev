@@ -20,10 +20,11 @@ export async function POST(
     }
 
     const { jobId } = await params
+    const encodedJobId = encodeURIComponent(jobId)
     const formData = await request.formData()
     const { response, tokenRefreshed, refreshedTokens } = await authenticatedFetch(
       request,
-      `${getApiBaseUrl()}/v1/documents/jobs/${jobId}/artifacts`,
+      `${getApiBaseUrl()}/v1/documents/jobs/${encodedJobId}/artifacts`,
       {
         method: 'POST',
         body: formData,

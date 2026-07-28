@@ -7,19 +7,19 @@
     "nav": {
       "brand": "PicoMUTX",
       "brandTag": " por MUTX",
-      "cta": "Solicitar acceso",
-      "ctaMobile": "Solicitar",
+      "cta": "Abrir onboarding",
+      "ctaMobile": "Empezar",
       "sectionsLabel": "Secciones de la página",
       "skipToMain": "Saltar al contenido principal"
     },
     "hero": {
-      "badge": "Lista de espera abierta · Acceso fundador",
+      "badge": "Ruta de producto activa",
       "title": "Deja de vigilar ",
       "titleAccent": "tu IA.",
       "subtitle": "Empieza desde cero, recupera un setup roto o toma el control de un agente en vivo. Pico convierte un bloqueo real en la ruta correcta: construir, arreglar o controlar.",
-      "cta": "Solicitar acceso",
+      "cta": "Abrir onboarding",
       "ctaSecondary": "Ver cómo funciona",
-      "meta": "Lista de espera abierta. Las rutas de producto reabrirán tras el pulido de la academia."
+      "meta": "Empieza gratis. Inicia sesión cuando quieras sincronizar tu progreso entre sesiones."
     },
     "agentSlider": {
       "ariaLabel": "Tipos de agentes autónomos",
@@ -90,6 +90,7 @@
       "eyebrow": "Cómo funciona Pico",
       "title": "Diagnóstico primero. Luego construir, arreglar o controlar.",
       "body": "Pico encuentra el bloqueo y enruta el siguiente paso para que el avance no desaparezca cuando algo se rompe.",
+      "sampleLabel": "Registro de configuración representativo",
       "howItWorks": {
         "0": {
           "title": "Describe el objetivo o conecta el agente",
@@ -177,7 +178,7 @@
           "description": "Inspecciona el mapa del stack, el flujo de lecciones y la verdad del producto antes de gastar.",
           "features": [
             "100 créditos mensuales",
-            "Acceso limitado al tutor",
+            "Guía de Academy de solo lectura",
             "Lecciones básicas de la Academia",
             "Soporte de la comunidad"
           ],
@@ -189,7 +190,9 @@
           "features": [
             "Intake diagnóstico con IA",
             "Rutas guiadas de build, fix y control",
-            "Diseñado para ejecución independiente"
+            "Diseñado para ejecución independiente",
+            "Modo Autopilot",
+            "Soporte prioritario"
           ],
           "name": "Founding Tier",
           "price": "€29",
@@ -205,7 +208,10 @@
           "features": [
             "Todo lo del Founding Tier",
             "Troubleshooting grupal semanal",
-            "Accountability compartida entre operadores"
+            "Accountability compartida entre operadores",
+            "Soporte prioritario",
+            "Flujos personalizados",
+            "Acceso anticipado a funciones"
           ],
           "name": "Founding Supported",
           "price": "€79",
@@ -265,8 +271,8 @@
           "a": "Para sistemas de agentes prácticos: soporte, copilotos internos, captación de leads, seguimiento comercial y workflows operativos que necesitan construirse, recuperarse o controlarse en el mundo real."
         },
         "3": {
-          "q": "¿La lista de espera está abierta?",
-          "a": "Sí. La lista pública de espera vuelve a estar abierta. La academia y las rutas de producto siguen privadas hasta que este rediseño avance más allá de la landing page."
+          "q": "¿Puedo empezar ahora?",
+          "a": "Sí. Abre onboarding, continúa en Academy e inicia sesión cuando quieras guardar el progreso, usar Tutor o continuar un checkout."
         },
         "4": {
           "q": "¿Esto es para empresas?",
@@ -275,21 +281,21 @@
       }
     },
     "finalCta": {
-      "eyebrow": "Acceso fundador",
+      "eyebrow": "Empieza con un paso real",
       "title": "Solicita acceso a la ruta correcta.",
       "body": "Pico te ayuda a poner algo útil en marcha, recuperarlo cuando se rompe y mantenerlo bajo control en trabajo real.",
       "faqLabel": "¿Aún lo estás decidiendo? Aclara los últimos bloqueos.",
       "formHeadline": "Empieza por el bloqueo real.",
       "formSubline": "Cuéntanos si necesitas construir, arreglar o controlar. Te llevaremos a la ruta correcta.",
-      "ctaButton": "Solicitar acceso",
-      "formCtaMeta": "Free trial · Precios founding con 90 % de descuento · €29 / €79 · Pico Pilot desde €1,000+",
+      "ctaButton": "Abrir onboarding",
+      "formCtaMeta": "Rutas activas: onboarding, Academy, Tutor, Soporte y Autopilot",
       "secondaryButton": "Reservar Llamada De Planning"
     },
     "contactForm": {
       "dialogLabel": "Formulario de contacto",
       "closeLabel": "Cerrar",
-      "title": "Solicita acceso a Pico",
-      "subtitle": "Cuéntanos qué intentas lanzar, recuperar o controlar. Te llevaremos al siguiente paso correcto.",
+      "title": "Habla con el equipo de Pico",
+      "subtitle": "Cuéntanos qué intentas lanzar, recuperar o controlar. Guardaremos tu solicitud para que el equipo pueda revisarla.",
       "emailLabel": "Correo de trabajo",
       "emailPlaceholder": "tu@empresa.com",
       "nameLabel": "Nombre",
@@ -310,11 +316,13 @@
       "messageLabel": "¿Hay algo que debamos saber?",
       "messageOptional": "(opcional)",
       "messagePlaceholder": "Describe la meta, el bloqueo o el sistema en vivo…",
+      "productUpdatesLabel": "Envíame ocasionalmente novedades de producto y lanzamientos de Pico.",
+      "productUpdatesHint": "Es opcional y está desmarcado por defecto. Tu solicitud se entrega tanto si te suscribes como si no.",
       "submitting": "Enviando…",
-      "submit": "Solicitar acceso",
-      "disclaimer": "Sin funnel genérico. Te responderá una persona con la ruta correcta.",
-      "successTitle": "Solicitud de acceso recibida.",
-      "successBody": "Ya tenemos el contexto. Recibirás una respuesta humana con el carril adecuado.",
+      "submit": "Enviar solicitud",
+      "disclaimer": "Tu solicitud se guarda para seguimiento del equipo. Solo enviaremos novedades si aceptas arriba.",
+      "successTitle": "Solicitud aceptada.",
+      "successBody": "Tu solicitud se guardó. El equipo puede responder usando el correo que proporcionaste.",
       "successBack": "Volver a la página",
       "errorFallback": "Algo salió mal. Inténtalo de nuevo.",
       "networkError": "Error de red. Inténtalo de nuevo."
@@ -365,7 +373,8 @@
     },
     "localeSwitcher": {
       "currentLanguage": "Idioma actual",
-      "listLabel": "Elegir idioma de la interfaz"
+      "listLabel": "Elegir idioma de la interfaz",
+      "changedTo": "Idioma cambiado a {language}"
     },
     "pages": {
       "onboarding": {
@@ -429,6 +438,10 @@
       "primaryCta": "Empezar",
       "secondaryCta": "Hablar con soporte",
       "returnToLanding": "Volver a la landing",
+      "navigation": { "homeLabel": "Inicio de Pico", "label": "Navegación de precios de Pico" },
+      "checkout": {
+        "confirming": "Confirmando tu plan {plan}…", "confirmingShort": "Confirmando el plan…", "signInAgain": "Vuelve a iniciar sesión para confirmar el pago y actualizar tu plan.", "signIn": "Iniciar sesión", "billingForbidden": "Esta cuenta no tiene acceso a facturación ni a derechos del plan.", "refreshFailed": "No pudimos actualizar tu plan. El pago no se ha marcado como fallido.", "retryRefresh": "Reintentar actualización", "active": "Tu plan {plan} está activo.", "stillSyncing": "El pago volvió correctamente. Tu plan aún se está sincronizando.", "refreshPlan": "Actualizar plan", "canceled": "El pago se canceló. Tu plan actual no ha cambiado.", "incompleteReturn": "El enlace de retorno del pago está incompleto. Tu plan no se ha cambiado aquí.", "forbidden": "Esta cuenta no tiene acceso al pago.", "unavailable": "Este plan no está disponible temporalmente. Inténtalo de nuevo.", "retryCheckout": "Reintentar pago"
+      },
       "routeState": {
         "label": "Estado de la ruta",
         "title": "El acceso público te mete en el carril correcto. La facturación del producto vive más adentro del sistema.",
@@ -469,7 +482,8 @@
               "Rutas guiadas de construir, arreglar y controlar",
               "Plantillas y skills reutilizables",
               "Soporte de IA para el siguiente paso",
-              "Diseñado para ejecución independiente"
+              "Diseñado para ejecución independiente",
+              "Ideal para quienes construyen por primera vez"
             ],
             "cta": "Solicitar acceso fundador"
           },
@@ -484,7 +498,8 @@
               "Onboarding más acompañado",
               "Resolución grupal de bloqueos cada semana",
               "Entorno compartido de soporte entre operadores",
-              "Menos fricción cuando la implementación se complica"
+              "Menos fricción cuando la implementación se complica",
+              "Acompañamiento más cercano durante la implementación"
             ],
             "cta": "Solicitar acceso con soporte",
             "anchorPrice": "€790"
@@ -518,7 +533,8 @@
               "Mejor primer paso para demostrar seriedad"
             ],
             "cta": "Solicitar acceso de prueba",
-            "priceNote": "Gratis hasta definir o conectar un problema real de agente."
+            "priceNote": "Gratis hasta definir o conectar un problema real de agente.",
+            "recommended": true
           }
         }
       },
@@ -608,7 +624,7 @@
       "finalSecondary": "Volver a la landing"
     },
     "auth": {
-      "eyebrow": "Autenticación del host de Pico",
+      "eyebrow": "Cuenta de PicoMUTX",
       "orUseEmail": "O usa correo",
       "forgotPassword": "¿Olvidaste tu contraseña?",
       "fields": {
@@ -631,17 +647,17 @@
       },
       "modes": {
         "login": {
-          "title": "Entra en la compilación actual de Pico",
-          "subtitle": "Usa un proveedor o correo para abrir la vista previa y guardar tu lugar.",
-          "submit": "Entrar en Pico",
-          "loading": "Abriendo...",
-          "toggleQuestion": "¿Necesitas acceso?",
-          "toggleAction": "Crear uno"
+          "title": "Inicia sesión en PicoMUTX",
+          "subtitle": "Usa un proveedor o correo para retomar tu progreso guardado.",
+          "submit": "Iniciar sesión",
+          "loading": "Iniciando sesión...",
+          "toggleQuestion": "¿Necesitas una cuenta?",
+          "toggleAction": "Crear cuenta"
         },
         "register": {
-          "title": "Crea tu cuenta de vista previa de Pico",
-          "subtitle": "Regístrate una vez, guarda tu lugar y sigue el producto mientras mejora.",
-          "submit": "Crear cuenta de vista previa",
+          "title": "Crea tu cuenta de PicoMUTX",
+          "subtitle": "Crea una cuenta y conserva tu progreso entre sesiones de PicoMUTX.",
+          "submit": "Crear cuenta",
           "loading": "Creando...",
           "toggleQuestion": "¿Ya tienes una cuenta?",
           "toggleAction": "Iniciar sesión"
@@ -684,7 +700,8 @@
         "emailLabel": "Dirección de correo",
         "emailPlaceholder": "you@company.com",
         "sending": "Enviando...",
-        "sendLink": "Enviar enlace de restablecimiento"
+        "sendLink": "Enviar enlace de restablecimiento",
+        "sendFailed": "No se pudo enviar el enlace de restablecimiento"
       },
       "resetPassword": {
         "eyebrow": "Restablecer contraseña",
@@ -1045,6 +1062,42 @@
         "stepsClear": "{completed}/{total} pasos claros"
       }
     },
+    "welcomeTour": {
+      "page": { "eyebrow": "01 Página", "title": "Cada página de Pico tiene una tarea principal.", "body": "Usa la página para el paso de configuración actual. No conviertas cada pantalla en un proyecto de investigación.", "current": "Estás en el capítulo {chapter}: {label}.", "back": "Atrás: {label}.", "backOnboarding": "Atrás: onboarding.", "next": "Siguiente: {label}.", "nextSupport": "Siguiente: soporte." },
+      "routes": { "currentPage": "Página actual: {pageTitle}.", "academy": { "eyebrow": "02 Primero la lección", "title": "Trabaja en un paso de configuración cada vez.", "body": "Abre la lección actual, termina el paso visible y deja el resto hasta que la configuración sea estable.", "bullets": ["El mapa explica el orden.", "La lección actual debe seguir siendo fácil de encontrar."] }, "tutor": { "eyebrow": "02 Un bloqueo", "title": "Tutor sirve para el siguiente paso exacto.", "body": "Pregunta por el comando, ruta, proveedor o validación que bloquea la configuración.", "bullets": ["Si la secuencia es incorrecta, vuelve a Academy.", "Si el runtime ya funciona, abre Autopilot."] }, "autopilot": { "eyebrow": "02 Runtime", "title": "Usa Autopilot cuando exista una ejecución real.", "body": "Usa esta página para ejecuciones, alertas, aprobaciones, gasto o estado actual del runtime.", "bullets": ["Vuelve a Academy mientras la configuración esté incompleta.", "Pide ayuda humana si hosting, claves o rollout no están claros."] }, "support": { "eyebrow": "02 Ayuda humana", "title": "Usa soporte cuando la configuración necesite guía.", "body": "Trae la lección, el error y las notas del runtime. Una persona puede ayudar con claves API, hosting, integraciones e implementación.", "bullets": ["Nadie debería resolver el hosting a solas.", "Trae el slug, el error y las notas actuales del runtime."] }, "onboarding": { "eyebrow": "02 Primera ejecución", "title": "Onboarding te lleva a un runtime funcional.", "body": "Instala el runtime, ejecuta un prompt y prepara el paquete Markdown que leerá tu agente.", "bullets": ["Deja las preferencias hasta que funcione la primera ejecución.", "Academy ofrece los pasos exactos."] } },
+      "output": { "eyebrow": "03 Salida", "title": "Guarda la salida antes de avanzar.", "body": "El paquete funciona mejor cuando quedan un comando, un resultado y una nota breve del cambio.", "bullets": ["Si el bloqueo es exacto, pregunta a Tutor.", "Si el runtime está en vivo, abre Autopilot.", "Si hace falta criterio, pide soporte con tus notas."] },
+      "dialog": { "label": "Ayuda rápida", "title": "Aprende el flujo una vez y ciérralo.", "closeLabel": "Cerrar recorrido rápido", "close": "Cerrar", "step": "Paso {current} de {total} · {eyebrow}", "back": "Atrás", "finish": "Finalizar", "next": "Siguiente" }
+    },
+    "signalDiagram": { "signal": "Señal / {index}", "routes": { "landing": { "label": "Marcador de inicio", "title": "Empieza con una ruta funcional.", "caption": "Mantén simple la landing y deja la configuración a las páginas del producto." }, "onboarding": { "label": "Marcador de guía", "title": "Instala. Ejecuta. Registra.", "caption": "Onboarding mantiene un paso y el paquete del agente a la vista." }, "academy": { "label": "Marcador de lección", "title": "Completa un capítulo cada vez.", "caption": "Academy hace avanzar la configuración lección a lección." }, "tutor": { "label": "Marcador de Tutor", "title": "Nombra el bloqueo con precisión.", "caption": "Tutor responde a un bloqueo y te devuelve a la configuración." }, "autopilot": { "label": "Marcador de runtime", "title": "Lee el estado antes de actuar.", "caption": "Autopilot mantiene juntos ejecuciones, gasto y aprobaciones." }, "support": { "label": "Marcador de soporte", "title": "Trae el paquete útil más corto.", "caption": "Soporte ayuda con claves, hosting, integraciones e implementación." } } },
+    "surfaceCompass": { "label": "Brújula de superficies", "operatingRule": "Regla operativa", "forwardSymbol": "→" },
+    "routeStates": { "error": { "route": "Ruta de Pico", "step": "error de ruta", "eyebrow": "El paso actual falló", "title": "Esta ruta no pudo terminar de cargar.", "body": "Reintenta. Si vuelve a fallar, lleva la página y el bloqueo a soporte.", "retry": "Reintentar", "support": "Abrir soporte", "scopeLabel": "Postura de recuperación", "scopeTitle": "Conserva la ruta", "scopeBody": "Una superficie fallida debe devolverte a la misma tarea, no borrar el trabajo." }, "loading": { "route": "Ruta de Pico", "step": "cargando", "eyebrow": "Preparando el paso actual", "title": "Pico está restaurando la ruta.", "body": "Cargando estado alojado, contexto de lección y el siguiente movimiento útil.", "postureLabel": "Estado de carga", "waiting": "Esperando contexto en vivo", "postureBody": "La interfaz queda en calma hasta mostrar un estado verificado." }, "notFound": { "route": "Ruta de Pico", "step": "no encontrada", "eyebrow": "Esa ruta no está en el atlas", "title": "Esta página de Pico no existe.", "body": "Vuelve a Pico o abre el mapa de Academy para encontrar una ruta válida.", "recoveryLabel": "Recuperación de página", "home": "Volver a Pico", "academy": "Abrir Academy", "nextLabel": "Siguiente movimiento", "nextTitle": "Vuelve a una ruta conocida", "nextBody": "El producto debe recuperarse con una página real, no con una URL adivinada." } },
+    "buildLedger": {
+      "meta": { "title": "Registro de compilación en vivo — PicoMUTX", "description": "Una vista basada en fuentes de los stacks de PicoMUTX, las lecciones de Academy y la cobertura del paquete del constructor." },
+      "snapshotUnavailable": "no disponible",
+      "brandSuffix": "/ registro de compilación",
+      "navigationLabel": "Navegación del registro de compilación",
+      "navigation": { "academy": "Academy", "onboarding": "Onboarding" },
+      "hero": { "sourceStatus": "Instantánea de fuentes actualizada el {date}", "title": "El registro de compilación en vivo detrás de Pico.", "subtitle": "Inspecciona los resúmenes de stacks, la ruta de Academy y el paquete del constructor que mantienen la guía de configuración basada en fuentes." },
+      "actions": { "continueOnboarding": "Continuar el onboarding", "inspectAcademy": "Inspeccionar Academy" },
+      "remote": { "postureLabel": "Postura de acceso remoto", "kicker": "04 / acceso remoto", "title": "Privado por defecto. Accesible a propósito.", "body": "Expón solo la ruta de acceso que el operador haya elegido y verificado.", "defaults": ["Prefiere el acceso por red privada.", "Vincula los gateways de forma deliberada.", "Verifica la fuente en vivo antes de abrir el acceso.", "Usa un enlace directo a la tailnet solo cuando la aplicación escuche deliberadamente en una interfaz de tailnet.", "Usa Tailscale Funnel solo para una exposición pública intencionada."], "readSource": "Leer la guía de la fuente" },
+      "metrics": { "label": "Métricas del paquete del constructor", "packDocs": "documentos del paquete", "lessons": "lecciones de Academy", "minutes": "minutos guiados", "stacks": "stacks seguidos" },
+      "stacks": {
+        "kicker": "01 / resúmenes de stacks", "title": "Notas de stacks en vivo", "body": "Los resúmenes basados en fuentes mantienen las recomendaciones al día sin convertir la configuración en un proyecto de investigación.", "repositorySnapshot": "instantánea del repositorio", "stars": "{count} estrellas", "openIssues": "{count} issues abiertos", "installNote": "Realidad de la instalación: ", "repository": "Repositorio", "officialDocs": "Documentación oficial", "snapshotRef": "Referencia de la instantánea",
+        "items": {
+          "hermes": { "strength": "Runtime completo para operadores", "profile": "Un runtime amplio para agentes locales, con herramientas, memoria y flujos de gateway.", "installReality": "Usa el instalador documentado y verifica el comando en una shell nueva." },
+          "openclaw": { "strength": "Control de gateway y canales", "profile": "Un runtime centrado en el gateway para canales, estado del workspace y operación remota.", "installReality": "Trata la exposición del gateway y la configuración de canales como decisiones explícitas del operador." },
+          "nanoclaw": { "strength": "Ejecución aislada en contenedores", "profile": "Un runtime más pequeño centrado en el aislamiento de contenedores y la ejecución auditable.", "installReality": "Verifica el límite del contenedor y el workspace persistente antes de añadir integraciones." },
+          "picoclaw": { "strength": "Runtime ligero en el edge", "profile": "Un runtime compacto para hosts con pocos recursos y tareas acotadas de agentes.", "installReality": "Confirma la arquitectura de destino y los límites de recursos antes de elegir la compilación más pequeña." }
+        }
+      },
+      "academy": { "kicker": "02 / registro de Academy", "title": "La ruta de configuración en orden", "body": "Las rutas y las lecciones convierten la investigación de stacks en un camino acotado con un artefacto de prueba en cada parada.", "lessonCount": "{count} lecciones", "lessonMeta": "{difficulty} · {minutes} min", "difficulty": { "setup": "configuración", "operator": "operador", "builder": "constructor" } },
+      "pack": { "kicker": "03 / paquete del constructor", "title": "El paquete de fuentes que los agentes pueden leer", "body": "Cada documento acota una parte de la configuración, la operación, la seguridad o el traspaso en contexto reutilizable." },
+      "access": { "kicker": "04 / postura de acceso", "title": "Verifica el acceso remoto con el stack en vivo", "body": "Prefiere la conectividad privada, vincula los gateways de forma deliberada y confirma la guía oficial antes de exponer un runtime.", "verifySource": "Verificar la guía de la fuente" },
+      "footer": { "generated": "Registro generado el {date}", "sourceGrounded": "Basado en fuentes, consciente de las instantáneas e intencionalmente conciso." },
+      "topics": {
+        "workflow": "flujo de trabajo", "operating-model": "modelo operativo", "guidance": "guía", "persona": "persona", "audience": "audiencia", "coaching": "acompañamiento", "conversation": "conversación", "questioning": "preguntas", "profiling": "creación de perfiles", "skill-level": "nivel de habilidad", "context": "contexto", "install": "instalación", "bootstrap": "arranque", "order-of-operations": "orden de operaciones", "diagnostics": "diagnóstico", "triage": "triaje", "repair": "reparación", "commands": "comandos", "verification": "verificación", "formatting": "formato", "research": "investigación", "official-docs": "documentación oficial", "version-sensitive": "sensible a la versión", "safety": "seguridad", "risk": "riesgo", "exposure": "exposición", "secrets": "secretos", "tailscale": "Tailscale", "remote-access": "acceso remoto", "networking": "redes", "ssh": "SSH", "hermes": "Hermes", "gateway": "gateway", "profiles": "perfiles", "memory": "memoria", "openclaw": "OpenClaw", "channels": "canales", "workspace": "workspace", "nanoclaw": "NanoClaw", "containers": "contenedores", "auditability": "auditabilidad", "isolation": "aislamiento", "picoclaw": "PicoClaw", "edge": "edge", "lightweight": "ligero", "low-resource": "pocos recursos", "comparison": "comparación", "recommendation": "recomendación", "tradeoffs": "contrapartidas", "examples": "ejemplos", "answer-style": "estilo de respuesta", "format": "formato", "tool-selection": "selección de herramientas", "capabilities": "capacidades", "mapping": "mapeo"
+      }
+    },
     "autopilotPage": {
       "shared": {
         "loadState": {
@@ -1060,6 +1113,7 @@
         "error": {
           "partialSignals": "No se pudieron cargar algunas señales en vivo de MUTX. Lo que se muestra es parcial, no inventado.",
           "loadLiveData": "No se pudieron cargar los datos en vivo de Autopilot",
+          "loadLiveDataFallback": "Los datos en vivo de Autopilot no están disponibles.",
           "resolveRequest": "No se pudo {action} la solicitud",
           "createApprovalRequiredFields": "agente, sesión y tipo de acción son obligatorios antes de crear una solicitud de aprobación",
           "createApproval": "No se pudo crear la solicitud de aprobación"
@@ -1091,7 +1145,8 @@
           "loading": "cargando",
           "saving": "guardando",
           "synced": "sincronizado",
-          "offline": "sin conexión"
+          "offline": "sin conexión",
+          "error": "error de sincronización"
         },
         "timelineSources": {
           "runs": "Ejecuciones",
@@ -1139,6 +1194,37 @@
           }
         }
       },
+      "signals": { "runtime": "Runtime", "runs": "Ejecuciones", "budget": "Presupuesto", "usage": "Uso", "alerts": "Alertas", "approvals": "Aprobaciones" },
+      "signalFailure": {
+        "authRequired": "Inicia sesión para cargar {signal}.", "permissionDenied": "No tienes permiso para cargar {signal}.", "notFound": "No se encontró ningún recurso de {signal}.", "conflict": "{signal} cambió mientras se cargaba esta página.", "controlPlaneUnavailable": "El plano de control no pudo proporcionar {signal}.", "network": "Falló la solicitud de red de {signal}.", "invalidResponse": "{signal} devolvió una respuesta no válida.", "invalidPaginatedResponse": "{signal} devolvió una página no válida.", "requestFailed": "No se pudo cargar {signal}.", "requestUnavailable": "{signal} no está disponible.", "traceRequestsUnavailable": "Las solicitudes de trazas no están disponibles para esta ejecución.", "detail": "Detalle: {detail}"
+      },
+      "pagination": { "loadFailed": "No se pudo cargar la página siguiente.", "queueChanged": "La cola cambió durante la carga. Actualiza antes de actuar.", "signalUnavailable": "Esta señal no está disponible." },
+      "runtimePresentation": {
+        "loadingLabel": "Cargando la verdad del runtime",
+        "loadingDetail": "Esperando la primera respuesta del plano de control.",
+        "waitingForFirstFetch": "Esperando la primera consulta",
+        "waitingForObservation": "Esperando una marca de tiempo observada",
+        "fetchedAt": "Consultado el {timestamp}",
+        "observedAt": "Observado el {timestamp}",
+        "fetchedWithoutObservation": "Consultado el {timestamp}; la hora de observación de la fuente no está disponible",
+        "fresh": {
+          "label": "Instantánea reciente del runtime",
+          "detail": "El proveedor informa actualmente {status}. Que sea reciente no demuestra que una acción sea segura."
+        },
+        "stale": {
+          "label": "Instantánea obsoleta del runtime",
+          "detail": "El último informe fue {status}. Trátalo como historial, no como señal actual de salud o seguridad."
+        },
+        "unavailable": {
+          "label": "Instantánea del runtime no disponible",
+          "detail": "No hay ninguna observación actual fiable. El estado informado fue {status}."
+        }
+      },
+      "visuals": [
+        { "index": "01", "label": "Señal de ejecución", "title": "Lee primero la ejecución más reciente", "caption": "Una ejecución actual vincula cada juicio posterior con el trabajo observado." },
+        { "index": "02", "label": "Línea de gasto", "title": "Compara el movimiento con el coste", "caption": "El gasto en vivo hace que el umbral del operador sea concreto y no decorativo." },
+        { "index": "03", "label": "Control humano", "title": "Mantén visible el trabajo arriesgado", "caption": "Las aprobaciones deben seguir siendo revisables antes de que una acción cruce el límite." }
+      ],
       "emptyStates": {
         "runs": {
           "noAgent": {
@@ -1181,8 +1267,8 @@
             "body": "Las colas de aprobación solo importan cuando un agente real puede hacer algo arriesgado. Crea o despliega primero el agente."
           },
           "gateOff": {
-            "title": "Existe historial de aprobaciones, pero la puerta está desactivada localmente",
-            "body": "MUTX ya tiene registros de aprobación, pero Pico todavía dice que la puerta está deshabilitada. Actívala aquí para que el estado local del producto coincida con la realidad del plano de control."
+          "title": "Existe historial de aprobaciones; la aplicación efectiva no está verificada",
+          "body": "Los registros prueban que se usó el flujo de revisión, pero no que haya una puerta activa en el runtime."
           },
           "none": {
             "title": "Todavía no hay registros de aprobación",
@@ -1205,7 +1291,8 @@
           "label": "Estado de la ejecución",
           "authRequired": "autenticación requerida",
           "noLiveRun": "sin ejecución en vivo",
-          "triggerTaskFirst": "activa primero una tarea real"
+          "triggerTaskFirst": "activa primero una tarea real",
+          "unavailable": "estado de ejecución no disponible"
         },
         "budgetLine": {
           "label": "Línea de presupuesto",
@@ -1220,7 +1307,8 @@
           "armed": "armada",
           "off": "apagada",
           "reviewVisible": "la revisión humana sigue visible",
-          "enableBeforeRisk": "actívala antes de una acción riesgosa"
+          "enableBeforeRisk": "actívala antes de una acción riesgosa",
+          "unavailable": "no disponible"
         },
         "nextCheck": {
           "label": "Siguiente comprobación del operador",
@@ -1235,7 +1323,8 @@
           "budget": "Presupuesto {value}",
           "gate": "Puerta {value}",
           "recovery": "Recuperación {value}",
-          "recoveryNotSet": "sin definir"
+          "recoveryNotSet": "sin definir",
+          "runtime": "Runtime {value}"
         },
         "decisionLine": {
           "label": "Línea de decisión",
@@ -1247,7 +1336,8 @@
           "finishLesson": "Termina primero {lessonTitle}",
           "goBackToAcademy": "Volver a Academy",
           "inspectRun": "Inspeccionar ejecución {runId}"
-        }
+        },
+        "providerSnapshot": "Instantánea del proveedor"
       },
       "surfaceCompass": {
         "title": "Quédate aquí solo cuando el runtime en vivo sea la fuente real de verdad",
@@ -1287,21 +1377,26 @@
             "title": "Empieza con la señal en vivo más fuerte",
             "authRequired": "Sin una sesión alojada, esta sala debería negarse a improvisar. Conecta primero el feed en vivo.",
             "withRun": "La ejecución {runId} es lo primero que hay que leer. {detail}",
-            "noRun": "Todavía no existe ninguna ejecución en vivo. El movimiento honesto es activar una tarea real antes de ajustar cualquier otra cosa."
+            "noRun": "Todavía no existe ninguna ejecución en vivo. El movimiento honesto es activar una tarea real antes de ajustar cualquier otra cosa.",
+            "loading": "Cargando la ejecución más reciente...",
+            "unavailable": "La señal de ejecución no está disponible."
           },
           "judge": {
             "label": "02 • Juzgar",
             "title": "Haz explícita la línea de decisión",
             "authRequired": "La revisión del presupuesto no está disponible hasta que la cuenta en vivo esté conectada.",
             "withBudget": "{usage} de uso frente a un umbral de {threshold}. Esa línea debería decirte cuándo entra una persona.",
-            "noBudget": "Todavía no hay instantánea de presupuesto en vivo. No finjas que un umbral importa hasta que se encuentre con gasto real."
+            "noBudget": "Todavía no hay instantánea de presupuesto en vivo. No finjas que un umbral importa hasta que se encuentre con gasto real.",
+            "loading": "Cargando el gasto en vivo...",
+            "unavailable": "La señal de presupuesto no está disponible."
           },
           "intervene": {
             "label": "03 • Intervenir",
             "title": "Mantén revisables las acciones riesgosas",
             "pending": "{count} elemento{pluralSuffix} de aprobación está esperando. Bien. El trabajo peligroso sigue visible.",
             "configured": "La puerta está configurada, pero ahora mismo no hay nada esperando. Mantenla revisable y aburrida.",
-            "off": "La puerta sigue apagada. Enciéndela antes de que una acción riesgosa se convierta en un efecto secundario invisible."
+            "off": "La puerta sigue apagada. Enciéndela antes de que una acción riesgosa se convierta en un efecto secundario invisible.",
+            "unavailable": "La señal de aprobación no está disponible."
           }
         },
         "postureLabel": "Postura de la sala de control",
@@ -1449,7 +1544,8 @@
         "title": "Lee la historia en vivo antes de tocar la configuración",
         "body": "Esta es la narrativa del operador. Si la cronología está vacía, la respuesta correcta es que todavía no ha pasado nada significativo.",
         "authRequired": "No hay cronología sin acceso en vivo al plano de control. Esa es la respuesta honesta.",
-        "olderSignalsHidden": "{count} señal{pluralSuffix} más antigua quedó fuera de vista a propósito. Empieza por las cuatro más fuertes."
+        "olderSignalsHidden": "{count} señal{pluralSuffix} más antigua quedó fuera de vista a propósito. Empieza por las cuatro más fuertes.",
+        "loading": "Cargando señales en vivo..."
       },
       "runs": {
         "sectionLabel": "Revisión de ejecuciones",
@@ -1457,6 +1553,9 @@
         "body": "Empieza aquí. Lee la última ejecución antes de tocar umbrales o aprobaciones.",
         "refresh": "Actualizar datos en vivo",
         "authRequired": "Inicia sesión y luego vuelve aquí para inspeccionar la primera ejecución real.",
+        "loading": "Cargando ejecuciones...",
+        "refreshing": "Actualizando ejecuciones...",
+        "unavailable": "El historial de ejecuciones no está disponible.",
         "card": {
           "title": "Ejecución {runId}",
           "operatorReadLabel": "Lectura del operador",
@@ -1472,7 +1571,8 @@
           "started": "Iniciada {timestamp}",
           "startUnavailable": "Hora de inicio no disponible",
           "traceSignalsLabel": "Señales de traza",
-          "noTraces": "No se devolvieron trazas para esta ejecución."
+          "noTraces": "No se devolvieron trazas para esta ejecución.",
+          "tracesUnavailable": "Las señales de traza no están disponibles."
         },
         "olderRunsHidden": "{count} ejecución{pluralSuffix} más antigua está oculta para que la revisión siga centrada primero en las decisiones más recientes."
       },
@@ -1482,13 +1582,17 @@
         "usageLabel": "Uso",
         "thresholdStatus": {
           "above": "por encima del umbral",
-          "within": "dentro del umbral"
+          "within": "dentro del umbral",
+          "noSnapshot": "sin instantánea",
+          "unavailable": "no disponible"
         },
         "summary": {
           "authRequired": "El presupuesto en vivo requiere autenticación.",
           "withBudget": "{used} usados de {total}. Reinicio {reset}.",
           "resetUnknown": "desconocido",
-          "noSnapshot": "No se devolvió ninguna instantánea de presupuesto en vivo."
+          "noSnapshot": "No se devolvió ninguna instantánea de presupuesto en vivo.",
+          "loading": "Cargando el presupuesto en vivo...",
+          "unavailable": "El presupuesto en vivo no está disponible."
         },
         "thresholdLabel": "Umbral",
         "thresholdBody": "Pico guarda aquí la línea de presupuesto local. La entrega real de alertas sigue el ajuste de monitorización en vivo de MUTX, así que esta superficie se niega a fingir que el enrutamiento por correo o webhook está activo cuando no lo está.",
@@ -1499,13 +1603,19 @@
         "topSpendersLabel": "Mayores consumidores",
         "usageDriversLabel": "Impulsores de uso",
         "breakdownAuthRequired": "Inicia sesión para leer el desglose de uso.",
-        "breakdownRow": "{credits} créditos en {events} eventos"
+        "breakdownRow": "{credits} créditos en {events} eventos",
+        "breakdownLoading": "Cargando el desglose de uso...",
+        "breakdownUnavailable": "El desglose de uso no está disponible.",
+        "driversLoading": "Cargando los impulsores de uso...",
+        "driversUnavailable": "Los impulsores de uso no están disponibles."
       },
       "alerts": {
         "sectionLabel": "Alertas",
         "title": "Eventos de monitorización significativos",
         "body": "Este es el feed de alertas en vivo. Sin insignias de advertencia falsas, sin incidentes sintéticos.",
         "authRequired": "Inicia sesión para cargar alertas en vivo.",
+        "loading": "Cargando alertas...",
+        "unavailable": "Las alertas no están disponibles.",
         "card": {
           "resolvedTitle": "Alerta resuelta",
           "activeTitle": "Alerta activa",
@@ -1521,12 +1631,22 @@
         "body": "Esta cola es ahora la fuente de verdad de aprobación para Pico. No debería desaparecer porque un proceso se reinicie.",
         "authRequired": "Inicia sesión para cargar solicitudes de aprobación en vivo.",
         "gateMismatch": "Ya existen registros de aprobación en MUTX, pero Pico todavía muestra la puerta como apagada localmente. Enciéndela aquí para que el estado del producto coincida con la realidad del plano de control.",
+        "loading": "Cargando aprobaciones...",
+        "loadingPending": "Cargando aprobaciones pendientes...",
+        "partial": "Algunos datos de aprobación no están disponibles.",
+        "pendingPageCount": "{count} pendientes en esta página",
+        "showMorePending": "Mostrar más aprobaciones pendientes",
+        "requestFailed": "Falló la solicitud de aprobación.",
+        "createdNotice": "Solicitud de aprobación creada.",
+        "resolvedNotice": "Solicitud de aprobación {action}.",
         "card": {
           "pendingLabel": "Pendiente",
           "fallbackSummary": "{requester} solicitó esta acción para el agente {agentId}.",
           "approve": "Aprobar",
           "reject": "Rechazar",
-          "working": "Trabajando..."
+          "working": "Trabajando...",
+          "approveLabel": "Aprobar {action}",
+          "rejectLabel": "Rechazar {action}"
         },
         "hiddenPending": "{count} aprobación{pluralSuffix} pendiente más quedó fuera de vista para que la cola mantenga arriba las decisiones más agudas."
       },
@@ -1557,11 +1677,15 @@
       },
       "recentDecisions": {
         "sectionLabel": "Decisiones recientes",
-        "hiddenOlder": "{count} decisión{pluralSuffix} más antigua está oculta para que el registro reciente siga siendo legible."
+        "hiddenOlder": "{count} decisión{pluralSuffix} más antigua está oculta para que el registro reciente siga siendo legible.",
+        "loading": "Cargando decisiones recientes...",
+        "pageCount": "{count} decisiones en esta página",
+        "showMore": "Mostrar más decisiones"
       }
     },
     "sessionBanner": {
       "errors": {
+        "sessionUnavailable": "La sesión alojada no está disponible",
         "loadWebhookRoutes": "No se pudieron cargar las rutas de webhook"
       },
       "authenticated": {
@@ -1607,12 +1731,12 @@
       },
       "loading": {
         "label": "Sesión alojada",
-        "body": "Comprobando si este host de Pico tiene una sesión de operador conectada."
+        "body": "Comprobando si hay una sesión de cuenta de PicoMUTX disponible."
       },
       "anonymous": {
         "chips": {
           "sessionRequired": "sesión alojada requerida",
-          "picoHostAuth": "autenticación del host de Pico"
+          "picoHostAuth": "cuenta de PicoMUTX"
         },
         "body": "Las rutas de la plataforma Pico están activas aquí, pero la sesión alojada todavía no está conectada en este dominio. Inicia sesión en Pico para persistir el progreso, leer ejecuciones en vivo y usar el estado de onboarding/runtime del backend. Google, GitHub, Discord, Apple, registro con contraseña y confirmación por correo ya terminan en este host.",
         "rails": {
@@ -1770,7 +1894,19 @@
         "proofCaptured": "prueba capturada",
         "runtimeNotAttached": "no conectado",
         "nextMove": "Siguiente movimiento",
-        "visibleSuccess": "Éxito visible"
+        "visibleSuccess": "Éxito visible",
+        "continueWith": "Continuar con {lessonTitle}",
+        "firstRunReady": "primera ejecución lista",
+        "gatewayLive": "gateway en vivo",
+        "gatewayUnbound": "gateway sin vincular",
+        "hostedSyncOffline": "sin conexión con la sincronización alojada",
+        "installThenPacket": "Instala primero y luego prepara el paquete",
+        "onePromptAway": "a un prompt de distancia",
+        "openAutopilot": "Abrir Autopilot",
+        "refreshingStatus": "actualizando estado",
+        "saveFirstRun": "Guardar la primera ejecución",
+        "saveThenPacket": "Guarda la prueba y luego prepara el paquete",
+        "stepsClear": "{completed}/{total} pasos claros"
       },
       "labels": {
         "chapterPulse": "Pulso del capítulo",
@@ -1862,7 +1998,11 @@
         "nextMove": "Siguiente movimiento",
         "blocked": "Bloqueado",
         "runtime": "Runtime",
-        "messyEdge": "Borde complicado"
+        "messyEdge": "Borde complicado",
+        "primaryCaption": "Sigue con la misión actual hasta que su prueba sea real.",
+        "tutorCaption": "Usa Tutor cuando un comando o paso de configuración concreto esté bloqueado.",
+        "runtimeCaption": "Usa Autopilot cuando el estado del runtime en vivo se convierta en la fuente de verdad.",
+        "supportCaption": "Escala solo cuando la ruta del producto ya no pueda resolver el caso límite con honestidad."
       },
       "doctrine": {
         "label": "Doctrina de arranque",
@@ -1874,16 +2014,30 @@
         "postTitle": "Postura del capítulo",
         "postBody": "Mantén el capítulo 01 estrecho a propósito. Sin navegar, sin turismo de stack y sin teatro extra de configuración antes de que exista un artefacto real.",
         "trackTitle": "Checklist del track",
-        "trackBody": "Una sola señal guía clara basta mientras la primera prueba todavía se está formando."
+        "trackBody": "Una sola señal guía clara basta mientras la primera prueba todavía se está formando.",
+        "fastestPath": { "start": "empieza aquí", "installed": "instalado", "cleared": "completado" },
+        "items": {
+          "install": { "label": "01 • Instalar", "body": "Instala Hermes y haz que el comando funcione desde una shell nueva." },
+          "firstRun": { "label": "02 • Primera ejecución", "body": "Guarda un prompt y una respuesta en un archivo que puedas volver a abrir más tarde." },
+          "packet": { "label": "03 • Paquete del agente", "title": "Descargar el paquete Markdown", "body": "Lleva la configuración verificada al siguiente agente o runtime sin reconstruir el contexto." }
+        }
       },
       "protocol": {
         "title": "Protocolo de prueba",
         "body": "Estos son los únicos movimientos que cuentan antes de que la superficie se gane el derecho a ensancharse.",
-        "chip": "protocolo de primera victoria"
+        "chip": "protocolo de primera victoria",
+        "items": {
+          "0": { "title": "Instala Hermes", "body": "Consigue que una instalación local limpia de Hermes funcione de principio a fin." },
+          "1": { "title": "Ejecuta tu primer agente", "body": "Demuestra que el runtime puede responder a un prompt acotado con el proveedor que acabas de configurar." },
+          "2": { "title": "Conserva la prueba", "body": "Hermes responde a un prompt pequeño y la transcripción queda guardada en un archivo que puedes volver a abrir." }
+        }
       },
       "runtime": {
         "signInFirst": "Inicia sesión primero. La instantánea del runtime es por cuenta de operador.",
+        "signInShort": "iniciar sesión",
         "loading": "Cargando el estado de onboarding y runtime del backend.",
+        "checking": "comprobando",
+        "localOnly": "solo local",
         "noHostedState": "Todavía no se ha registrado ningún estado de onboarding alojado.",
         "currentProvider": "proveedor actual",
         "availableSoon": "disponible pronto",
@@ -1910,7 +2064,9 @@
         "unknown": "desconocido",
         "noRuntimeSnapshot": "Todavía no se ha sincronizado ninguna instantánea del runtime.",
         "gatewayHealth": "Salud del gateway",
-        "noDoctorSummary": "Todavía no se ha sincronizado ningún resumen de doctor."
+        "noDoctorSummary": "Todavía no se ha sincronizado ningún resumen de doctor.",
+        "statusOptions": { "client_required": "Cliente necesario", "healthy": "Correcto", "degraded": "Degradado", "offline": "Sin conexión", "warning": "Advertencia", "unknown": "Desconocido" },
+        "installMethods": { "npm": "npm", "brew": "Homebrew", "binary": "Binario", "manual": "Manual" }
       },
       "mission": {
         "firstWinProtocol": "protocolo de primera victoria",
@@ -1924,7 +2080,70 @@
         "completed": "completada",
         "missing": "faltante",
         "resumeInstall": "Reanudar misión de instalación",
-        "resumePrompt": "Reanudar misión de prompt"
+        "resumePrompt": "Reanudar misión de prompt",
+        "title": "Completa una misión visible antes de ampliar la configuración",
+        "body": "Termina el paso actual, guarda la prueba y lleva adelante solo el contexto verificado.",
+        "continuity": "El workspace de la lección sigue siendo el registro de continuidad para la siguiente superficie."
+      },
+      "stack": {
+        "label": "Radar del stack en vivo",
+        "title": "Conoce el stack sin abandonar la misión",
+        "body": "Usa estas notas solo para responder la pregunta de configuración actual.",
+        "itemBody": "Abre el resumen operativo conciso de {stack}.",
+        "openNotes": "Abrir notas",
+        "items": {
+          "hermes": { "whyNow": "Bucle de aprendizaje integrado", "latestSignal": "Versión v2026.7.20 · 20 jul 2026" },
+          "openclaw": { "whyNow": "Plano de control de gateway local primero", "latestSignal": "Versión v2026.7.1 · 13 jul 2026" },
+          "nanoclaw": { "whyNow": "Modelo mental ligero", "latestSignal": "Versión v2.1.17 · 17 jun 2026" },
+          "picoclaw": { "whyNow": "Escrito en Go", "latestSignal": "Versión v0.3.1 · 3 jul 2026" }
+        }
+      },
+      "operatorRecord": {
+        "title": "Registro del operador",
+        "body": "El progreso alojado y la verdad del runtime permanecen vinculados al operador que inició sesión.",
+        "signIn": "Inicia sesión para vincular el estado alojado",
+        "errorDetail": "Detalle del estado alojado: {detail}",
+        "track": { "active": "track activo", "select": "selecciona un track" },
+        "trackStatus": { "start": "no iniciado", "installed": "instalado", "firstRunSaved": "primera ejecución guardada" }
+      },
+      "runtimeEditor": {
+        "title": "Editor del runtime alojado",
+        "body": "Registra solo valores verificados del runtime desde el host del operador.",
+        "savingSnapshot": "Guardando instantánea del runtime...",
+        "dismissChecklist": "Descartar checklist"
+      },
+      "coach": {
+        "label": "Pico Coach",
+        "title": "Mantén una conversación de configuración vinculada a esta misión",
+        "body": "Pregunta por el bloqueo actual y mantén la respuesta basada en el estado de configuración alojado.",
+        "fields": { "stack": "Stack", "os": "Sistema operativo", "provider": "Proveedor", "goal": "Objetivo" },
+        "checkingSession": "Comprobando la sesión de Coach...",
+        "loadingHistory": "Cargando el historial de conversación...",
+        "emptyHistory": "Todavía no hay turnos de Coach. Pregunta por el paso exacto que te detuvo.",
+        "you": "Tú",
+        "picoCoach": "Pico Coach",
+        "placeholder": "Describe el paso de configuración bloqueado...",
+        "send": "Enviar",
+        "savingTurn": "Guardando turno...",
+        "session": "Sesión {sessionId}",
+        "readiness": "Preparación {percent}%",
+        "needsDetails": "necesita más detalles",
+        "notConfirmed": "sin confirmar",
+        "signInFirst": "Inicia sesión para empezar una sesión alojada de Coach.",
+        "verifyEmail": "Verifica tu correo electrónico antes de usar Coach alojado.",
+        "planRequired": "Coach alojado requiere un plan válido.",
+        "comparePlans": "Comparar planes",
+        "refreshSignIn": "Actualizar inicio de sesión",
+        "retryHostedSession": "Reintentar sesión alojada",
+        "retryHistory": "Reintentar historial",
+        "startNewSession": "Iniciar nueva sesión",
+        "startOver": "Empezar de nuevo",
+        "continueSetup": "Continuar la configuración",
+        "downloadPackage": "Descargar paquete",
+        "preparingPackage": "Preparando paquete...",
+        "retryPackage": "Reintentar paquete",
+        "upgradePlan": "Mejorar plan",
+        "errorDetail": "Detalle de Coach: {detail}"
       }
     },
     "tutorPage": {
@@ -1980,7 +2199,10 @@
           "groundedMode": "modo fundamentado",
           "attachLesson": "adjuntar lección",
           "notSet": "sin definir",
-          "lessonSteps": "{completed}/{total} pasos"
+          "lessonSteps": "{completed}/{total} pasos",
+          "academyOnly": "guía de Academy de solo lectura",
+          "providerMissing": "proveedor no disponible",
+          "statusUnavailable": "estado no disponible"
         }
       },
       "actions": {
@@ -2075,10 +2297,18 @@
           "notSynced": "no sincronizado"
         },
         "questionPlaceholder": "Describe el bloqueo, el paso exacto y lo que esperabas que ocurriera.",
+        "questionProtocol": [
+          "Indica el paso, comando o acción exacta del panel en el que estabas.",
+          "Pega la prueba: salida, error, transcripción o estado del runtime.",
+          "Pide el único siguiente movimiento que demuestre que la ruta vuelve a estar activa."
+        ],
+        "questionLabel": "Pregunta de configuración bloqueada",
         "blockedLessonLabel": "Lección bloqueada",
         "noLessonSelected": "Ninguna lección seleccionada",
         "submitLoading": "Buscando el siguiente paso...",
-        "submitIdle": "Obtener el siguiente paso"
+        "submitIdle": "Obtener el siguiente paso",
+        "cancelRequest": "Cancelar solicitud",
+        "comparePlans": "Comparar planes"
       },
       "rail": {
         "label": "Rail del operador",
@@ -2102,7 +2332,10 @@
           "apiKeyPlaceholder": "sk-proj-...",
           "connecting": "Conectando OpenAI...",
           "connect": "Conectar OpenAI",
-          "platformHint": "El acceso de plataforma ya está disponible. Conectar tu propia clave solo reemplaza el presupuesto de modelo de Tutor y la ruta de propiedad para esta cuenta."
+          "platformHint": "El acceso de plataforma ya está disponible. Conectar tu propia clave solo reemplaza el presupuesto de modelo de Tutor y la ruta de propiedad para esta cuenta.",
+          "personalKey": "clave personal",
+          "platformStarterHint": "acceso Starter de la plataforma",
+          "validatedAt": "validada el {timestamp}"
         },
         "escalationRule": {
           "label": "Regla de escalación",
@@ -2125,12 +2358,22 @@
         "reviewLine": "Línea de revisión",
         "fallbackRoute": "Ruta de respaldo",
         "empty": "Pregunta por un bloqueo, no por toda una historia. Pico Tutor fundamentará la respuesta en las lecciones, el paquete curado del operador y la documentación oficial cuando la pregunta sea sensible a la versión.",
-        "emptyHowItWorks": "Cómo funciona: indica el paso que falla, el resultado esperado y el fallo exacto. La respuesta debería darte un movimiento concreto, un paso de verificación y una ruta limpia de escalación si la evidencia sigue siendo fina."
+        "emptyHowItWorks": "Cómo funciona: indica el paso que falla, el resultado esperado y el fallo exacto. La respuesta debería darte un movimiento concreto, un paso de verificación y una ruta limpia de escalación si la evidencia sigue siendo fina.",
+        "academyGuidance": "Guía de Academy de solo lectura",
+        "academyGuidanceEmpty": "El acceso Free ofrece guía de Academy de solo lectura. Abre la lección coincidente para continuar.",
+        "generationProof": "Prueba de generación",
+        "lessonValidation": "Validación de la lección",
+        "loadingAnnouncement": "Tutor está revisando el bloqueo.",
+        "nextLessonStep": "Siguiente paso de la lección",
+        "openLesson": "Abrir lección",
+        "readOnly": "solo lectura",
+        "readyAnnouncement": "La respuesta de Tutor está lista.",
+        "retryHint": "Reintenta con un paso exacto y la evidencia que falló."
       },
       "matches": {
         "label": "Coincidencias de lección fundamentadas",
         "bestMatch": "mejor coincidencia",
-        "alternative": "alt"
+        "alternative": "alternativa"
       },
       "evidence": {
         "label": "Evidencia de la crítica",
@@ -2154,13 +2397,33 @@
       "nextQuestion": {
         "label": "Si la respuesta sigue borrosa"
       },
+      "availability": {
+        "checkingEntitlement": "Comprobando los derechos de Tutor...",
+        "checkingProvider": "Comprobando la conexión del proveedor...",
+        "platformProvider": "proveedor de la plataforma",
+        "providerDetail": "Detalle del proveedor: {detail}",
+        "providerUnavailable": "El proveedor de Tutor no está disponible",
+        "readOnly": "Guía de Academy de solo lectura",
+        "readyThrough": "Tutor listo mediante {provider}",
+        "signIn": "Iniciar sesión para usar Tutor en vivo",
+        "validatedKey": "clave personal validada"
+      },
       "errors": {
         "loadOpenAIConnection": "No se pudo cargar la conexión con OpenAI",
         "tutorRequestFailed": "La solicitud a Tutor falló",
         "malformedResponse": "La respuesta de Tutor volvió mal formada",
         "pasteOpenAIKeyFirst": "Pega primero una clave de API de OpenAI",
         "connectOpenAIKey": "No se pudo conectar la clave de OpenAI",
-        "disconnectOpenAIKey": "No se pudo desconectar la clave de OpenAI"
+        "disconnectOpenAIKey": "No se pudo desconectar la clave de OpenAI",
+        "detail": "Detalle de Tutor: {detail}",
+        "disconnectUnconfirmed": "El proveedor no confirmó la desconexión.",
+        "keyUpdateUnconfirmed": "El proveedor no confirmó la actualización de la clave.",
+        "planRequired": "Se necesita un plan válido para usar Tutor en vivo.",
+        "proPlanRequired": "Se necesita un plan Pro para usar una clave personal de proveedor.",
+        "providerStatusUnverified": "No se pudo verificar el estado del proveedor.",
+        "requestCanceled": "Solicitud de Tutor cancelada.",
+        "signInForLiveTutor": "Inicia sesión para usar Tutor en vivo.",
+        "unverifiedResponse": "Tutor devolvió una respuesta sin verificar."
       },
       "shared": {
         "openLesson": "Abrir {lessonTitle}"
@@ -2369,7 +2632,7 @@
         "openLiveApprovalSetup": "Abrir configuración de aprobación en vivo",
         "completeLabel": {
           "installHermesLocally": "Hermes está instalado",
-          "runYourFirstAgent": "Holy shit, it works",
+          "runYourFirstAgent": "¡Mierda, funciona!",
           "default": "Sellar este capítulo"
         },
         "askTutorAboutLesson": "Preguntar a Tutor sobre esta lección",
@@ -2551,6 +2814,7 @@
         "proof": "Prueba"
       },
       "defaultMode": {
+        "mobileNavigation": "Navegación móvil de Pico",
         "currentChapter": "Capítulo actual",
         "chapter": "Capítulo {chapter}",
         "quickHelp": "Ayuda rápida",
@@ -2628,10 +2892,10 @@
         },
         "5": {
           "title": "Control",
-          "objective": "Añade umbrales de coste, alertas y una puerta para acciones riesgosas.",
-          "projectOutcome": "El agente puede ser vigilado e interrumpido antes de causar daños.",
-          "completionState": "Los umbrales y las aprobaciones están configurados.",
-          "badge": "Guardián",
+          "objective": "Guarda un umbral de coste y prueba el flujo de aprobación con una solicitud real.",
+          "projectOutcome": "El operador puede revisar el gasto y resolver deliberadamente una acción en cola.",
+          "completionState": "Se ha guardado un umbral y se ha probado un flujo de aprobación.",
+          "badge": "Revisor de aprobaciones",
           "recommendedNextStep": "Entrega un patrón más profundo."
         },
         "6": {
@@ -2969,9 +3233,9 @@
           ]
         },
         "add-an-approval-gate": {
-          "title": "Añade una puerta de aprobación",
-          "summary": "Crea un checkpoint de aprobación real y resuélvelo a propósito.",
-          "objective": "Probar la puerta para acciones riesgosas antes de confiar al runtime algo con consecuencias.",
+          "title": "Prueba el flujo de aprobación",
+          "summary": "Crea y resuelve una solicitud real sin inferir que el runtime aplica la puerta.",
+          "objective": "Prueba la cola de aprobación antes de confiar en un comportamiento del runtime con consecuencias.",
           "outcome": "Una solicitud de aprobación funcional y una resolución deliberada.",
           "expectedResult": "Existe una aprobación pendiente y puedes aprobarla o rechazarla de forma intencionada.",
           "validation": "Crea una solicitud de aprobación y resuélvela desde la cola.",
@@ -2983,7 +3247,7 @@
             },
             {
               "title": "Crea la solicitud de aprobación",
-              "body": "Empuja la acción a la cola de aprobaciones en lugar de ejecutarla inmediatamente.",
+              "body": "Crea la solicitud en la cola. Esto prueba el flujo, no la aplicación efectiva del runtime.",
               "command": "Open /pico/autopilot and create one approval request for the risky action."
             },
             {
@@ -2994,7 +3258,7 @@
           ],
           "troubleshooting": [
             "Si las aprobaciones no están disponibles, dilo claramente. El runtime todavía no está gobernado.",
-            "Si cualquiera puede aprobarlo todo, la puerta existe pero la política es débil. Registra esa brecha y sigue.",
+            "Si cualquiera puede aprobarlo todo, el flujo existe pero la política es débil. Registra esa brecha y sigue.",
             "Si pones puerta a ruido trivial, la cola se convierte en spam y los operadores dejan de confiar en ella."
           ]
         },
@@ -3127,24 +3391,24 @@
           "actionLabel": "Definir un umbral de coste"
         },
         "cap-approvals": {
-          "title": "Puertas de aprobación desbloqueadas",
-          "description": "La conciencia presupuestaria ya está viva. Añade una parada humana antes de que las acciones salientes riesgosas ocurran de verdad.",
-          "actionLabel": "Añadir una puerta de aprobación"
+          "title": "Flujo de aprobación disponible",
+          "description": "Un umbral guardado es solo una preferencia. Prueba una solicitud real y verifica el comportamiento del runtime.",
+          "actionLabel": "Probar el flujo de aprobación"
         },
         "cap-production-pattern": {
           "title": "Patrón de producción desbloqueado",
-          "description": "La barrera ya está colocada. Entrega un flujo que parezca un producto, no un truco de prompt.",
+          "description": "El flujo de aprobación se ha probado. Trata la aplicación efectiva como una verdad propia del runtime.",
           "actionLabel": "Entregar el patrón de producción"
         }
       },
       "planMatrix": {
         "free": {
           "academy": "Acceso completo a Academy",
-          "tutor": "Tutor fundamentado con uso diario ligero",
+          "tutor": "Guía de Academy de solo lectura",
           "project_limit": "1 carril de proyecto activo",
-          "monitored_agents": "Solo vista previa",
+          "monitored_agents": "Resumen de ejecución de solo lectura",
           "alerts": "Alertas de umbral dentro de la app",
-          "approvals": "Vista previa del flujo de aprobación",
+          "approvals": "Resumen del flujo de aprobación",
           "retention": "Memoria de producto de 7 días"
         },
         "starter": {

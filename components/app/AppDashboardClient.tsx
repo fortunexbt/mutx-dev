@@ -635,7 +635,7 @@ export function AppDashboardClient() {
               className="inline-flex w-full justify-center items-center gap-2 rounded-xl bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" />
               ) : (
                 <ShieldCheck className="h-4 w-4" />
               )}
@@ -765,7 +765,7 @@ export function AppDashboardClient() {
             disabled={refreshing || loading}
             className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm transition hover:border-cyan-300/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <RefreshCcw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            <RefreshCcw className={`h-4 w-4 ${refreshing ? "motion-safe:animate-spin motion-reduce:animate-none" : ""}`} />
             {refreshing ? "Refreshing" : "Refresh"}
           </button>
           <button
@@ -1202,7 +1202,7 @@ export function AppDashboardClient() {
                 className="inline-flex shrink-0 items-center justify-center rounded-lg bg-amber-400 px-3 py-2 text-sm font-semibold text-amber-950 transition hover:bg-amber-300 disabled:opacity-50"
               >
                 {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" />
                 ) : (
                   apiKeyLimitReached ? "Limit reached" : "Generate"
                 )}

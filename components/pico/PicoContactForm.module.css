@@ -41,7 +41,7 @@
 .closeBtn {
   position: absolute;
   top: 1rem;
-  right: 1rem;
+  inset-inline-end: 1rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -225,7 +225,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.55rem 0.7rem;
-  padding-right: 2rem;
+  padding-inline-end: 2rem;
   border-radius: 0.4rem;
   font-family: var(--pico-font-body);
   font-size: 0.85rem;
@@ -263,7 +263,7 @@
 
 .selectIndicator {
   position: absolute;
-  right: 0.6rem;
+  inset-inline-end: 0.6rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -293,6 +293,61 @@
   padding: 0.6rem 0.75rem;
   resize: vertical;
   min-height: 4.5rem;
+}
+
+/* --- Optional product updates consent ---------------------------- */
+.consent {
+  display: grid;
+  grid-template-columns: 1.15rem 1fr;
+  align-items: start;
+  gap: 0.65rem;
+  padding: 0.75rem;
+  border: 1px solid var(--pico-border);
+  border-radius: 0.6rem;
+  background: var(--pico-bg-surface);
+  cursor: pointer;
+  transition: border-color 160ms, background 160ms;
+}
+
+.consent:hover {
+  border-color: var(--pico-border-hover);
+  background: var(--pico-bg-surface-hover);
+}
+
+.consent:has(.checkbox:focus-visible) {
+  border-color: var(--pico-accent-bright);
+  box-shadow: 0 0 0 3px rgba(var(--pico-accent-rgb), 0.22);
+}
+
+.checkbox {
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0.12rem 0 0;
+  accent-color: var(--pico-accent-bright);
+  cursor: pointer;
+}
+
+.checkbox:focus-visible {
+  outline: 2px solid var(--pico-accent-bright);
+  outline-offset: 3px;
+}
+
+.consentCopy {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.consentLabel {
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--pico-text-secondary);
+}
+
+.consentHint {
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--pico-text-muted);
 }
 
 /* --- Error -------------------------------------------------------- */

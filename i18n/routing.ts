@@ -1,11 +1,13 @@
 import { defineRouting } from 'next-intl/routing'
 
+import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from './locale'
+
 export const routing = defineRouting({
-  locales: ['en', 'es', 'fr', 'de', 'it', 'pt', 'ja', 'ko', 'zh', 'ar'],
-  defaultLocale: 'en',
+  locales: SUPPORTED_LOCALES,
+  defaultLocale: DEFAULT_LOCALE,
   pathnames: {
     '/': '/',
   },
 })
 
-export type Locale = (typeof routing.locales)[number]
+export type { Locale } from './locale'

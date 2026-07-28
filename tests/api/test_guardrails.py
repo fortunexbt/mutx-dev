@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 
 from mutx.guardrails import (
@@ -125,18 +128,225 @@ class TestRegexBlocklistGuardrail:
 class TestToxicityGuardrail:
     """Tests for ToxicityGuardrail."""
 
-    def test_no_api_returns_allow(self):
+    @staticmethod
+    def _response(
+        payload: Any = None,
+        *,
+        status_code: int = 200,
+        content: bytes | None = None,
+    ) -> httpx.Response:
+        request = httpx.Request("POST", "https://toxicity.test/check")
+        if content is not None:
+            return httpx.Response(status_code, content=content, request=request)
+        return httpx.Response(status_code, json=payload, request=request)
+
+    @staticmethod
+    def _check(guardrail: ToxicityGuardrail, *, async_mode: bool) -> GuardrailResult:
+        if async_mode:
+            return asyncio.run(guardrail.acheck("Hello world", {"source": "test"}))
+        return guardrail.check("Hello world", {"source": "test"})
+
+    @staticmethod
+    def _mock_request(
+        guardrail: ToxicityGuardrail,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        async_mode: bool,
+        response: httpx.Response | None = None,
+        error: httpx.HTTPError | None = None,
+    ) -> AsyncMock | MagicMock:
+        request_mock: AsyncMock | MagicMock
+        if async_mode:
+            request_mock = AsyncMock(return_value=response, side_effect=error)
+            monkeypatch.setattr(guardrail, "_arequest", request_mock)
+        else:
+            request_mock = MagicMock(return_value=response, side_effect=error)
+            monkeypatch.setattr(guardrail, "_request", request_mock)
+        return request_mock
+
+    def test_no_api_fails_closed(self):
         guardrail = ToxicityGuardrail()
         result = guardrail.check("Hello world", {})
-        assert result.passed is True
-        assert result.action == "allow"
+        assert result.passed is False
+        assert result.triggered_rule == "toxicity_unavailable"
+        assert result.action == "block"
+        assert "not configured" in result.message
 
-    def test_with_api_url_returns_allow_stub(self):
+    def test_sync_check_calls_configured_service(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        response = self._response({"toxic": False})
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.post.return_value = response
+        client_factory = MagicMock(return_value=client)
+        monkeypatch.setattr(httpx, "Client", client_factory)
+        guardrail = ToxicityGuardrail(
+            toxicity_api_url="https://toxicity.test/check",
+            timeout=2.5,
+        )
+
+        result = guardrail.check("Hello world", {"source": "test"})
+
+        assert result.passed is True
+        client_factory.assert_called_once_with(timeout=2.5)
+        client.post.assert_called_once_with(
+            "https://toxicity.test/check",
+            json={"text": "Hello world", "context": {"source": "test"}},
+        )
+
+    def test_async_check_calls_configured_service(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        response = self._response({"toxic": False})
+        client = MagicMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=None)
+        client.post = AsyncMock(return_value=response)
+        client_factory = MagicMock(return_value=client)
+        monkeypatch.setattr(httpx, "AsyncClient", client_factory)
+        guardrail = ToxicityGuardrail(
+            toxicity_api_url="https://toxicity.test/check",
+            timeout=3.5,
+        )
+
+        result = asyncio.run(guardrail.acheck("Hello world", {"source": "test"}))
+
+        assert result.passed is True
+        client_factory.assert_called_once_with(timeout=3.5)
+        client.post.assert_awaited_once_with(
+            "https://toxicity.test/check",
+            json={"text": "Hello world", "context": {"source": "test"}},
+        )
+
+    @pytest.mark.parametrize("async_mode", [False, True], ids=["sync", "async"])
+    def test_clean_service_response_passes(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        async_mode: bool,
+    ) -> None:
         guardrail = ToxicityGuardrail(toxicity_api_url="http://localhost:8000/check")
-        result = guardrail.check("Hello world", {})
-        # Stub returns allow since no real API is called
+        request_mock = self._mock_request(
+            guardrail,
+            monkeypatch,
+            async_mode=async_mode,
+            response=self._response({"toxic": False}),
+        )
+
+        result = self._check(guardrail, async_mode=async_mode)
+
         assert result.passed is True
         assert result.action == "allow"
+        request_mock.assert_called_once_with("Hello world", {"source": "test"})
+
+    @pytest.mark.parametrize("async_mode", [False, True], ids=["sync", "async"])
+    def test_toxic_service_response_blocks(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        async_mode: bool,
+    ) -> None:
+        guardrail = ToxicityGuardrail(toxicity_api_url="https://toxicity.test/check")
+        self._mock_request(
+            guardrail,
+            monkeypatch,
+            async_mode=async_mode,
+            response=self._response({"toxic": True, "reason": "Threatening language"}),
+        )
+
+        result = self._check(guardrail, async_mode=async_mode)
+
+        assert result.passed is False
+        assert result.triggered_rule == "toxicity"
+        assert result.action == "block"
+        assert result.message == "Threatening language"
+
+    @pytest.mark.parametrize("async_mode", [False, True], ids=["sync", "async"])
+    def test_service_http_error_fails_closed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        async_mode: bool,
+    ) -> None:
+        guardrail = ToxicityGuardrail(toxicity_api_url="https://toxicity.test/check")
+        self._mock_request(
+            guardrail,
+            monkeypatch,
+            async_mode=async_mode,
+            response=self._response({"detail": "down"}, status_code=503),
+        )
+
+        result = self._check(guardrail, async_mode=async_mode)
+
+        assert result.passed is False
+        assert result.triggered_rule == "toxicity_unavailable"
+        assert result.action == "block"
+        assert "HTTPStatusError" in result.message
+
+    @pytest.mark.parametrize("async_mode", [False, True], ids=["sync", "async"])
+    def test_malformed_service_response_fails_closed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        async_mode: bool,
+    ) -> None:
+        guardrail = ToxicityGuardrail(toxicity_api_url="https://toxicity.test/check")
+        self._mock_request(
+            guardrail,
+            monkeypatch,
+            async_mode=async_mode,
+            response=self._response({"toxic": "no"}),
+        )
+
+        result = self._check(guardrail, async_mode=async_mode)
+
+        assert result.passed is False
+        assert result.triggered_rule == "toxicity_unavailable"
+        assert result.action == "block"
+        assert "must be a boolean" in result.message
+
+    @pytest.mark.parametrize("async_mode", [False, True], ids=["sync", "async"])
+    def test_timeout_fails_closed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        async_mode: bool,
+    ) -> None:
+        guardrail = ToxicityGuardrail(toxicity_api_url="https://toxicity.test/check")
+        timeout = httpx.ReadTimeout(
+            "timed out",
+            request=httpx.Request("POST", "https://toxicity.test/check"),
+        )
+        self._mock_request(
+            guardrail,
+            monkeypatch,
+            async_mode=async_mode,
+            error=timeout,
+        )
+
+        result = self._check(guardrail, async_mode=async_mode)
+
+        assert result.passed is False
+        assert result.triggered_rule == "toxicity_unavailable"
+        assert result.action == "block"
+        assert "ReadTimeout" in result.message
+
+    @pytest.mark.parametrize("async_mode", [False, True], ids=["sync", "async"])
+    def test_explicit_fail_open_returns_visible_warning(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        async_mode: bool,
+    ) -> None:
+        guardrail = ToxicityGuardrail(
+            toxicity_api_url="https://toxicity.test/check",
+            fail_open_on_unavailable=True,
+        )
+        self._mock_request(
+            guardrail,
+            monkeypatch,
+            async_mode=async_mode,
+            response=self._response(content=b"not-json"),
+        )
+
+        result = self._check(guardrail, async_mode=async_mode)
+
+        assert result.passed is True
+        assert result.triggered_rule == "toxicity_unavailable"
+        assert result.action == "warn"
+        assert "not valid JSON" in result.message
+        assert "fail_open_on_unavailable=True" in result.message
 
 
 class TestGuardrailMiddleware:

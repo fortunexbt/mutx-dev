@@ -1,4 +1,5 @@
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 import uuid
 from datetime import datetime, timedelta
@@ -20,6 +21,15 @@ def _mock_public_webhook_dns(monkeypatch):
         "resolve_webhook_destination_ips",
         fake_resolve_webhook_destination_ips,
     )
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _persisted_webhook_developers(db_session, test_user, other_user):
+    """Keep legacy lifecycle tests on their intended write-capable principals."""
+
+    test_user.roles = ["DEVELOPER"]
+    other_user.roles = ["DEVELOPER"]
+    await db_session.commit()
 
 
 @pytest.mark.asyncio
@@ -127,6 +137,139 @@ async def test_webhook_list_honors_skip_and_limit(client: AsyncClient):
 async def test_webhook_unauthorized(client_no_auth: AsyncClient):
     response = await client_no_auth.get("/v1/webhooks/")
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_webhook_verify_docs_static_route_is_not_shadowed(client: AsyncClient):
+    response = await client.get("/v1/webhooks/verify-docs")
+
+    assert response.status_code == 200
+    assert response.json()["algorithm"] == "HMAC-SHA256"
+    assert response.json()["header"] == "X-Webhook-Signature"
+
+
+@pytest.mark.asyncio
+async def test_viewer_can_read_owned_webhooks_and_delivery_history(
+    client: AsyncClient,
+    db_session,
+    test_user,
+):
+    webhook = Webhook(
+        user_id=test_user.id,
+        url="https://example.com/webhook",
+        events=["*"],
+        secret=None,
+        is_active=True,
+    )
+    db_session.add(webhook)
+    await db_session.commit()
+    await db_session.refresh(webhook)
+    db_session.add(
+        WebhookDeliveryLog(
+            webhook_id=webhook.id,
+            event="agent.status",
+            payload='{"status":"running"}',
+            success=True,
+            attempts=1,
+        )
+    )
+    test_user.roles = ["VIEWER"]
+    await db_session.commit()
+
+    responses = [
+        await client.get("/v1/webhooks/"),
+        await client.get(f"/v1/webhooks/{webhook.id}"),
+        await client.get(f"/v1/webhooks/{webhook.id}/deliveries"),
+        await client.get("/v1/webhooks/verify-docs"),
+    ]
+
+    assert [response.status_code for response in responses] == [200, 200, 200, 200]
+
+
+@pytest.mark.asyncio
+async def test_viewer_mutations_are_denied_before_dns_db_or_http_side_effects(
+    client: AsyncClient,
+    db_session,
+    test_user,
+    monkeypatch,
+):
+    webhook = Webhook(
+        user_id=test_user.id,
+        url="https://example.com/webhook",
+        events=["*"],
+        secret=None,
+        is_active=True,
+    )
+    db_session.add(webhook)
+    await db_session.commit()
+    await db_session.refresh(webhook)
+    delivery = WebhookDeliveryLog(
+        webhook_id=webhook.id,
+        event="agent.status",
+        payload='{"status":"running"}',
+        success=False,
+        attempts=1,
+    )
+    db_session.add(delivery)
+    test_user.roles = ["VIEWER"]
+    await db_session.commit()
+    await db_session.refresh(delivery)
+
+    async def forbidden_side_effect(*args, **kwargs):
+        raise AssertionError("webhook side effect ran before persisted-role denial")
+
+    import src.api.services.webhook_service as webhook_service
+
+    monkeypatch.setattr(db_session, "execute", forbidden_side_effect)
+    monkeypatch.setattr(
+        webhook_service,
+        "resolve_webhook_destination_ips",
+        forbidden_side_effect,
+    )
+    monkeypatch.setattr(
+        webhook_service,
+        "_send_pinned_webhook_request",
+        forbidden_side_effect,
+    )
+
+    responses = [
+        await client.post(
+            "/v1/webhooks/",
+            json={"url": "https://example.com/new", "events": ["*"]},
+        ),
+        await client.patch(
+            f"/v1/webhooks/{webhook.id}",
+            json={"url": "https://example.com/changed"},
+        ),
+        await client.delete(f"/v1/webhooks/{webhook.id}"),
+        await client.post(f"/v1/webhooks/{webhook.id}/test"),
+        await client.post(
+            "/v1/webhooks/retry",
+            json={"delivery_id": str(delivery.id)},
+        ),
+    ]
+
+    assert {response.status_code for response in responses} == {403}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["DEVELOPER", "ADMIN"])
+async def test_developer_and_admin_can_manage_owned_webhooks(
+    client: AsyncClient,
+    db_session,
+    test_user,
+    role: str,
+):
+    test_user.roles = [role]
+    await db_session.commit()
+
+    created = await client.post(
+        "/v1/webhooks/",
+        json={"url": "https://example.com/webhook", "events": ["*"]},
+    )
+
+    assert created.status_code == 201
+    assert (await client.delete(f"/v1/webhooks/{created.json()['id']}")).status_code == 204
 
 
 @pytest.mark.asyncio
@@ -329,6 +472,8 @@ async def test_webhook_delivery_history_rejects_legacy_user_api_key_auth(
 async def test_webhook_delivery_history_supports_managed_api_key_auth(
     client_no_auth: AsyncClient, db_session, test_user
 ):
+    test_user.roles = ["DEVELOPER"]
+    await db_session.commit()
     access_token, _ = create_access_token(test_user.id)
 
     create_response = await client_no_auth.post(
@@ -371,8 +516,10 @@ async def test_webhook_delivery_history_supports_managed_api_key_auth(
 
 @pytest.mark.asyncio
 async def test_webhook_create_supports_managed_api_key_in_bearer_header(
-    client_no_auth: AsyncClient, test_user
+    client_no_auth: AsyncClient, db_session, test_user
 ):
+    test_user.roles = ["DEVELOPER"]
+    await db_session.commit()
     access_token, _ = create_access_token(test_user.id)
     key_response = await client_no_auth.post(
         "/v1/api-keys",
@@ -390,6 +537,131 @@ async def test_webhook_create_supports_managed_api_key_in_bearer_header(
 
     assert response.status_code == 201
     assert response.json()["url"] == "https://example.com/webhook"
+
+
+@pytest.mark.asyncio
+async def test_jwt_uses_current_persisted_viewer_role_before_dns(
+    client_no_auth: AsyncClient,
+    db_session,
+    test_user,
+    monkeypatch,
+):
+    test_user.roles = ["DEVELOPER"]
+    await db_session.commit()
+    access_token, _ = create_access_token(test_user.id)
+    test_user.roles = ["VIEWER"]
+    await db_session.commit()
+
+    async def forbidden_resolution(*args, **kwargs):
+        raise AssertionError("DNS ran before persisted-role denial")
+
+    import src.api.services.webhook_service as webhook_service
+
+    monkeypatch.setattr(
+        webhook_service,
+        "resolve_webhook_destination_ips",
+        forbidden_resolution,
+    )
+    denied = await client_no_auth.post(
+        "/v1/webhooks/",
+        json={"url": "https://example.com/denied", "events": ["*"]},
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+
+    assert denied.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_managed_api_key_uses_current_viewer_role_for_read_and_mutation_denial(
+    client_no_auth: AsyncClient,
+    db_session,
+    test_user,
+    monkeypatch,
+):
+    test_user.roles = ["DEVELOPER"]
+    await db_session.commit()
+    access_token, _ = create_access_token(test_user.id)
+    jwt_headers = {"Authorization": f"Bearer {access_token}"}
+    created = await client_no_auth.post(
+        "/v1/webhooks/",
+        json={"url": "https://example.com/webhook", "events": ["*"]},
+        headers=jwt_headers,
+    )
+    assert created.status_code == 201
+    key_response = await client_no_auth.post(
+        "/v1/api-keys",
+        json={"name": "viewer-webhook-key"},
+        headers=jwt_headers,
+    )
+    assert key_response.status_code == 201
+    key_headers = {"X-API-Key": key_response.json()["key"]}
+
+    test_user.roles = ["VIEWER"]
+    await db_session.commit()
+
+    async def forbidden_resolution(*args, **kwargs):
+        raise AssertionError("DNS ran before persisted-role denial")
+
+    import src.api.services.webhook_service as webhook_service
+
+    monkeypatch.setattr(
+        webhook_service,
+        "resolve_webhook_destination_ips",
+        forbidden_resolution,
+    )
+    allowed_read = await client_no_auth.get(
+        f"/v1/webhooks/{created.json()['id']}",
+        headers=key_headers,
+    )
+    denied_create = await client_no_auth.post(
+        "/v1/webhooks/",
+        json={"url": "https://example.com/denied", "events": ["*"]},
+        headers=key_headers,
+    )
+    denied_delete = await client_no_auth.delete(
+        f"/v1/webhooks/{created.json()['id']}",
+        headers=key_headers,
+    )
+
+    assert allowed_read.status_code == 200
+    assert denied_create.status_code == 403
+    assert denied_delete.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_revoked_managed_api_key_cannot_read_owned_webhooks(
+    client_no_auth: AsyncClient,
+    db_session,
+    test_user,
+):
+    test_user.roles = ["DEVELOPER"]
+    await db_session.commit()
+    access_token, _ = create_access_token(test_user.id)
+    jwt_headers = {"Authorization": f"Bearer {access_token}"}
+    created = await client_no_auth.post(
+        "/v1/webhooks/",
+        json={"url": "https://example.com/webhook", "events": ["*"]},
+        headers=jwt_headers,
+    )
+    assert created.status_code == 201
+    key_response = await client_no_auth.post(
+        "/v1/api-keys",
+        json={"name": "revoked-webhook-key"},
+        headers=jwt_headers,
+    )
+    assert key_response.status_code == 201
+    revoked = await client_no_auth.delete(
+        f"/v1/api-keys/{key_response.json()['id']}",
+        headers=jwt_headers,
+    )
+    assert revoked.status_code == 204
+
+    denied = await client_no_auth.get(
+        f"/v1/webhooks/{created.json()['id']}",
+        headers={"X-API-Key": key_response.json()["key"]},
+    )
+
+    assert denied.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -425,7 +697,7 @@ async def test_webhook_create_rejects_invalid_url(client: AsyncClient):
         json={"url": "not-a-valid-url", "events": ["agent.*"]},
     )
     assert response.status_code == 400
-    assert "http:// or https://" in response.json()["detail"]
+    assert "must use HTTPS" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -442,7 +714,7 @@ async def test_webhook_create_rejects_invalid_event(client: AsyncClient):
 async def test_webhook_create_rejects_loopback_destination(client: AsyncClient):
     response = await client.post(
         "/v1/webhooks/",
-        json={"url": "http://127.0.0.1/webhook", "events": ["agent.*"]},
+        json={"url": "https://127.0.0.1/webhook", "events": ["agent.*"]},
     )
 
     assert response.status_code == 400
@@ -465,7 +737,7 @@ async def test_webhook_update_rejects_invalid_url(client: AsyncClient):
         json={"url": "ftp://example.com"},
     )
     assert response.status_code == 400
-    assert "http:// or https://" in response.json()["detail"]
+    assert "must use HTTPS" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -596,7 +868,7 @@ async def test_webhook_test_rejects_unsafe_stored_destination(
 ):
     webhook = Webhook(
         user_id=test_user.id,
-        url="http://127.0.0.1/webhook",
+        url="https://127.0.0.1/webhook",
         events=["*"],
         secret=None,
         is_active=True,
@@ -612,29 +884,28 @@ async def test_webhook_test_rejects_unsafe_stored_destination(
 
 
 @pytest.mark.asyncio
-async def test_deliver_webhook_blocks_unsafe_destination_before_network():
+async def test_deliver_webhook_blocks_unsafe_destination_before_network(monkeypatch):
+    import src.api.services.webhook_service as webhook_service
     from src.api.services.webhook_service import deliver_webhook
 
-    class ExplodingSession:
-        def post(self, *args, **kwargs):
-            raise AssertionError("network request should not be attempted")
+    async def exploding_transport(*args, **kwargs):
+        raise AssertionError("network request should not be attempted")
+
+    monkeypatch.setattr(webhook_service, "_send_pinned_webhook_request", exploding_transport)
 
     webhook = Webhook(
         user_id=uuid.uuid4(),
-        url="http://127.0.0.1/webhook",
+        url="https://127.0.0.1/webhook",
         events=["*"],
         secret=None,
         is_active=True,
     )
 
-    success, status_code, error_message, duration_ms, response_body = (
-        await deliver_webhook(
-            ExplodingSession(),
-            webhook,
-            "test",
-            {"message": "blocked"},
-            uuid.uuid4(),
-        )
+    success, status_code, error_message, duration_ms, response_body = await deliver_webhook(
+        webhook,
+        "test",
+        {"message": "blocked"},
+        uuid.uuid4(),
     )
 
     assert success is False

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.api.database import get_db
-from src.api.auth.dependencies import get_current_user
+from src.api.auth.dependencies import require_roles
 from src.api.models import Agent, AgentRun, AgentRunTrace, User
 from src.api.services.analytics import log_analytics_event, AnalyticsEventType
 from src.api.services.usage import track_usage_best_effort
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/runs", tags=["runs"])
 
 
 def _encode_json(value: dict[str, Any]) -> str:
-    return json.dumps(value)
+    return json.dumps(value, allow_nan=False)
 
 
 def _decode_json(value: Optional[str]) -> dict[str, Any]:
@@ -79,24 +79,24 @@ def _serialize_run(run: AgentRun) -> RunResponse:
 
 
 async def _get_user_agent(agent_id: uuid.UUID, current_user: User, db: AsyncSession) -> Agent:
-    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    result = await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.user_id == current_user.id)
+    )
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to access this agent")
     return agent
 
 
 async def _get_user_run(run_id: uuid.UUID, current_user: User, db: AsyncSession) -> AgentRun:
     result = await db.execute(
-        select(AgentRun).options(selectinload(AgentRun.traces)).where(AgentRun.id == run_id)
+        select(AgentRun)
+        .options(selectinload(AgentRun.traces))
+        .where(AgentRun.id == run_id, AgentRun.user_id == current_user.id)
     )
     run = result.scalar_one_or_none()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if run.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to access this run")
     return run
 
 
@@ -104,7 +104,7 @@ async def _get_user_run(run_id: uuid.UUID, current_user: User, db: AsyncSession)
 async def create_run(
     request: RunCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     agent = await _get_user_agent(request.agent_id, current_user, db)
     started_at = request.started_at or datetime.now(timezone.utc)
@@ -170,7 +170,7 @@ async def list_runs(
     agent_id: Optional[uuid.UUID] = Query(None),
     status: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     if agent_id is not None:
         await _get_user_agent(agent_id, current_user, db)
@@ -209,7 +209,7 @@ async def list_runs(
 async def get_run(
     run_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     run = await _get_user_run(run_id, current_user, db)
     traces = sorted(run.traces, key=lambda item: (item.sequence, item.timestamp))
@@ -227,7 +227,7 @@ async def list_run_traces(
     limit: int = Query(100, ge=1, le=500),
     event_type: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     run = await _get_user_run(run_id, current_user, db)
 
@@ -267,7 +267,7 @@ async def add_run_traces(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     """
     Add traces to an existing run.

@@ -2,11 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { ApiRequestError, readJson } from "@/components/app/http";
+import { readJson } from "@/components/app/http";
+import {
+  dashboardRequestErrorMessage,
+  getDashboardRequestAccessFailure,
+} from "@/components/dashboard/dashboardRequestAccess";
 import {
   LiveAuthRequired,
   LiveEmptyState,
   LiveErrorState,
+  LiveForbidden,
   LiveLoading,
   LivePanel,
   asDashboardStatus,
@@ -29,11 +34,13 @@ type RunTraceHistory = components["schemas"]["RunTraceHistoryResponse"];
 export function TracesPageClient() {
   const [loading, setLoading] = useState(true);
   const [authRequired, setAuthRequired] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [traces, setTraces] = useState<RunTrace[]>([]);
   const [traceLoading, setTraceLoading] = useState(false);
+  const [traceError, setTraceError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,6 +49,7 @@ export function TracesPageClient() {
       setLoading(true);
       setError(null);
       setAuthRequired(false);
+      setPermissionDenied(false);
 
       try {
         const response = await readJson<RunHistory>("/api/dashboard/runs?limit=18");
@@ -53,13 +61,13 @@ export function TracesPageClient() {
         }
       } catch (loadError) {
         if (!cancelled) {
-          if (
-            loadError instanceof ApiRequestError &&
-            (loadError.status === 401 || loadError.status === 403)
-          ) {
+          const accessFailure = getDashboardRequestAccessFailure(loadError);
+          if (accessFailure === "authentication") {
             setAuthRequired(true);
+          } else if (accessFailure === "permission") {
+            setPermissionDenied(true);
           } else {
-            setError(loadError instanceof Error ? loadError.message : "Failed to load runs");
+            setError(dashboardRequestErrorMessage(loadError, "Failed to load runs"));
           }
           setLoading(false);
         }
@@ -77,13 +85,17 @@ export function TracesPageClient() {
 
     if (!runId) {
       setTraces([]);
+      setTraceLoading(false);
+      setTraceError(null);
       return;
     }
     const activeRunId: string = runId;
 
     let cancelled = false;
     async function loadTraces() {
+      setTraces([]);
       setTraceLoading(true);
+      setTraceError(null);
       try {
         const response = await readJson<RunTraceHistory>(
           `/api/dashboard/runs/${encodeURIComponent(activeRunId)}/traces?limit=64`,
@@ -93,7 +105,14 @@ export function TracesPageClient() {
         }
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "Failed to load traces");
+          const accessFailure = getDashboardRequestAccessFailure(loadError);
+          if (accessFailure === "authentication") {
+            setAuthRequired(true);
+          } else if (accessFailure === "permission") {
+            setPermissionDenied(true);
+          } else {
+            setTraceError(dashboardRequestErrorMessage(loadError, "Failed to load traces"));
+          }
         }
       } finally {
         if (!cancelled) {
@@ -121,6 +140,9 @@ export function TracesPageClient() {
         message="Sign in to inspect run traces and correlated execution events."
       />
     );
+  }
+  if (permissionDenied) {
+    return <LiveForbidden title="Trace permission required" message="Your account cannot inspect run traces. Run selection controls are unavailable." />;
   }
   if (error && runs.length === 0) return <LiveErrorState title="Trace explorer unavailable" message={error} />;
   if (runs.length === 0) {
@@ -197,6 +219,8 @@ export function TracesPageClient() {
 
             {traceLoading ? (
               <LiveLoading title="Trace stream" />
+            ) : traceError ? (
+              <LiveErrorState title="Trace stream unavailable" message={traceError} />
             ) : traces.length === 0 ? (
               <LiveEmptyState
                 title="No trace events captured"

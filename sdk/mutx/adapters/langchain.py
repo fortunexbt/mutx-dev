@@ -20,11 +20,15 @@ Example:
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import suppress
 from datetime import datetime
+from threading import Lock
 from typing import Any
 
 import httpx
+
+from mutx._http import normalize_api_base_url
 
 try:
     from langchain_core.agents import AgentAction, AgentFinish
@@ -110,14 +114,44 @@ class MutxLangChainCallbackHandler(BaseCallbackHandler):
             agent_name: Name of the agent for span attribution.
         """
         self.api_url = api_url.rstrip("/")
+        self.api_base_url = normalize_api_base_url(api_url)
         self.api_key = api_key
         self.agent_name = agent_name
         self._http = httpx.Client(
-            base_url=self.api_url,
+            base_url=self.api_base_url,
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=30.0,
         )
         self._tracer = get_tracer("mutx.langchain")
+        self._event_listeners: list[Callable[[dict[str, Any]], None]] = []
+        self._event_listeners_lock = Lock()
+
+    def add_event_listener(self, listener: Callable[[dict[str, Any]], None]) -> None:
+        """Register a best-effort listener for observed LangChain callbacks."""
+        with self._event_listeners_lock:
+            if listener not in self._event_listeners:
+                self._event_listeners.append(listener)
+
+    def remove_event_listener(self, listener: Callable[[dict[str, Any]], None]) -> None:
+        """Remove a previously registered callback listener."""
+        with self._event_listeners_lock:
+            if listener in self._event_listeners:
+                self._event_listeners.remove(listener)
+
+    def _emit_stream_event(self, event_type: str, **data: Any) -> None:
+        event = {
+            "event_type": event_type,
+            "agent_name": self.agent_name,
+            "timestamp": datetime.now().isoformat(),
+            **data,
+        }
+        with self._event_listeners_lock:
+            listeners = tuple(self._event_listeners)
+        for listener in listeners:
+            try:
+                listener(dict(event))
+            except Exception:
+                pass  # Observability listeners must not interrupt agent execution.
 
     def on_llm_start(
         self,
@@ -139,6 +173,15 @@ class MutxLangChainCallbackHandler(BaseCallbackHandler):
             "agent.name": self.agent_name,
         }
         self._tracer.start_span(span_name, attributes=attributes)
+        self._emit_stream_event(
+            "llm_start",
+            model=attributes["llm.model"],
+            prompt_count=len(prompts),
+            run_id=str(kwargs["run_id"]) if kwargs.get("run_id") is not None else None,
+            parent_run_id=(
+                str(kwargs["parent_run_id"]) if kwargs.get("parent_run_id") is not None else None
+            ),
+        )
 
     def on_chat_model_start(
         self,
@@ -158,6 +201,15 @@ class MutxLangChainCallbackHandler(BaseCallbackHandler):
                 "llm.prompt_count": len(messages),
                 "agent.name": self.agent_name,
             },
+        )
+        self._emit_stream_event(
+            "llm_start",
+            model=model_name,
+            prompt_count=len(messages),
+            run_id=str(kwargs["run_id"]) if kwargs.get("run_id") is not None else None,
+            parent_run_id=(
+                str(kwargs["parent_run_id"]) if kwargs.get("parent_run_id") is not None else None
+            ),
         )
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
@@ -189,6 +241,15 @@ class MutxLangChainCallbackHandler(BaseCallbackHandler):
         except Exception:
             pass  # Best effort telemetry recording
 
+        self._emit_stream_event(
+            "llm_end",
+            token_usage=attributes,
+            run_id=str(kwargs["run_id"]) if kwargs.get("run_id") is not None else None,
+            parent_run_id=(
+                str(kwargs["parent_run_id"]) if kwargs.get("parent_run_id") is not None else None
+            ),
+        )
+
     def on_tool_start(
         self,
         serialized: dict[str, Any],
@@ -219,6 +280,13 @@ class MutxLangChainCallbackHandler(BaseCallbackHandler):
             "agent.name": self.agent_name,
         }
         self._tracer.start_span(span_name, attributes=attributes)
+        self._emit_stream_event(
+            "tool_start",
+            tool=tool_name,
+            input=input_str,
+            run_id=str(run_id) if run_id is not None else None,
+            parent_run_id=str(parent_run_id) if parent_run_id is not None else None,
+        )
 
     def on_tool_end(
         self,
@@ -246,6 +314,13 @@ class MutxLangChainCallbackHandler(BaseCallbackHandler):
                 span.end()
         except Exception:
             pass  # Best effort telemetry recording
+
+        self._emit_stream_event(
+            "tool_end",
+            output=str(output),
+            run_id=str(run_id) if run_id is not None else None,
+            parent_run_id=str(parent_run_id) if parent_run_id is not None else None,
+        )
 
     def on_tool_error(
         self,
@@ -275,6 +350,13 @@ class MutxLangChainCallbackHandler(BaseCallbackHandler):
         except Exception:
             pass  # Best effort telemetry recording
 
+        self._emit_stream_event(
+            "tool_error",
+            error=str(error),
+            run_id=str(run_id) if run_id is not None else None,
+            parent_run_id=str(parent_run_id) if parent_run_id is not None else None,
+        )
+
     def on_agent_action(
         self,
         action: AgentAction,
@@ -301,10 +383,18 @@ class MutxLangChainCallbackHandler(BaseCallbackHandler):
             "run_id": run_id,
             "parent_run_id": parent_run_id,
         }
+        self._emit_stream_event(
+            "agent_action",
+            tool=action.tool,
+            tool_input=action.tool_input,
+            log=action.log,
+            run_id=str(run_id) if run_id is not None else None,
+            parent_run_id=str(parent_run_id) if parent_run_id is not None else None,
+        )
 
         # Best effort audit logging - don't block agent execution on failure
         try:
-            self._http.post("/v1/events", json=event)
+            self._http.post("events", json=event)
         except httpx.HTTPError:
             pass  # Fail silently to not interrupt agent execution
 
@@ -333,9 +423,16 @@ class MutxLangChainCallbackHandler(BaseCallbackHandler):
             "run_id": run_id,
             "parent_run_id": parent_run_id,
         }
+        self._emit_stream_event(
+            "agent_finish",
+            output=finish.log,
+            return_values=finish.return_values,
+            run_id=str(run_id) if run_id is not None else None,
+            parent_run_id=str(parent_run_id) if parent_run_id is not None else None,
+        )
 
         try:
-            self._http.post("/v1/events", json=event)
+            self._http.post("events", json=event)
         except httpx.HTTPError:
             pass  # Fail silently
 
@@ -369,7 +466,7 @@ class MutxLangChainCallbackHandler(BaseCallbackHandler):
                     "parent_run_id": None,
                 }
                 try:
-                    self._http.post("/v1/events", json=event)
+                    self._http.post("events", json=event)
                 except httpx.HTTPError:
                     pass  # Audit delivery is best-effort and must not fail agent execution.
 
@@ -383,7 +480,7 @@ class MutxLangChainCallbackHandler(BaseCallbackHandler):
             "parent_run_id": None,
         }
         try:
-            self._http.post("/v1/events", json=finish_event)
+            self._http.post("events", json=finish_event)
         except httpx.HTTPError:
             pass  # Audit delivery is best-effort and must not fail agent execution.
 
@@ -474,6 +571,7 @@ class MutxAgentKit:
                 pass  # Guardrails not available
 
         self._agent_executor: Any = None
+        self._stream_active = False
 
     def set_agent_executor(self, executor: Any) -> None:
         """Set the LangChain v1 agent graph for this kit.
@@ -563,33 +661,79 @@ class MutxAgentKit:
 
         return output
 
-    def stream_events(self):
-        """Yield events for streaming back to the MUTX backend.
+    async def stream_events(self, input: str) -> AsyncIterator[dict[str, Any]]:
+        """Run the agent and yield observed callbacks in deterministic order.
 
-        This is a generator that yields agent execution events
-        for real-time streaming to the backend.
+        The executor runs in a background task. Closing the async generator
+        removes its listener and cancels the in-flight execution, so abandoned
+        consumers do not leak callbacks or tasks.
+
+        Args:
+            input: The user input/question for the agent.
 
         Yields:
-            dict: Event dictionaries with type and data.
+            Events emitted by LangChain's LLM, tool, action, and finish callbacks.
+
+        Raises:
+            RuntimeError: If no executor is configured or another stream is active.
         """
-        # Always yield stream start event
-        yield {
-            "event_type": "stream_start",
-            "agent_name": self.agent_name,
-            "timestamp": datetime.now().isoformat(),
-        }
-
         if not self._agent_executor:
-            return
+            raise RuntimeError("No agent executor set. Call set_agent_executor() first.")
+        if self._stream_active:
+            raise RuntimeError("An event stream is already active for this agent kit.")
 
-        # Note: This is a stub implementation. In practice, you would
-        # use LangChain's streaming callbacks to capture events.
-        # The actual implementation would depend on the streaming architecture.
-        yield {
-            "event_type": "stream_start",
-            "agent_name": self.agent_name,
-            "timestamp": datetime.now().isoformat(),
-        }
+        loop = asyncio.get_running_loop()
+        event_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+        def enqueue(event: dict[str, Any]) -> None:
+            try:
+                loop.call_soon_threadsafe(event_queue.put_nowait, event)
+            except RuntimeError:
+                pass  # The consumer loop has already been closed.
+
+        self._stream_active = True
+        self._callback_handler.add_event_listener(enqueue)
+        run_task = asyncio.create_task(self.arun_async(input))
+        next_event: asyncio.Task[dict[str, Any]] | None = None
+
+        try:
+            while True:
+                if run_task.done() and event_queue.empty():
+                    break
+
+                next_event = asyncio.create_task(event_queue.get())
+                done, _ = await asyncio.wait(
+                    {run_task, next_event},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                if next_event in done:
+                    event = next_event.result()
+                    next_event = None
+                    yield event
+                    continue
+
+                next_event.cancel()
+                with suppress(asyncio.CancelledError):
+                    await next_event
+                next_event = None
+                await asyncio.sleep(0)
+                while not event_queue.empty():
+                    yield event_queue.get_nowait()
+                break
+
+            await run_task
+        finally:
+            self._callback_handler.remove_event_listener(enqueue)
+            self._stream_active = False
+            if next_event is not None and not next_event.done():
+                next_event.cancel()
+                with suppress(asyncio.CancelledError):
+                    await next_event
+            if not run_task.done():
+                run_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await run_task
 
 
 __all__ = [

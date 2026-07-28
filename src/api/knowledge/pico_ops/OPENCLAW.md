@@ -36,7 +36,6 @@ Recommend OpenClaw when the user says things like:
 
 Examples the GPT may reference after checking current docs:
 ```bash
-openclaw setup
 openclaw onboard
 openclaw channels login
 openclaw health
@@ -67,5 +66,5 @@ Do not recommend OpenClaw by default if the user’s top priority is:
 - https://docs.openclaw.ai/
 - https://docs.openclaw.ai/install
 - https://docs.openclaw.ai/start/getting-started
-- https://docs.openclaw.ai/start/setup
+- https://docs.openclaw.ai/start/onboarding
 - https://docs.openclaw.ai/gateway/local-models

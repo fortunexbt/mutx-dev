@@ -3,6 +3,13 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, Bot, RefreshCw, Search, Server, Activity } from "lucide-react";
 
+import { ApiRequestError, extractApiErrorMessage } from "@/components/app/http";
+import {
+  dashboardRequestErrorMessage,
+  getDashboardRequestAccessFailure,
+} from "@/components/dashboard/dashboardRequestAccess";
+import { LiveAuthRequired, LiveForbidden } from "@/components/dashboard/livePrimitives";
+
 import { AgentCard, type AgentCardProps } from "./AgentCard";
 import { EmptyState } from "./EmptyState";
 
@@ -53,7 +60,7 @@ function formatRelativeTime(dateString?: string | null): string {
 function AgentListSkeleton() {
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-white/10 bg-black/20 p-4 animate-pulse">
+      <div className="rounded-xl border border-white/10 bg-black/20 p-4 motion-safe:animate-pulse motion-reduce:animate-none">
         <div className="flex items-start gap-3">
           <div className="h-9 w-9 rounded-lg bg-white/10" />
           <div className="flex-1">
@@ -62,7 +69,7 @@ function AgentListSkeleton() {
           </div>
         </div>
       </div>
-      <div className="rounded-xl border border-white/10 bg-black/20 p-4 animate-pulse">
+      <div className="rounded-xl border border-white/10 bg-black/20 p-4 motion-safe:animate-pulse motion-reduce:animate-none">
         <div className="flex items-start gap-3">
           <div className="h-9 w-9 rounded-lg bg-white/10" />
           <div className="flex-1">
@@ -85,20 +92,30 @@ export function AgentsListClient({ initialAgents }: AgentsListClientProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
 
   async function fetchAgents() {
     try {
       const response = await fetch("/api/dashboard/agents", { cache: "no-store" });
       if (!response.ok) {
-        throw new Error("Failed to fetch agents");
+        const payload = await response.json().catch(() => null);
+        throw new ApiRequestError(
+          extractApiErrorMessage(payload, "Failed to fetch agents"),
+          response.status,
+        );
       }
       const data = await response.json();
       const agentsData = Array.isArray(data) ? data : data.agents ?? [];
       setAgents(agentsData);
       setError(null);
+      setAuthRequired(false);
+      setPermissionDenied(false);
     } catch (error) {
-      console.error("Failed to fetch agents:", error);
-      setError(error instanceof Error ? error.message : "Failed to fetch agents");
+      const accessFailure = getDashboardRequestAccessFailure(error);
+      if (accessFailure === "authentication") setAuthRequired(true);
+      else if (accessFailure === "permission") setPermissionDenied(true);
+      else setError(dashboardRequestErrorMessage(error, "Failed to fetch agents"));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -132,28 +149,28 @@ export function AgentsListClient({ initialAgents }: AgentsListClientProps) {
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-xl border border-white/10 bg-black/20 p-4">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-white/10 animate-pulse" />
+              <div className="h-10 w-10 rounded-lg bg-white/10 motion-safe:animate-pulse motion-reduce:animate-none" />
               <div>
-                <div className="h-6 w-8 rounded bg-white/10 animate-pulse" />
-                <div className="mt-1 h-3 w-16 rounded bg-white/5 animate-pulse" />
+                <div className="h-6 w-8 rounded bg-white/10 motion-safe:animate-pulse motion-reduce:animate-none" />
+                <div className="mt-1 h-3 w-16 rounded bg-white/5 motion-safe:animate-pulse motion-reduce:animate-none" />
               </div>
             </div>
           </div>
           <div className="rounded-xl border border-white/10 bg-black/20 p-4">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-white/10 animate-pulse" />
+              <div className="h-10 w-10 rounded-lg bg-white/10 motion-safe:animate-pulse motion-reduce:animate-none" />
               <div>
-                <div className="h-6 w-8 rounded bg-white/10 animate-pulse" />
-                <div className="mt-1 h-3 w-16 rounded bg-white/5 animate-pulse" />
+                <div className="h-6 w-8 rounded bg-white/10 motion-safe:animate-pulse motion-reduce:animate-none" />
+                <div className="mt-1 h-3 w-16 rounded bg-white/5 motion-safe:animate-pulse motion-reduce:animate-none" />
               </div>
             </div>
           </div>
           <div className="rounded-xl border border-white/10 bg-black/20 p-4">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-white/10 animate-pulse" />
+              <div className="h-10 w-10 rounded-lg bg-white/10 motion-safe:animate-pulse motion-reduce:animate-none" />
               <div>
-                <div className="h-6 w-8 rounded bg-white/10 animate-pulse" />
-                <div className="mt-1 h-3 w-16 rounded bg-white/5 animate-pulse" />
+                <div className="h-6 w-8 rounded bg-white/10 motion-safe:animate-pulse motion-reduce:animate-none" />
+                <div className="mt-1 h-3 w-16 rounded bg-white/5 motion-safe:animate-pulse motion-reduce:animate-none" />
               </div>
             </div>
           </div>
@@ -161,6 +178,14 @@ export function AgentsListClient({ initialAgents }: AgentsListClientProps) {
         <AgentListSkeleton />
       </div>
     );
+  }
+
+  if (authRequired) {
+    return <LiveAuthRequired title="Operator session required" message="Sign in to inspect and refresh the agent registry." />;
+  }
+
+  if (permissionDenied) {
+    return <LiveForbidden title="Agent permission required" message="Your account cannot read the agent registry. Search and refresh controls are unavailable." />;
   }
 
   return (
@@ -226,7 +251,7 @@ export function AgentsListClient({ initialAgents }: AgentsListClientProps) {
       <div className="flex items-center gap-3">
 
       {error ? (
-        <div className="flex items-center gap-3 rounded-lg border border-red-400/20 bg-red-400/10 p-4">
+        <div role="alert" aria-live="assertive" className="flex items-center gap-3 rounded-lg border border-red-400/20 bg-red-400/10 p-4">
           <AlertCircle className="h-5 w-5 text-red-400 shrink-0" />
           <div className="flex-1">
             <p className="text-sm text-red-300">{error}</p>
@@ -257,7 +282,7 @@ export function AgentsListClient({ initialAgents }: AgentsListClientProps) {
           disabled={refreshing}
           className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-slate-300 transition hover:border-cyan-300/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+          <RefreshCw className={`h-4 w-4 ${refreshing ? "motion-safe:animate-spin motion-reduce:animate-none" : ""}`} />
           {refreshing ? "Refreshing" : "Refresh"}
         </button>
       </div>

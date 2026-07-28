@@ -18,5 +18,5 @@ export function isDemoSection(value: string): value is DemoSection {
 }
 
 export function getDemoSectionHref(section: DemoSection) {
-  return section === "overview" ? "/dashboard" : `/dashboard/${section}`;
+  return section === "overview" ? "/control" : `/control/${section}`;
 }

@@ -60,7 +60,7 @@ AREA_CONTEXT = {
     ],
     "area:infra": [
         "infrastructure/Makefile",
-        "infrastructure/docker/docker-compose.production.yml",
+        "infrastructure/docker/docker-compose.prod.yml",
         ".github/workflows/infrastructure-drift.yml",
     ],
     "area:ops": [

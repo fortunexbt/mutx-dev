@@ -13,8 +13,9 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.database import get_db
-from src.api.auth.dependencies import get_current_user
+from src.api.auth.dependencies import get_current_internal_user, require_roles
 from src.api.models import Alert, AlertType, Agent, User
+from src.api.models.numeric import DegradedNumericResponseModel
 
 router = APIRouter(prefix="/monitoring", tags=["monitoring"])
 logger = logging.getLogger(__name__)
@@ -46,11 +47,11 @@ class AlertResolveRequest(BaseModel):
     resolved: bool = True
 
 
-class HealthStatusResponse(BaseModel):
+class HealthStatusResponse(DegradedNumericResponseModel):
     status: str
     timestamp: datetime
     database: str
-    uptime_seconds: float
+    uptime_seconds: float | None
     version: str = "1.0.0"
 
 
@@ -66,12 +67,21 @@ def _serialize_alert(alert: Alert) -> AlertResponse:
     )
 
 
+async def require_internal_monitoring_admin(
+    current_user: User = Depends(require_roles("ADMIN")),
+    _internal_user: User = Depends(get_current_internal_user),
+) -> User:
+    """Restrict global platform health details to internal administrators."""
+    return current_user
+
+
 @router.get("/health", response_model=HealthStatusResponse)
 async def get_health(
     request: Request,
     db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(require_internal_monitoring_admin),
 ):
-    """Get system health status."""
+    """Get authenticated platform health details."""
     # Check database connectivity
     db_status = "healthy"
     try:
@@ -98,7 +108,7 @@ async def list_alerts(
     resolved: Optional[bool] = Query(None),
     alert_type: Optional[AlertType] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     """List alerts for the user's agents."""
     # Filter by user's agents
@@ -153,7 +163,7 @@ async def resolve_alert(
     alert_id: uuid.UUID,
     resolve_data: AlertResolveRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     """Resolve or unresolve an alert."""
     # Verify alert belongs to user's agent

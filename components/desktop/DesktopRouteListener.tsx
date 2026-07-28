@@ -3,17 +3,14 @@
 import { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { DESKTOP_ROUTE_PAYLOAD_KEYS } from "@/components/desktop/desktopRouteNavigation";
 import { useDesktopWindow } from "@/components/desktop/useDesktopWindow";
 import type { DesktopWindowPayload } from "@/components/desktop/types";
-
-const WINDOW_QUERY_KEYS: Array<keyof DesktopWindowPayload> = [
-  "pane",
-  "tab",
-  "agentId",
-  "deploymentId",
-  "runId",
-  "sessionId",
-];
+import {
+  DASHBOARD_ROUTE_PATHS,
+  getDesktopWindowRoleForPath,
+  getDesktopWorkspacePaneForPath,
+} from "@/components/desktop/desktopRouteConfig";
 
 export function DesktopRouteListener() {
   const router = useRouter();
@@ -43,11 +40,20 @@ export function DesktopRouteListener() {
     }
 
     const payload: DesktopWindowPayload = {};
-    for (const key of WINDOW_QUERY_KEYS) {
+    for (const key of DESKTOP_ROUTE_PAYLOAD_KEYS) {
       const value = searchParams?.get(key);
       if (value) {
         payload[key] = value;
       }
+    }
+
+    const destinationRole = getDesktopWindowRoleForPath(pathname);
+    if (destinationRole === "workspace" && !payload.pane) {
+      payload.pane = getDesktopWorkspacePaneForPath(pathname);
+    }
+
+    if (destinationRole === "traces" && !payload.tab) {
+      payload.tab = pathname === DASHBOARD_ROUTE_PATHS.logs ? "logs" : "timeline";
     }
 
     void updateCurrentWindow({

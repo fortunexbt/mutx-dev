@@ -280,6 +280,17 @@ function buildUrl(baseUrl, role, route, payload) {
   return url.toString();
 }
 
+function buildRendererRoute(route, payload) {
+  const url = new URL(route, "https://desktop.mutx.local");
+  const safePayload = sanitizePayload(payload);
+
+  for (const [key, value] of Object.entries(safePayload)) {
+    url.searchParams.set(key, value);
+  }
+
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
 function getWindowOptions(role, bounds) {
   const defaults = {
     width: bounds?.width || 1280,
@@ -496,24 +507,33 @@ async function openWindow(role, payload = {}, options = {}) {
   const nextRoute = resolveRouteForRole(role, candidatePayload, options.route || currentState.route);
   const nextPayload = resolvePayloadForRole(role, nextRoute, candidatePayload);
 
-  updateRoleState(role, {
-    route: nextRoute,
-    payload: nextPayload,
-    visible: true,
-  });
-
   const existing = getWindowEntry(role);
 
   if (existing) {
+    updateRoleState(role, {
+      route: nextRoute,
+      payload: nextPayload,
+      visible: true,
+    });
     if (existing.window.isMinimized()) {
       existing.window.restore();
     }
     existing.window.show();
     existing.window.focus();
+    existing.window.webContents.send(
+      "navigate",
+      buildRendererRoute(nextRoute, nextPayload),
+    );
     activeRole = role;
     emitStateChange();
     return existing.window;
   }
+
+  updateRoleState(role, {
+    route: nextRoute,
+    payload: nextPayload,
+    visible: true,
+  });
 
   return createWindow(role);
 }
@@ -636,10 +656,17 @@ async function showContextMenu(webContents, items = []) {
         } else if (action.type === "clipboard.copy" && typeof action.value === "string") {
           clipboard.writeText(action.value);
         } else if (action.type === "navigate.current" && typeof action.route === "string") {
-          updateCurrentWindowState(webContents, {
+          const snapshot = updateCurrentWindowState(webContents, {
             route: action.route,
             payload: action.payload || {},
           });
+          webContents.send(
+            "navigate",
+            buildRendererRoute(
+              snapshot.currentWindow.route,
+              snapshot.currentWindow.payload,
+            ),
+          );
         } else if (action.type === "settings.open") {
           await openWindow("settings", { pane: action.pane || "account" });
         }

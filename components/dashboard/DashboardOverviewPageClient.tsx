@@ -4,13 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Activity, AlertTriangle, Bot, Layers3, Wallet, Webhook } from "lucide-react";
 
-import { ApiRequestError, normalizeCollection, readJson } from "@/components/app/http";
+import { normalizeCollection, readJson } from "@/components/app/http";
+import { getDashboardRequestAccessFailure } from "@/components/dashboard/dashboardRequestAccess";
 import {
   BriefingBar,
   FlowStatusBar,
   LiveAuthRequired,
   LiveEmptyState,
   LiveErrorState,
+  LiveForbidden,
   LiveKpiGrid,
   LiveLoading,
   LivePanel,
@@ -71,7 +73,7 @@ type OpenClawOnboardingState = {
 };
 
 type OverviewResource<T = unknown> = {
-  status: "ok" | "auth_error" | "error";
+  status: "ok" | "unauthenticated" | "forbidden" | "error";
   statusCode: number;
   data: T | null;
   error: string | null;
@@ -99,6 +101,12 @@ type DashboardOverviewPayload = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasCollectionPayload(payload: unknown, keys: string[]) {
+  if (Array.isArray(payload)) return true;
+  if (!isRecord(payload)) return false;
+  return keys.some((key) => Array.isArray(payload[key]));
 }
 
 function pickBudget(payload: unknown): Budget | null {
@@ -138,14 +146,13 @@ function summarizeRunHealth(runs: Run[]) {
   };
 }
 
-function isAuthError(error: unknown): error is ApiRequestError {
-  return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
-}
-
 export function DashboardOverviewPageClient() {
   const [loading, setLoading] = useState(true);
   const [authRequired, setAuthRequired] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null);
+  const [resources, setResources] = useState<DashboardOverviewPayload["resources"] | null>(null);
   const [partialFailures, setPartialFailures] = useState<string[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [deployments, setDeployments] = useState<Deployment[]>([]);
@@ -165,6 +172,7 @@ export function DashboardOverviewPageClient() {
       setLoading(true);
       setError(null);
       setAuthRequired(false);
+      setPermissionDenied(false);
       setPartialFailures([]);
 
       try {
@@ -188,24 +196,18 @@ export function DashboardOverviewPageClient() {
           onboarding: onboardingResult,
         } = payload.resources;
 
-        const coreResults = [
-          agentsResult,
-          deploymentsResult,
-          runsResult,
-          alertsResult,
-          budgetResult,
-        ];
-        const coreHasData = coreResults.some((result) => result.status === "ok");
-        const coreHardFailure = coreResults.find((result) => result.status === "error");
-
-        if (!coreHasData && coreHardFailure) {
-          throw new Error(coreHardFailure.error || "Failed to load dashboard overview");
-        }
-
+        setGeneratedAt(payload.generatedAt);
+        setResources(payload.resources);
         setPartialFailures(
-          Object.entries(payload.resources).flatMap(([key, result]) =>
-            result.status === "ok" || !result.error ? [] : [`${key}: ${result.error}`],
-          ),
+          Object.entries(payload.resources).flatMap(([key, result]) => {
+            if (result.status !== "ok" && result.error) {
+              return [`${key}: ${result.error}`];
+            }
+            if (result.status === "ok" && result.data === null) {
+              return [`${key}: source returned no data`];
+            }
+            return [];
+          }),
         );
         setAgents(
           agentsResult.status === "ok"
@@ -237,8 +239,14 @@ export function DashboardOverviewPageClient() {
             return;
           }
 
-          if (isAuthError(loadError)) {
+          const accessFailure = getDashboardRequestAccessFailure(loadError);
+          if (accessFailure === "authentication") {
             setAuthRequired(true);
+            setLoading(false);
+            return;
+          }
+          if (accessFailure === "permission") {
+            setPermissionDenied(true);
             setLoading(false);
             return;
           }
@@ -257,13 +265,40 @@ export function DashboardOverviewPageClient() {
   }, []);
 
   const runHealth = useMemo(() => summarizeRunHealth(runs), [runs]);
+  const agentsKnown = Boolean(
+    resources?.agents.status === "ok" &&
+      hasCollectionPayload(resources.agents.data, ["agents", "items", "data"]),
+  );
+  const deploymentsKnown = Boolean(
+    resources?.deployments.status === "ok" &&
+      hasCollectionPayload(resources.deployments.data, ["deployments", "items", "data"]),
+  );
+  const runsKnown = Boolean(
+    resources?.runs.status === "ok" &&
+      hasCollectionPayload(resources.runs.data, ["items", "runs", "data"]),
+  );
+  const alertsKnown = Boolean(
+    resources?.alerts.status === "ok" &&
+      hasCollectionPayload(resources.alerts.data, ["items", "alerts", "data"]),
+  );
+  const webhooksKnown = Boolean(
+    resources?.webhooks.status === "ok" &&
+      hasCollectionPayload(resources.webhooks.data, ["webhooks", "items", "data"]),
+  );
+  const budgetKnown = resources?.budget.status === "ok" && budget !== null;
+  const healthKnown = resources?.health.status === "ok" && health !== null;
+  const runtimeCoverageKnown = Boolean(
+    (resources?.runtime.status === "ok" && resources.runtime.data !== null) ||
+      (resources?.onboarding.status === "ok" && resources.onboarding.data !== null),
+  );
   const unresolvedAlerts = alerts.filter((alert) => !alert.resolved);
   const activeDeployments = deployments.filter((deployment) =>
     ["running", "healthy", "ready", "deploying"].includes(deployment.status),
   );
   const liveAgents = agents.filter((agent) => ["running", "healthy"].includes(agent.status));
   const activeWebhooks = webhooks.filter((webhook) => webhook.is_active);
-  const healthStatus = typeof health?.status === "string" ? health.status : "unknown";
+  const healthStatus =
+    healthKnown && typeof health?.status === "string" ? health.status : "unknown";
   const openclawBinding =
     openclawRuntime?.current_binding ??
     openclawRuntime?.bindings?.[0] ??
@@ -292,46 +327,60 @@ export function DashboardOverviewPageClient() {
         ? "healthy"
         : healthStatus === "degraded"
           ? "degraded"
-          : "critical") as "healthy" | "degraded" | "critical" | "unknown",
+          : healthStatus === "unknown"
+            ? "unknown"
+            : "critical") as "healthy" | "degraded" | "critical" | "unknown",
     },
     {
       label: "Fleet",
-      value: `${liveAgents.length}/${agents.length}`,
-      status: (liveAgents.length > 0 ? "healthy" : "unknown") as "healthy" | "degraded" | "critical" | "unknown",
+      value: agentsKnown ? `${liveAgents.length}/${agents.length}` : "Unknown",
+      status: (agentsKnown && liveAgents.length > 0 ? "healthy" : "unknown") as "healthy" | "degraded" | "critical" | "unknown",
     },
     {
       label: "Queue",
-      value: runHealth.total > 0
-        ? `${runs.filter((r) => !r.completed_at).length} in flight`
-        : "empty",
-      status: (runHealth.failed > 0
-        ? "degraded"
-        : runs.filter((r) => !r.completed_at).length > 0
-          ? "healthy"
-          : "unknown") as "healthy" | "degraded" | "critical" | "unknown",
+      value: !runsKnown
+        ? "Unknown"
+        : runHealth.total > 0
+          ? `${runs.filter((r) => !r.completed_at).length} in flight`
+          : "empty",
+      status: (!runsKnown
+        ? "unknown"
+        : runHealth.failed > 0
+          ? "degraded"
+          : runs.filter((r) => !r.completed_at).length > 0
+            ? "healthy"
+            : "unknown") as "healthy" | "degraded" | "critical" | "unknown",
     },
     {
       label: "Runs",
-      value: runHealth.total > 0
-        ? `${runHealth.completed} ok · ${runHealth.failed} failed`
-        : "No runs",
-      status: (runHealth.failed > 0
-        ? "degraded"
+      value: !runsKnown
+        ? "Unknown"
         : runHealth.total > 0
-          ? "healthy"
-          : "unknown") as "healthy" | "degraded" | "critical" | "unknown",
+          ? `${runHealth.completed} ok · ${runHealth.failed} failed`
+          : "No runs",
+      status: (!runsKnown
+        ? "unknown"
+        : runHealth.failed > 0
+          ? "degraded"
+          : runHealth.total > 0
+            ? "healthy"
+            : "unknown") as "healthy" | "degraded" | "critical" | "unknown",
     },
     {
       label: "Alerts",
-      value: String(unresolvedAlerts.length),
-      status: (unresolvedAlerts.length > 0 ? "degraded" : "healthy") as "healthy" | "degraded" | "critical" | "unknown",
+      value: alertsKnown ? String(unresolvedAlerts.length) : "Unknown",
+      status: (!alertsKnown
+        ? "unknown"
+        : unresolvedAlerts.length > 0
+          ? "degraded"
+          : "healthy") as "healthy" | "degraded" | "critical" | "unknown",
     },
     {
       label: "Credits",
-      value: budget ? `${budget.usage_percentage}%` : "N/A",
-      status: (budget && budget.usage_percentage >= 80
+      value: budgetKnown ? `${budget.usage_percentage}%` : "Unknown",
+      status: (budgetKnown && budget.usage_percentage >= 80
         ? "degraded"
-        : budget
+        : budgetKnown
           ? "healthy"
           : "unknown") as "healthy" | "degraded" | "critical" | "unknown",
     },
@@ -346,6 +395,14 @@ export function DashboardOverviewPageClient() {
       <LiveAuthRequired
         title="Operator session required"
         message="Sign in to load fleet posture, run activity, alerts, and budget telemetry."
+      />
+    );
+  }
+  if (permissionDenied) {
+    return (
+      <LiveForbidden
+        title="Overview permission required"
+        message="Your account cannot inspect this workspace overview. Fleet, deployment, alert, budget, and runtime actions are unavailable."
       />
     );
   }
@@ -370,27 +427,49 @@ export function DashboardOverviewPageClient() {
       <LiveKpiGrid>
         <LiveStatCard
           label="Fleet"
-          value={String(agents.length)}
-          detail={`${liveAgents.length} agents currently reporting healthy or running state.`}
-          status={asDashboardStatus(liveAgents.length > 0 ? "running" : "idle")}
+          value={agentsKnown ? String(agents.length) : "Unknown"}
+          detail={
+            agentsKnown
+              ? `${liveAgents.length} agents currently reporting healthy or running state.`
+              : "Agent inventory is unavailable for this overview snapshot."
+          }
+          status={asDashboardStatus(agentsKnown && liveAgents.length > 0 ? "running" : "idle")}
         />
         <LiveStatCard
           label="Deployments"
-          value={String(activeDeployments.length)}
-          detail={`${deployments.length} total deployment records across all owned agents.`}
-          status={asDashboardStatus(activeDeployments.length > 0 ? "healthy" : "idle")}
+          value={deploymentsKnown ? String(activeDeployments.length) : "Unknown"}
+          detail={
+            deploymentsKnown
+              ? `${deployments.length} total deployment records across all owned agents.`
+              : "Deployment inventory is unavailable for this overview snapshot."
+          }
+          status={asDashboardStatus(
+            deploymentsKnown && activeDeployments.length > 0 ? "healthy" : "idle",
+          )}
         />
         <LiveStatCard
           label="Runs"
-          value={String(runHealth.total)}
-          detail={`${runHealth.completed} completed, ${runHealth.failed} failed in the current window.`}
-          status={asDashboardStatus(runHealth.failed > 0 ? "warning" : "healthy")}
+          value={runsKnown ? String(runHealth.total) : "Unknown"}
+          detail={
+            runsKnown
+              ? `${runHealth.completed} completed, ${runHealth.failed} failed in the current window.`
+              : "Run history is unavailable for this overview snapshot."
+          }
+          status={asDashboardStatus(
+            !runsKnown ? "idle" : runHealth.failed > 0 ? "warning" : "healthy",
+          )}
         />
         <LiveStatCard
           label="Credits"
-          value={budget ? formatCurrency(budget.credits_remaining) : "$0"}
-          detail={budget ? `${budget.plan} plan, ${budget.usage_percentage}% of the envelope used.` : "Budget API returned no data."}
-          status={asDashboardStatus(budget && budget.usage_percentage >= 80 ? "warning" : "healthy")}
+          value={budgetKnown ? formatCurrency(budget.credits_remaining) : "Unknown"}
+          detail={
+            budgetKnown
+              ? `${budget.plan} plan, ${budget.usage_percentage}% of the envelope used.`
+              : "Budget data is unavailable for this overview snapshot."
+          }
+          status={asDashboardStatus(
+            !budgetKnown ? "idle" : budget.usage_percentage >= 80 ? "warning" : "healthy",
+          )}
         />
       </LiveKpiGrid>
 
@@ -419,7 +498,11 @@ export function DashboardOverviewPageClient() {
                 <div className="mt-3 flex items-center gap-2">
                   <StatusBadge status={asDashboardStatus(healthStatus)} label={healthStatus} />
                   <span className="text-xs text-slate-500">
-                    {(typeof health?.timestamp === "string" && formatRelativeTime(health.timestamp)) || "fresh check"}
+                    {typeof health?.timestamp === "string"
+                      ? formatRelativeTime(health.timestamp)
+                      : healthKnown && generatedAt
+                        ? `checked ${formatRelativeTime(generatedAt)}`
+                        : "health source unavailable"}
                   </span>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-slate-400">
@@ -432,17 +515,27 @@ export function DashboardOverviewPageClient() {
                   <span className="text-sm font-medium">Alert pressure</span>
                 </div>
                 <p className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-white">
-                  {unresolvedAlerts.length}
+                  {alertsKnown ? unresolvedAlerts.length : "Unknown"}
                 </p>
                 <p className="mt-2 text-sm text-slate-400">
-                  unresolved alerts across the current operator scope
+                  {alertsKnown
+                    ? "unresolved alerts across the current operator scope"
+                    : "alert coverage is unavailable for this overview snapshot"}
                 </p>
               </div>
             </div>
           </LivePanel>
 
-          <LivePanel title="Recent execution" meta={`${runs.length} runs`}>
-            {runs.length === 0 ? (
+          <LivePanel
+            title="Recent execution"
+            meta={runsKnown ? `${runs.length} runs` : "coverage unknown"}
+          >
+            {!runsKnown ? (
+              <LiveEmptyState
+                title="Run history unavailable"
+                message="The run source did not return a usable collection for this overview snapshot."
+              />
+            ) : runs.length === 0 ? (
               <LiveEmptyState
                 title="No runs yet"
                 message="Runs will appear here once an owned agent has executed inside the current session boundary."
@@ -486,7 +579,12 @@ export function DashboardOverviewPageClient() {
 
         <div className="grid gap-4">
           <LivePanel title="OpenClaw runtime" meta="tracked provider">
-            {hasOpenClawRuntime ? (
+            {!runtimeCoverageKnown ? (
+              <LiveEmptyState
+                title="Runtime sources unavailable"
+                message="Neither runtime nor onboarding returned a usable OpenClaw snapshot for this overview."
+              />
+            ) : hasOpenClawRuntime ? (
               <div className="grid gap-3">
                 <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -577,8 +675,16 @@ export function DashboardOverviewPageClient() {
             )}
           </LivePanel>
 
-          <LivePanel title="Live alerts" meta={`${alerts.length} items`}>
-            {alerts.length === 0 ? (
+          <LivePanel
+            title="Live alerts"
+            meta={alertsKnown ? `${alerts.length} items` : "coverage unknown"}
+          >
+            {!alertsKnown ? (
+              <LiveEmptyState
+                title="Alert source unavailable"
+                message="Monitoring did not return a usable alert collection for this overview snapshot."
+              />
+            ) : alerts.length === 0 ? (
               <LiveEmptyState
                 title="No alert stream yet"
                 message="Alerts will surface here when monitoring starts capturing agent and deployment failures."
@@ -604,7 +710,10 @@ export function DashboardOverviewPageClient() {
             )}
           </LivePanel>
 
-          <LivePanel title="Delivery surface" meta={`${activeWebhooks.length} active`}>
+          <LivePanel
+            title="Delivery surface"
+            meta={webhooksKnown ? `${activeWebhooks.length} active` : "coverage unknown"}
+          >
             <div className="grid gap-3">
               <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
                 <div className="flex items-center gap-2 text-slate-300">
@@ -612,10 +721,12 @@ export function DashboardOverviewPageClient() {
                   <span className="text-sm font-medium">Active endpoints</span>
                 </div>
                 <p className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-white">
-                  {activeWebhooks.length}
+                  {webhooksKnown ? activeWebhooks.length : "Unknown"}
                 </p>
                 <p className="mt-2 text-sm text-slate-400">
-                  {webhooks.length} configured webhook routes across the operator scope.
+                  {webhooksKnown
+                    ? `${webhooks.length} configured webhook routes across the operator scope.`
+                    : "Webhook inventory is unavailable for this overview snapshot."}
                 </p>
               </div>
               <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
@@ -625,14 +736,18 @@ export function DashboardOverviewPageClient() {
                       <Bot className="h-4 w-4 text-cyan-300" />
                       <span className="text-sm font-medium">Live agents</span>
                     </div>
-                    <p className="mt-2 text-xl font-semibold text-white">{liveAgents.length}</p>
+                    <p className="mt-2 text-xl font-semibold text-white">
+                      {agentsKnown ? liveAgents.length : "Unknown"}
+                    </p>
                   </div>
                   <div>
                     <div className="flex items-center gap-2 text-slate-300">
                       <Layers3 className="h-4 w-4 text-cyan-300" />
                       <span className="text-sm font-medium">Hot deployments</span>
                     </div>
-                    <p className="mt-2 text-xl font-semibold text-white">{activeDeployments.length}</p>
+                    <p className="mt-2 text-xl font-semibold text-white">
+                      {deploymentsKnown ? activeDeployments.length : "Unknown"}
+                    </p>
                   </div>
                   <div className="sm:col-span-2">
                     <div className="flex items-center gap-2 text-slate-300">

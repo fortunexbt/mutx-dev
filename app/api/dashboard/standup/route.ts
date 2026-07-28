@@ -12,13 +12,16 @@ import { unauthorized, withErrorHandling } from "@/app/api/_lib/errors";
 
 export const dynamic = "force-dynamic";
 
+const UPSTREAM_TIMEOUT_MS = 5_000;
+
 type AuthTokens = {
   access_token: string;
   refresh_token?: string;
   expires_in: number;
 };
 
-type ResourceStatus = "ok" | "auth_error" | "error";
+type ResourceStatus = "ok" | "unauthenticated" | "forbidden" | "error";
+type AggregateSourceStatus = ResourceStatus | "partial";
 type DashboardStatus = "idle" | "running" | "success" | "warning" | "error";
 
 type ResourceResult = {
@@ -57,6 +60,12 @@ function normalizeCollection(payload: unknown, keys: string[] = ["items", "data"
   return [];
 }
 
+function hasCollectionPayload(payload: unknown, keys: string[]) {
+  if (Array.isArray(payload)) return true;
+  if (!isRecord(payload)) return false;
+  return keys.some((key) => Array.isArray(payload[key]));
+}
+
 function pickString(record: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
     const value = record[key];
@@ -66,6 +75,16 @@ function pickString(record: Record<string, unknown>, keys: string[]) {
   }
 
   return null;
+}
+
+function countMissingIdentifiers(
+  payload: unknown,
+  collectionKeys: string[],
+  identifierKeys: string[],
+) {
+  return normalizeCollection(payload, collectionKeys).filter(
+    (item) => !isRecord(item) || !pickString(item, identifierKeys),
+  ).length;
 }
 
 function toIsoTimestamp(value: unknown) {
@@ -141,35 +160,82 @@ async function fetchResource(
   url: string,
   fallbackMessage: string,
 ): Promise<ResourceResult> {
-  const { response, tokenRefreshed, refreshedTokens } = await authenticatedFetch(request, url, {
-    cache: "no-store",
-  });
-  const payload = response.status === 204 ? null : await response.json().catch(() => null);
+  try {
+    const { response, tokenRefreshed, refreshedTokens } = await authenticatedFetch(request, url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    const payload = response.status === 204 ? null : await response.json().catch(() => null);
 
-  return {
-    status: response.ok
-      ? "ok"
-      : response.status === 401 || response.status === 403
-        ? "auth_error"
-        : "error",
-    statusCode: response.status,
-    data: response.ok ? payload : null,
-    error: response.ok ? null : extractErrorMessage(payload, fallbackMessage),
-    tokenRefreshed,
-    refreshedTokens,
-  };
+    if (response.ok && payload === null) {
+      return {
+        status: "error",
+        statusCode: 502,
+        data: null,
+        error: `${fallbackMessage}: upstream returned no data.`,
+        tokenRefreshed,
+        refreshedTokens,
+      };
+    }
+
+    return {
+      status: response.ok
+        ? "ok"
+        : response.status === 401
+          ? "unauthenticated"
+          : response.status === 403
+            ? "forbidden"
+            : "error",
+      statusCode: response.status,
+      data: response.ok ? payload : null,
+      error: response.ok ? null : extractErrorMessage(payload, fallbackMessage),
+      tokenRefreshed,
+      refreshedTokens,
+    };
+  } catch (error) {
+    const errorName =
+      error && typeof error === "object" && "name" in error ? String(error.name) : "";
+    const timedOut = errorName === "AbortError" || errorName === "TimeoutError";
+
+    return {
+      status: "error",
+      statusCode: timedOut ? 504 : 502,
+      data: null,
+      error: timedOut
+        ? `${fallbackMessage}: upstream request timed out.`
+        : `${fallbackMessage}: upstream request failed.`,
+      tokenRefreshed: false,
+    };
+  }
 }
 
 function pickRefreshedTokens(results: Array<{ tokenRefreshed: boolean; refreshedTokens?: AuthTokens }>) {
   return results.find((result) => result.tokenRefreshed)?.refreshedTokens;
 }
 
-async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
+function accessFailureResponse(
+  request: NextRequest,
+  failure: ResourceResult,
+  resources: ResourceResult[],
+  fallback: string,
+) {
+  const nextResponse = NextResponse.json(
+    { detail: failure.error ?? fallback },
+    { status: failure.statusCode },
+  );
+  const refreshedTokens = pickRefreshedTokens(resources);
+  if (refreshedTokens) {
+    applyAuthCookies(nextResponse, request, refreshedTokens);
+  }
+  return nextResponse;
+}
+
+async function readJsonFile<T>(filePath: string): Promise<{ available: boolean; value: T | null }> {
   try {
     const raw = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(raw) as T;
+    return { available: true, value: JSON.parse(raw) as T };
   } catch {
-    return fallback;
+    return { available: false, value: null };
   }
 }
 
@@ -178,12 +244,18 @@ async function readAutonomyBacklog() {
     return { count: null as number | null, note: "Autonomy backlog is local-only in this shell." };
   }
 
-  const repoRoot = process.env.MUTX_REPO_ROOT || "/Users/fortune/MUTX";
+  const repoRoot = process.env.MUTX_REPO_ROOT || process.cwd();
   const queue = await readJsonFile<{ items?: Array<{ status?: string }> }>(
     path.join(repoRoot, "mutx-engineering-agents/dispatch/action-queue.json"),
-    { items: [] },
   );
-  const items = Array.isArray(queue.items) ? queue.items : [];
+  if (!queue.available || !Array.isArray(queue.value?.items)) {
+    return {
+      count: null as number | null,
+      note: "Local autonomy queue data is unavailable or malformed; zero backlog is not assumed.",
+    };
+  }
+
+  const items = queue.value.items;
   return {
     count: items.filter((item) => item.status === "queued" || item.status === "running").length,
     note: null as string | null,
@@ -197,6 +269,7 @@ async function loadWebhookFailures(
   items: BriefItem[];
   errors: string[];
   tokenResults: ResourceResult[];
+  status: AggregateSourceStatus;
 }> {
   const webhookList = await fetchResource(request, `${apiBaseUrl}/v1/webhooks`, "Failed to fetch webhooks");
   if (webhookList.status !== "ok") {
@@ -204,6 +277,16 @@ async function loadWebhookFailures(
       items: [],
       errors: [webhookList.error ?? "Webhook inventory is unavailable."],
       tokenResults: [webhookList],
+      status: webhookList.status,
+    };
+  }
+
+  if (!hasCollectionPayload(webhookList.data, ["items", "webhooks", "data"])) {
+    return {
+      items: [],
+      errors: ["Webhook inventory returned an invalid payload."],
+      tokenResults: [webhookList],
+      status: "error",
     };
   }
 
@@ -211,6 +294,9 @@ async function loadWebhookFailures(
     .filter(isRecord)
     .filter((webhook) => Boolean(webhook.is_active))
     .slice(0, 6);
+  const activeWebhookIdentifierFailures = activeWebhooks.filter(
+    (webhook) => !pickString(webhook, ["id"]),
+  ).length;
 
   const deliveries = await Promise.all(
     activeWebhooks.map(async (webhook) => {
@@ -218,7 +304,7 @@ async function loadWebhookFailures(
       if (!webhookId) return null;
       const result = await fetchResource(
         request,
-        `${apiBaseUrl}/v1/webhooks/${webhookId}/deliveries?success=false&limit=1`,
+        `${apiBaseUrl}/v1/webhooks/${encodeURIComponent(webhookId)}/deliveries?success=false&limit=1`,
         "Failed to fetch webhook deliveries",
       );
       return { webhookId, url: pickString(webhook, ["url"]), result };
@@ -227,29 +313,63 @@ async function loadWebhookFailures(
 
   const items = deliveries
     .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
-    .flatMap(({ webhookId, url, result }) => {
-      if (result.status !== "ok") {
+    .flatMap(({ url, result }) => {
+      if (
+        result.status !== "ok" ||
+        !hasCollectionPayload(result.data, ["items", "deliveries", "data"])
+      ) {
         return [];
       }
 
       return normalizeCollection(result.data, ["items", "deliveries", "data"])
         .filter(isRecord)
         .filter((delivery) => delivery.success === false)
-        .map((delivery) => ({
-          id: pickString(delivery, ["id"]) ?? `webhook-${webhookId}`,
-          title: pickString(delivery, ["event"]) ?? "Webhook delivery failed",
-          detail:
-            pickString(delivery, ["error_message"]) ??
-            (pickString(delivery, ["status_code"]) ? `HTTP ${pickString(delivery, ["status_code"])}` : url ?? "Webhook route"),
-          status: "error" as const,
-          createdAt: toIsoTimestamp(delivery.created_at ?? delivery.delivered_at),
-          source: "webhooks",
-        }));
+        .flatMap((delivery) => {
+          const id = pickString(delivery, ["id"]);
+          if (!id) return [];
+
+          return [{
+            id,
+            title: pickString(delivery, ["event"]) ?? "Webhook delivery failed",
+            detail:
+              pickString(delivery, ["error_message"]) ??
+              (pickString(delivery, ["status_code"])
+                ? `HTTP ${pickString(delivery, ["status_code"])}`
+                : url ?? "Webhook route"),
+            status: "error" as const,
+            createdAt: toIsoTimestamp(delivery.created_at ?? delivery.delivered_at),
+            source: "webhooks",
+          }];
+        });
     });
 
-  const errors = deliveries
+  const errors: string[] = deliveries
     .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
-    .flatMap((entry) => (entry.result.status === "ok" ? [] : [entry.result.error ?? "Webhook delivery history is unavailable."]));
+    .flatMap((entry) =>
+      entry.result.status === "ok" &&
+      hasCollectionPayload(entry.result.data, ["items", "deliveries", "data"])
+        ? []
+        : [entry.result.error ?? "Webhook delivery history returned an invalid payload."],
+    );
+  const deliveryIdentifierFailures = deliveries.reduce((total, entry) => {
+    if (!entry || entry.result.status !== "ok") return total;
+    return total + countMissingIdentifiers(
+      entry.result.data,
+      ["items", "deliveries", "data"],
+      ["id"],
+    );
+  }, 0);
+
+  if (activeWebhookIdentifierFailures > 0) {
+    errors.push(
+      `${activeWebhookIdentifierFailures} active webhook record${activeWebhookIdentifierFailures === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`,
+    );
+  }
+  if (deliveryIdentifierFailures > 0) {
+    errors.push(
+      `${deliveryIdentifierFailures} webhook delivery record${deliveryIdentifierFailures === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`,
+    );
+  }
 
   return {
     items,
@@ -260,6 +380,7 @@ async function loadWebhookFailures(
         .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
         .map((entry) => entry.result),
     ],
+    status: errors.length > 0 ? "partial" : "ok",
   };
 }
 
@@ -270,49 +391,100 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const apiBaseUrl = getApiBaseUrl();
-    const authResponse = await authenticatedFetch(request, `${apiBaseUrl}/v1/auth/me`, {
-      cache: "no-store",
-    });
-    const authPayload = await authResponse.response
-      .json()
-      .catch(() => ({ detail: "Failed to fetch current operator" }));
-
-    if (!authResponse.response.ok) {
-      const nextResponse = NextResponse.json(authPayload, {
-        status: authResponse.response.status,
-      });
-
-      if (authResponse.tokenRefreshed && authResponse.refreshedTokens) {
-        applyAuthCookies(nextResponse, request, authResponse.refreshedTokens);
-      }
-
-      return nextResponse;
-    }
-
-    const [alerts, approvals, runs, autonomy] = await Promise.all([
+    const [alerts, approvals, runs, autonomy, webhookFailures] = await Promise.all([
       fetchResource(request, `${apiBaseUrl}/v1/monitoring/alerts?limit=10`, "Failed to fetch alerts"),
       fetchResource(request, `${apiBaseUrl}/v1/approvals?status=PENDING&limit=10`, "Failed to fetch approvals"),
       fetchResource(request, `${apiBaseUrl}/v1/runs?limit=16`, "Failed to fetch runs"),
       readAutonomyBacklog(),
+      loadWebhookFailures(request, apiBaseUrl),
     ]);
-    const webhookFailures = await loadWebhookFailures(request, apiBaseUrl);
+    const upstreamSources = [alerts, approvals, runs];
+    const authenticatedSources = [...upstreamSources, ...webhookFailures.tokenResults];
+    const unauthenticatedResource = authenticatedSources.find(
+      (resource) => resource.status === "unauthenticated",
+    );
 
-    const blockers: BriefItem[] = [
-      ...normalizeCollection(alerts.data, ["items", "data"])
-        .filter(isRecord)
-        .filter((alert) => !alert.resolved)
-        .map((alert) => ({
-          id: pickString(alert, ["id"]) ?? "alert",
+    if (unauthenticatedResource) {
+      return accessFailureResponse(
+        request,
+        unauthenticatedResource,
+        authenticatedSources,
+        "Dashboard standup authentication expired.",
+      );
+    }
+
+    if (
+      upstreamSources.every((resource) => resource.status === "forbidden") &&
+      webhookFailures.status === "forbidden"
+    ) {
+      return accessFailureResponse(
+        request,
+        upstreamSources[0],
+        authenticatedSources,
+        "Dashboard standup access was denied.",
+      );
+    }
+
+    const alertCollectionKeys = ["items", "alerts", "data"];
+    const approvalCollectionKeys = ["items", "data"];
+    const runCollectionKeys = ["items", "runs", "data"];
+    const alertIdentifierFailures = countMissingIdentifiers(
+      alerts.data,
+      alertCollectionKeys,
+      ["id"],
+    );
+    const approvalIdentifierFailures = countMissingIdentifiers(
+      approvals.data,
+      approvalCollectionKeys,
+      ["id"],
+    );
+    const runIdentifierFailures = countMissingIdentifiers(
+      runs.data,
+      runCollectionKeys,
+      ["id"],
+    );
+
+    const alertsSourceStatus: AggregateSourceStatus =
+      alerts.status !== "ok"
+        ? alerts.status
+        : hasCollectionPayload(alerts.data, alertCollectionKeys)
+          ? alertIdentifierFailures > 0 ? "partial" : "ok"
+          : "error";
+    const approvalsSourceStatus: AggregateSourceStatus =
+      approvals.status !== "ok"
+        ? approvals.status
+        : hasCollectionPayload(approvals.data, approvalCollectionKeys)
+          ? approvalIdentifierFailures > 0 ? "partial" : "ok"
+          : "error";
+    const runsSourceStatus: AggregateSourceStatus =
+      runs.status !== "ok"
+        ? runs.status
+        : hasCollectionPayload(runs.data, runCollectionKeys)
+          ? runIdentifierFailures > 0 ? "partial" : "ok"
+          : "error";
+
+    const alertBlockers: BriefItem[] = normalizeCollection(alerts.data, alertCollectionKeys)
+      .filter(isRecord)
+      .filter((alert) => !alert.resolved)
+      .flatMap((alert) => {
+        const id = pickString(alert, ["id"]);
+        if (!id) return [];
+        return [{
+          id,
           title: pickString(alert, ["message"]) ?? "Alert requires review",
           detail: pickString(alert, ["type"]) ?? "Monitoring alert",
           status: "error" as const,
           createdAt: toIsoTimestamp(alert.created_at),
           source: "alerts",
-        })),
-      ...normalizeCollection(approvals.data, ["items", "data"])
-        .filter(isRecord)
-        .map((approval) => ({
-          id: pickString(approval, ["id"]) ?? "approval",
+        }];
+      });
+    const approvalBlockers: BriefItem[] = normalizeCollection(approvals.data, approvalCollectionKeys)
+      .filter(isRecord)
+      .flatMap((approval) => {
+        const id = pickString(approval, ["id"]);
+        if (!id) return [];
+        return [{
+          id,
           title: pickString(approval, ["action_type"]) ?? "Pending approval",
           detail:
             pickString(approval, ["requester"]) ??
@@ -321,7 +493,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           status: "warning" as const,
           createdAt: toIsoTimestamp(approval.created_at),
           source: "approvals",
-        })),
+        }];
+      });
+
+    const blockers: BriefItem[] = [
+      ...alertBlockers,
+      ...approvalBlockers,
       ...webhookFailures.items,
     ]
       .sort((left, right) => {
@@ -331,12 +508,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       })
       .slice(0, 12);
 
-    const watchlist: BriefItem[] = normalizeCollection(runs.data, ["items", "data"])
-      .filter(isRecord)
-      .map((run) => {
+    const runRecords = normalizeCollection(runs.data, runCollectionKeys).filter(isRecord);
+    const identifiedRunRecords = runRecords.flatMap((run) => {
+      const id = pickString(run, ["id"]);
+      return id ? [{ id, run }] : [];
+    });
+    const failedRunCount = identifiedRunRecords.filter(({ run }) =>
+      ["failed", "error"].includes((pickString(run, ["status"]) ?? "").toLowerCase()),
+    ).length;
+    const watchlist: BriefItem[] = identifiedRunRecords
+      .map(({ id, run }) => {
         const status = pickString(run, ["status"]) ?? "unknown";
         return {
-          id: pickString(run, ["id"]) ?? "run",
+          id,
           title:
             pickString(run, ["subject_label", "agent_id"]) ??
             "Execution watch item",
@@ -353,12 +537,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .map(({ runStatus: _runStatus, ...item }) => item)
       .slice(0, 10);
 
-    const completions: BriefItem[] = normalizeCollection(runs.data, ["items", "data"])
-      .filter(isRecord)
-      .map((run) => {
+    const completions: BriefItem[] = identifiedRunRecords
+      .map(({ id, run }) => {
         const status = pickString(run, ["status"]) ?? "unknown";
         return {
-          id: pickString(run, ["id"]) ?? "run",
+          id,
           title:
             pickString(run, ["subject_label", "agent_id"]) ??
             "Completed run",
@@ -375,24 +558,43 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .map(({ runStatus: _runStatus, ...item }) => item)
       .slice(0, 6);
 
+    const hasIncompleteBlockerCoverage =
+      alertsSourceStatus !== "ok" ||
+      approvalsSourceStatus !== "ok" ||
+      webhookFailures.status !== "ok";
+    const hasIncompleteRunCoverage = runsSourceStatus !== "ok";
     const focus =
       blockers.length > 0
-        ? `Clear ${blockers.length} blocking signal${blockers.length === 1 ? "" : "s"} before opening new operator lanes.`
-        : watchlist.length > 0
+        ? `Clear ${blockers.length} blocking signal${blockers.length === 1 ? "" : "s"} before opening new operator lanes.${hasIncompleteBlockerCoverage || hasIncompleteRunCoverage ? " Some standup sources are unavailable, so this blocker count is partial." : ""}`
+      : watchlist.length > 0
           ? `Review ${watchlist.length} live or failed execution signal${watchlist.length === 1 ? "" : "s"} next.`
-          : completions.length > 0
-            ? `No urgent blockers detected. Review ${completions.length} recent completion${completions.length === 1 ? "" : "s"} and close the loop.`
-            : "No urgent signals detected across the current dashboard feeds.";
+          : hasIncompleteBlockerCoverage || hasIncompleteRunCoverage
+            ? "Some standup sources are unavailable. Restore coverage before treating this brief as clear."
+            : completions.length > 0
+              ? `No urgent blockers detected. Review ${completions.length} recent completion${completions.length === 1 ? "" : "s"} and close the loop.`
+              : "No urgent signals detected across the current dashboard feeds.";
 
     const partials: string[] = [];
-    if (alerts.status !== "ok") {
-      partials.push(alerts.error ?? "Alert coverage is unavailable.");
+    if (alertsSourceStatus !== "ok") {
+      partials.push(
+        alertIdentifierFailures > 0
+          ? `${alertIdentifierFailures} alert record${alertIdentifierFailures === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`
+          : alerts.error ?? "Alert coverage returned an invalid or unavailable payload.",
+      );
     }
-    if (approvals.status !== "ok") {
-      partials.push(approvals.error ?? "Approval coverage is unavailable.");
+    if (approvalsSourceStatus !== "ok") {
+      partials.push(
+        approvalIdentifierFailures > 0
+          ? `${approvalIdentifierFailures} approval record${approvalIdentifierFailures === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`
+          : approvals.error ?? "Approval coverage returned an invalid or unavailable payload.",
+      );
     }
-    if (runs.status !== "ok") {
-      partials.push(runs.error ?? "Run coverage is unavailable.");
+    if (runsSourceStatus !== "ok") {
+      partials.push(
+        runIdentifierFailures > 0
+          ? `${runIdentifierFailures} run record${runIdentifierFailures === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`
+          : runs.error ?? "Run coverage returned an invalid or unavailable payload.",
+      );
     }
     partials.push(...webhookFailures.errors);
     if (autonomy.note) {
@@ -403,10 +605,26 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       generatedAt: new Date().toISOString(),
       focus,
       metrics: {
-        openAlerts: blockers.filter((item) => item.source === "alerts").length,
-        pendingApprovals: blockers.filter((item) => item.source === "approvals").length,
-        failedRuns: watchlist.filter((item) => item.status === "error").length,
+        openAlerts:
+          alertsSourceStatus === "ok"
+            ? alertBlockers.length
+            : null,
+        pendingApprovals:
+          approvalsSourceStatus === "ok"
+            ? approvalBlockers.length
+            : null,
+        failedRuns:
+          runsSourceStatus === "ok"
+            ? failedRunCount
+            : null,
         queuedAutonomy: autonomy.count,
+      },
+      sources: {
+        alerts: alertsSourceStatus,
+        approvals: approvalsSourceStatus,
+        runs: runsSourceStatus,
+        webhooks: webhookFailures.status,
+        autonomy: autonomy.count === null ? "partial" : "ok",
       },
       blockers,
       watchlist,
@@ -414,9 +632,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       partials,
     });
 
-    const refreshedTokens =
-      authResponse.refreshedTokens ||
-      pickRefreshedTokens([alerts, approvals, runs, ...webhookFailures.tokenResults]);
+    const refreshedTokens = pickRefreshedTokens([
+      alerts,
+      approvals,
+      runs,
+      ...webhookFailures.tokenResults,
+    ]);
 
     if (refreshedTokens) {
       applyAuthCookies(nextResponse, request, refreshedTokens);

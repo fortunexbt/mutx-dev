@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.database import get_db
-from src.api.auth.dependencies import get_current_user
+from src.api.auth.dependencies import require_roles
 from src.api.models import get_quota
 from src.api.models.models import APIKey, User
 from src.api.models.schemas import (
@@ -38,7 +38,7 @@ async def count_active_api_keys(db: AsyncSession, user_id: uuid.UUID) -> int:
 async def list_api_keys(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
     db: AsyncSession = Depends(get_db),
 ):
     """List all API keys for the current user, including revoked keys for auditability."""
@@ -69,7 +69,7 @@ async def list_api_keys(
 @router.get("/{key_id}", response_model=APIKeyResponse)
 async def get_api_key(
     key_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single API key by ID."""
@@ -84,7 +84,7 @@ async def get_api_key(
 @router.post("", response_model=APIKeyCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_api_key(
     key_data: APIKeyCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new API key."""
@@ -130,7 +130,7 @@ async def create_api_key(
 @router.delete("/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_api_key(
     key_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
     db: AsyncSession = Depends(get_db),
 ):
     """Revoke an API key without deleting its record."""
@@ -151,7 +151,7 @@ async def revoke_api_key(
 @router.post("/{key_id}/rotate", response_model=APIKeyCreateResponse)
 async def rotate_api_key(
     key_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
     db: AsyncSession = Depends(get_db),
 ):
     """Rotate an active API key by revoking the old one and issuing a new one."""

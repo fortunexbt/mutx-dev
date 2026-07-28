@@ -64,11 +64,11 @@ def test_swarms_list_hits_contract_route_and_maps_payload() -> None:
         return httpx.Response(200, json=_list_response([_swarm_payload(id=swarm_id)], 1))
 
     with httpx.Client(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         swarms, total = Swarms(client).list(skip=5, limit=25)
 
-    assert captured["path"] == "/swarms"
+    assert captured["path"] == "/v1/swarms"
     assert captured["query"] == {"skip": "5", "limit": "25"}
     assert total == 1
     assert len(swarms) == 1
@@ -109,11 +109,11 @@ def test_swarms_list_blueprints_hits_contract_route() -> None:
         )
 
     with httpx.Client(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         blueprints = Swarms(client).list_blueprints()
 
-    assert captured["path"] == "/swarms/blueprints"
+    assert captured["path"] == "/v1/swarms/blueprints"
     assert len(blueprints) == 1
     assert blueprints[0].id == "research-triad"
     assert blueprints[0].roles[0].bundle_id == "orchestra-research-foundation"
@@ -128,11 +128,11 @@ def test_swarms_get_hits_contract_route_and_maps_payload() -> None:
         return httpx.Response(200, json=_swarm_payload(id=swarm_id, name="my-swarm"))
 
     with httpx.Client(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         swarm = Swarms(client).get(swarm_id)
 
-    assert captured["path"] == f"/swarms/{swarm_id}"
+    assert captured["path"] == f"/v1/swarms/{swarm_id}"
     assert swarm.id == swarm_id
     assert swarm.name == "my-swarm"
     assert swarm.description == "A test swarm"
@@ -152,7 +152,7 @@ def test_swarms_create_hits_contract_route_and_maps_payload() -> None:
     agent_id_2 = str(uuid.uuid4())
 
     with httpx.Client(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         swarm = Swarms(client).create(
             name="new-swarm",
@@ -162,7 +162,7 @@ def test_swarms_create_hits_contract_route_and_maps_payload() -> None:
             max_replicas=8,
         )
 
-    assert captured["path"] == "/swarms"
+    assert captured["path"] == "/v1/swarms"
     body = json.loads(captured["body"])
     assert body["name"] == "new-swarm"
     assert body["agent_ids"] == [agent_id_1, agent_id_2]
@@ -180,7 +180,7 @@ def test_swarms_create_omits_description_when_none() -> None:
         return httpx.Response(201, json=_swarm_payload())
 
     with httpx.Client(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         Swarms(client).create(name="no-desc", agent_ids=[str(uuid.uuid4())])
 
@@ -198,11 +198,11 @@ def test_swarms_scale_hits_contract_route_and_maps_payload() -> None:
         return httpx.Response(200, json=_swarm_payload(id=swarm_id))
 
     with httpx.Client(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         swarm = Swarms(client).scale(swarm_id, replicas=5)
 
-    assert captured["path"] == f"/swarms/{swarm_id}/scale"
+    assert captured["path"] == f"/v1/swarms/{swarm_id}/scale"
     assert json.loads(captured["body"]) == {"replicas": 5}
     assert swarm.id == swarm_id
 
@@ -223,11 +223,11 @@ async def test_swarms_alist_hits_contract_route_and_maps_payload() -> None:
         return httpx.Response(200, json=_list_response([_swarm_payload(id=swarm_id)], 2))
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         swarms, total = await Swarms(client).alist(skip=10, limit=20)
 
-    assert captured["path"] == "/swarms"
+    assert captured["path"] == "/v1/swarms"
     assert captured["query"] == {"skip": "10", "limit": "20"}
     assert total == 2
     assert len(swarms) == 1
@@ -244,11 +244,11 @@ async def test_swarms_aget_hits_contract_route_and_maps_payload() -> None:
         return httpx.Response(200, json=_swarm_payload(id=swarm_id))
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         swarm = await Swarms(client).aget(swarm_id)
 
-    assert captured["path"] == f"/swarms/{swarm_id}"
+    assert captured["path"] == f"/v1/swarms/{swarm_id}"
     assert swarm.id == swarm_id
 
 
@@ -262,20 +262,20 @@ async def test_swarms_acreate_hits_contract_route_and_maps_payload() -> None:
         return httpx.Response(201, json=_swarm_payload(name="async-swarm"))
 
     with httpx.Client(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as sync_client:
         Swarms(sync_client)._require_sync_client()  # exercise client-type guard
 
     agent_id = str(uuid.uuid4())
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         swarm = await Swarms(client).acreate(
             name="async-swarm", agent_ids=[agent_id], min_replicas=3, max_replicas=7
         )
 
-    assert captured["path"] == "/swarms"
+    assert captured["path"] == "/v1/swarms"
     body = json.loads(captured["body"])
     assert body["name"] == "async-swarm"
     assert body["agent_ids"] == [agent_id]
@@ -295,11 +295,11 @@ async def test_swarms_ascale_hits_contract_route_and_maps_payload() -> None:
         return httpx.Response(200, json=_swarm_payload(id=swarm_id))
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         swarm = await Swarms(client).ascale(swarm_id, replicas=12)
 
-    assert captured["path"] == f"/swarms/{swarm_id}/scale"
+    assert captured["path"] == f"/v1/swarms/{swarm_id}/scale"
     assert json.loads(captured["body"]) == {"replicas": 12}
     assert swarm.id == swarm_id
 
@@ -382,10 +382,10 @@ def test_swarm_agent_repr() -> None:
 
 def test_sync_method_rejects_async_client() -> None:
     with pytest.raises(RuntimeError, match="sync httpx.Client"):
-        Swarms(httpx.AsyncClient(base_url="https://api.test")).list()
+        Swarms(httpx.AsyncClient(base_url="https://api.test/v1/")).list()
 
 
 @pytest.mark.asyncio
 async def test_async_method_rejects_sync_client() -> None:
     with pytest.raises(RuntimeError, match="async httpx.AsyncClient"):
-        await Swarms(httpx.Client(base_url="https://api.test")).alist()
+        await Swarms(httpx.Client(base_url="https://api.test/v1/")).alist()

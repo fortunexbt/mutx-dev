@@ -106,7 +106,7 @@ class TestMutxCrewAICallbackHandler:
 
             mock_post.assert_called_once()
             call_args = mock_post.call_args
-            assert call_args[0][0] == "/v1/events"
+            assert call_args[0][0] == "events"
             event = call_args[1]["json"]
             assert event["event_type"] == "crew_agent_start"
             assert event["crew_name"] == "test-crew"
@@ -236,7 +236,7 @@ class TestRunCrew:
             mock_crew.kickoff.return_value = "test-result"
 
             with patch("mutx.adapters.crewai.MutxCrewAICallbackHandler"):
-                result = run_crew(mock_crew, {"topic": "AI"})
+                result = run_crew(mock_crew, {"topic": "AI"}, api_key="test-key")
 
             assert result == "test-result"
             mock_crew.kickoff.assert_called_once_with(inputs={"topic": "AI"})

@@ -30,6 +30,14 @@ export function KebabMenu({ actions, align = "end", className }: KebabMenuProps)
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
+  const focusMenuItem = (position: "first" | "last") => {
+    const items = menuRef.current?.querySelectorAll<HTMLElement>(
+      '[role="menuitem"]:not([disabled])',
+    );
+    if (!items?.length) return;
+    items[position === "first" ? 0 : items.length - 1]?.focus();
+  };
+
   useEffect(() => {
     if (!open) return undefined;
 
@@ -71,11 +79,11 @@ export function KebabMenu({ actions, align = "end", className }: KebabMenuProps)
         aria-controls={open ? menuId : undefined}
         onClick={() => setOpen((value) => !value)}
         onKeyDown={(event) => {
-          if (event.key !== "ArrowDown") return;
+          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           event.preventDefault();
           setOpen(true);
           window.requestAnimationFrame(() => {
-            menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus();
+            focusMenuItem(event.key === "ArrowDown" ? "first" : "last");
           });
         }}
       >
@@ -87,9 +95,30 @@ export function KebabMenu({ actions, align = "end", className }: KebabMenuProps)
           id={menuId}
           ref={menuRef}
           role="menu"
+          aria-label="Row actions"
+          onKeyDown={(event) => {
+            const items = Array.from(
+              menuRef.current?.querySelectorAll<HTMLElement>(
+                '[role="menuitem"]:not([disabled])',
+              ) ?? [],
+            );
+            if (!items.length) return;
+
+            const currentIndex = Math.max(items.indexOf(document.activeElement as HTMLElement), 0);
+            let nextIndex: number | null = null;
+            if (event.key === "ArrowDown") nextIndex = (currentIndex + 1) % items.length;
+            else if (event.key === "ArrowUp") nextIndex = (currentIndex - 1 + items.length) % items.length;
+            else if (event.key === "Home") nextIndex = 0;
+            else if (event.key === "End") nextIndex = items.length - 1;
+            else if (event.key === "Tab") setOpen(false);
+
+            if (nextIndex === null) return;
+            event.preventDefault();
+            items[nextIndex]?.focus();
+          }}
           className={cn(
             "absolute top-full z-50 mt-1.5 min-w-[180px] overflow-hidden rounded-lg border py-1 shadow-2xl",
-            align === "end" ? "right-0" : "left-0",
+            align === "end" ? "end-0" : "start-0",
           )}
           style={{
             borderColor: dashboardTokens.borderSubtle,
@@ -110,7 +139,7 @@ export function KebabMenu({ actions, align = "end", className }: KebabMenuProps)
             );
 
             const rowClassName = cn(
-              "flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors",
+              "flex min-h-11 w-full items-center gap-2 px-3 py-2 text-start text-sm transition-colors",
               action.disabled ? "cursor-not-allowed opacity-45" : undefined,
             );
 

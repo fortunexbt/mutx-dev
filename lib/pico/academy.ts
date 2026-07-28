@@ -1,5 +1,6 @@
 import {
   createDefaultPicoPlatformPreferences,
+  normalizeLessonWorkspace,
   normalizePersistedLessonWorkspace,
   normalizePicoPlatformPreferences,
   type PicoLessonWorkspaceState,
@@ -120,6 +121,24 @@ export type PicoDerivedProgress = {
   nextLesson: PicoLesson | null
 }
 
+export const PICO_LESSON_EVIDENCE_MIN_LENGTH = 12
+
+export type PicoLessonCompletionBlocker =
+  | 'unknown_lesson'
+  | 'prerequisite'
+  | 'steps'
+  | 'evidence'
+  | 'persistence'
+
+export type PicoLessonCompletionStatus = {
+  canComplete: boolean
+  isComplete: boolean
+  blocker: PicoLessonCompletionBlocker | null
+  message: string
+  completedStepCount: number
+  requiredStepCount: number
+}
+
 export const PICO_MILESTONE_XP: Record<string, number> = {
   account_created: 20,
   first_tutorial_started: 15,
@@ -130,7 +149,7 @@ export const PICO_MILESTONE_XP: Record<string, number> = {
   first_workflow_built: 70,
   first_monitoring_event_seen: 45,
   first_alert_configured: 45,
-  first_approval_gate_enabled: 60,
+  first_approval_workflow_exercised: 60,
   project_shared: 40,
   helpful_community_response: 35,
 }
@@ -138,11 +157,11 @@ export const PICO_MILESTONE_XP: Record<string, number> = {
 export const PICO_PLAN_MATRIX: Record<PicoPlan, Record<PicoPlanFeature, string>> = {
   free: {
     academy: 'Full academy access',
-    tutor: 'Tutor with light daily usage',
+    tutor: 'Read-only Academy guidance',
     project_limit: '1 active project',
-    monitored_agents: 'Preview only',
+    monitored_agents: 'Read-only runtime overview',
     alerts: 'In-app threshold alerts',
-    approvals: 'Preview the approval workflow',
+    approvals: 'Approval workflow overview',
     retention: '7-day product memory',
   },
   starter: {
@@ -219,11 +238,11 @@ export const PICO_LEVELS: PicoLevel[] = [
   {
     id: 5,
     title: 'Control',
-    objective: 'Add cost thresholds, alerts, and a risky-action gate.',
-    projectOutcome: 'The agent can be watched and interrupted before it causes damage.',
-    completionState: 'Thresholds and approvals are configured.',
+    objective: 'Save a cost threshold and exercise the approval workflow with a real request.',
+    projectOutcome: 'The operator can inspect spend and deliberately resolve a queued action.',
+    completionState: 'A threshold is saved and one approval workflow has been exercised.',
     xpReward: 210,
-    badge: 'Gatekeeper',
+    badge: 'Approval Reviewer',
     recommendedNextStep: 'Ship a deeper pattern.',
   },
   {
@@ -375,11 +394,11 @@ export const PICO_BADGE_RULES = [
   },
   {
     id: 'gatekeeper',
-    label: 'Gatekeeper',
+    label: 'Approval Reviewer',
     test: (completedLessons: Set<string>, milestoneEvents: Set<string>) =>
       completedLessons.has('set-a-cost-threshold') &&
       completedLessons.has('add-an-approval-gate') &&
-      milestoneEvents.has('first_approval_gate_enabled'),
+      milestoneEvents.has('first_approval_workflow_exercised'),
   },
   {
     id: 'pattern-operator',
@@ -447,21 +466,21 @@ export const PICO_CAPABILITY_UNLOCKS: PicoCapabilityUnlock[] = [
   },
   {
     id: 'cap-approvals',
-    title: 'Approval gates unlocked',
+    title: 'Approval workflow available',
     description:
-      'Budget awareness is live. Add a human stop before risky outbound actions happen for real.',
+      'A saved threshold is only a preference. Exercise one real approval request and verify the runtime behavior.',
     href: '/academy/add-an-approval-gate',
-    actionLabel: 'Add an approval gate',
+    actionLabel: 'Exercise the approval workflow',
     unlockEvent: 'first_alert_configured',
   },
   {
     id: 'cap-production-pattern',
     title: 'Production pattern unlocked',
     description:
-      'The guardrail is in place. Ship a workflow that looks like a product, not a prompt trick.',
+      'The approval workflow was exercised. Ship a workflow that looks like a product, while treating enforcement as runtime-owned truth.',
     href: '/academy/build-a-document-processing-agent',
     actionLabel: 'Ship the production pattern',
-    unlockEvent: 'first_approval_gate_enabled',
+    unlockEvent: 'first_approval_workflow_exercised',
   },
 ] as const
 
@@ -818,28 +837,28 @@ export const PICO_LESSONS: PicoLesson[] = [
   },
   {
     slug: 'add-an-approval-gate',
-    title: 'Add an approval gate',
-    summary: 'Create one real approval checkpoint and resolve it on purpose.',
+    title: 'Exercise the approval workflow',
+    summary: 'Create one real approval request and resolve it on purpose without inferring enforcement.',
     level: 5,
     track: 'controlled-agent',
     estimatedMinutes: 20,
     difficulty: 'operator',
-    objective: 'Exercise the risky-action gate before you trust the runtime with anything consequential.',
+    objective: 'Exercise the approval queue before trusting any consequential runtime behavior.',
     prerequisites: ['set-a-cost-threshold'],
     outcome: 'One working approval request and one deliberate resolution.',
     expectedResult: 'A pending approval exists and you can approve or reject it intentionally.',
     validation: 'Create one approval request and resolve it from the queue.',
     xp: 75,
-    milestoneEvents: ['first_approval_gate_enabled'],
+    milestoneEvents: ['first_approval_workflow_exercised'],
     steps: [
       {
-        title: 'Pick one risky action worth gating',
-        body: 'Use one outbound send, publish, or state-changing action. If the action is harmless, this lesson is fake.',
-        command: 'Example gated action: outbound_message_send',
+        title: 'Pick one risky action worth reviewing',
+        body: 'Use one outbound send, publish, or state-changing action so the review request is meaningful.',
+        command: 'Example reviewed action: outbound_message_send',
       },
       {
         title: 'Create the approval request',
-        body: 'Push the action into the approval queue instead of running it immediately.',
+        body: 'Create the request in the approval queue. This proves the workflow, not runtime enforcement.',
         command: 'Open /pico/autopilot and create one approval request for the risky action.',
       },
       {
@@ -850,8 +869,8 @@ export const PICO_LESSONS: PicoLesson[] = [
     ],
     troubleshooting: [
       'If approvals are unavailable, say so plainly. The runtime is not ready for unattended risky actions yet.',
-      'If everybody can approve everything, the gate exists but the policy is weak. Record that gap and keep going.',
-      'If you gate trivial noise, the queue becomes spam and people stop trusting it.',
+      'If everybody can approve everything, the workflow exists but the policy is weak. Record that gap and keep going.',
+      'If you review trivial noise, the queue becomes spam and people stop trusting it.',
     ],
     nextLesson: 'build-a-lead-response-agent',
   },
@@ -977,6 +996,97 @@ function normalizeLessonWorkspaceMap(value: unknown): Record<string, PicoLessonW
   )
 }
 
+export function normalizePicoLessonEvidence(value: string) {
+  return value.trim().replace(/\s+/g, ' ')
+}
+
+export function isPicoLessonEvidenceMeaningful(value: string) {
+  return normalizePicoLessonEvidence(value).length >= PICO_LESSON_EVIDENCE_MIN_LENGTH
+}
+
+function hasPersistedWorkspaceTimestamp(value: string | null) {
+  if (!value) return false
+  return Number.isFinite(Date.parse(value))
+}
+
+function getWorkspaceCompletionBlocker(
+  lesson: PicoLesson,
+  workspaceInput: PicoLessonWorkspaceState | undefined,
+): Pick<PicoLessonCompletionStatus, 'blocker' | 'message' | 'completedStepCount'> {
+  const workspace = normalizeLessonWorkspace(workspaceInput, lesson.steps.length)
+  const completedStepCount = workspace.completedStepIndexes.length
+
+  if (completedStepCount < lesson.steps.length) {
+    const remaining = lesson.steps.length - completedStepCount
+    return {
+      blocker: 'steps',
+      message: `Complete all lesson steps before finishing (${remaining} remaining).`,
+      completedStepCount,
+    }
+  }
+
+  if (!isPicoLessonEvidenceMeaningful(workspace.evidence)) {
+    return {
+      blocker: 'evidence',
+      message: `Save a real output, transcript, command result, or artifact path (at least ${PICO_LESSON_EVIDENCE_MIN_LENGTH} characters).`,
+      completedStepCount,
+    }
+  }
+
+  if (!hasPersistedWorkspaceTimestamp(workspace.updatedAt)) {
+    return {
+      blocker: 'persistence',
+      message: 'Wait for the lesson workspace to save before finishing.',
+      completedStepCount,
+    }
+  }
+
+  return {
+    blocker: null,
+    message: 'Checkpoint evidence is saved and every lesson step is complete.',
+    completedStepCount,
+  }
+}
+
+function getEvidenceBackedCompletedLessonSlugs(
+  completedLessonSlugs: string[],
+  lessonWorkspaces: Record<string, PicoLessonWorkspaceState>,
+) {
+  const requestedCompletions = new Set(completedLessonSlugs)
+  const verifiedCompletions = new Set<string>()
+
+  for (const lesson of PICO_LESSONS) {
+    if (!requestedCompletions.has(lesson.slug)) continue
+    if (!lesson.prerequisites.every((slug) => verifiedCompletions.has(slug))) continue
+
+    const workspaceStatus = getWorkspaceCompletionBlocker(
+      lesson,
+      lessonWorkspaces[lesson.slug],
+    )
+    if (!workspaceStatus.blocker) {
+      verifiedCompletions.add(lesson.slug)
+    }
+  }
+
+  return Array.from(verifiedCompletions)
+}
+
+const EVIDENCE_BACKED_MILESTONE_LESSONS: Partial<Record<string, string>> = {
+  first_tutorial_completed: 'run-your-first-agent',
+  first_agent_run: 'run-your-first-agent',
+  successful_deployment: 'deploy-hermes-on-a-vps',
+  first_skill_added: 'add-your-first-skill',
+  first_workflow_built: 'create-a-scheduled-workflow',
+}
+
+function getEvidenceBackedMilestoneEvents(events: string[], completedLessons: string[]) {
+  const completedLessonSet = new Set(completedLessons)
+  return events.filter((eventId) => {
+    const requiredLesson = EVIDENCE_BACKED_MILESTONE_LESSONS[eventId]
+    return !requiredLesson || completedLessonSet.has(requiredLesson)
+  })
+}
+
 function parseTimestamp(value: string | null | undefined) {
   if (!value) return 0
   const parsed = new Date(value).getTime()
@@ -1036,6 +1146,15 @@ function mergeLessonWorkspaceMaps(
 export function normalizePicoProgress(value: Partial<PicoProgressState> | null | undefined): PicoProgressState {
   const fallback = createDefaultPicoProgress()
   const candidate = value ?? {}
+  const lessonWorkspaces = normalizeLessonWorkspaceMap(candidate.lessonWorkspaces)
+  const completedLessons = getEvidenceBackedCompletedLessonSlugs(
+    uniqueStrings(candidate.completedLessons),
+    lessonWorkspaces,
+  )
+  const milestoneEvents = getEvidenceBackedMilestoneEvents(
+    uniqueStrings(candidate.milestoneEvents),
+    completedLessons,
+  )
 
   return {
     version: typeof candidate.version === 'number' ? candidate.version : fallback.version,
@@ -1049,13 +1168,13 @@ export function normalizePicoProgress(value: Partial<PicoProgressState> | null |
         : fallback.updatedAt,
     selectedTrack: typeof candidate.selectedTrack === 'string' ? candidate.selectedTrack : null,
     startedLessons: uniqueStrings(candidate.startedLessons),
-    completedLessons: uniqueStrings(candidate.completedLessons),
-    milestoneEvents: uniqueStrings(candidate.milestoneEvents),
+    completedLessons,
+    milestoneEvents,
     tutorQuestions: typeof candidate.tutorQuestions === 'number' ? candidate.tutorQuestions : 0,
     supportRequests: typeof candidate.supportRequests === 'number' ? candidate.supportRequests : 0,
     helpfulResponses: typeof candidate.helpfulResponses === 'number' ? candidate.helpfulResponses : 0,
     sharedProjects: uniqueStrings(candidate.sharedProjects),
-    lessonWorkspaces: normalizeLessonWorkspaceMap(candidate.lessonWorkspaces),
+    lessonWorkspaces,
     platform: {
       ...createDefaultPicoPlatformPreferences(),
       ...normalizePicoPlatformPreferences(candidate.platform),
@@ -1085,6 +1204,59 @@ export function normalizePicoProgress(value: Partial<PicoProgressState> | null |
 
 export function getLessonBySlug(slug: string) {
   return PICO_LESSONS.find((lesson) => lesson.slug === slug) ?? null
+}
+
+export function getPicoLessonCompletionStatus(
+  progressInput: Partial<PicoProgressState> | null | undefined,
+  lessonSlug: string,
+): PicoLessonCompletionStatus {
+  const lesson = getLessonBySlug(lessonSlug)
+  if (!lesson) {
+    return {
+      canComplete: false,
+      isComplete: false,
+      blocker: 'unknown_lesson',
+      message: 'This lesson is not part of the Academy curriculum.',
+      completedStepCount: 0,
+      requiredStepCount: 0,
+    }
+  }
+
+  const lessonWorkspaces = normalizeLessonWorkspaceMap(progressInput?.lessonWorkspaces)
+  const evidenceBackedCompletions = new Set(
+    getEvidenceBackedCompletedLessonSlugs(
+      uniqueStrings(progressInput?.completedLessons),
+      lessonWorkspaces,
+    ),
+  )
+  const missingPrerequisite = lesson.prerequisites.find(
+    (slug) => !evidenceBackedCompletions.has(slug),
+  )
+  const workspaceStatus = getWorkspaceCompletionBlocker(
+    lesson,
+    lessonWorkspaces[lesson.slug],
+  )
+
+  if (missingPrerequisite) {
+    const prerequisite = getLessonBySlug(missingPrerequisite)
+    return {
+      canComplete: false,
+      isComplete: false,
+      blocker: 'prerequisite',
+      message: `Complete ${prerequisite?.title ?? missingPrerequisite} with evidence first.`,
+      completedStepCount: workspaceStatus.completedStepCount,
+      requiredStepCount: lesson.steps.length,
+    }
+  }
+
+  return {
+    canComplete: workspaceStatus.blocker === null,
+    isComplete: evidenceBackedCompletions.has(lesson.slug),
+    blocker: workspaceStatus.blocker,
+    message: workspaceStatus.message,
+    completedStepCount: workspaceStatus.completedStepCount,
+    requiredStepCount: lesson.steps.length,
+  }
 }
 
 export function getTrackBySlug(slug: string) {
@@ -1171,6 +1343,18 @@ export function derivePicoProgress(progressInput: Partial<PicoProgressState> | n
 export function mergePicoProgress(localValue: Partial<PicoProgressState> | null | undefined, remoteValue: Partial<PicoProgressState> | null | undefined) {
   const local = normalizePicoProgress(localValue)
   const remote = normalizePicoProgress(remoteValue)
+  const requestedCompletedLessons = Array.from(
+    new Set([
+      ...uniqueStrings(remoteValue?.completedLessons),
+      ...uniqueStrings(localValue?.completedLessons),
+    ]),
+  )
+  const requestedMilestoneEvents = Array.from(
+    new Set([
+      ...uniqueStrings(remoteValue?.milestoneEvents),
+      ...uniqueStrings(localValue?.milestoneEvents),
+    ]),
+  )
 
   const remoteLooksEmpty =
     !remote.selectedTrack &&
@@ -1184,7 +1368,9 @@ export function mergePicoProgress(localValue: Partial<PicoProgressState> | null 
     remote.platform.railCollapsed === false &&
     remote.platform.helpLaneOpen === false &&
     remote.tutorQuestions === 0 &&
-    remote.supportRequests === 0
+    remote.supportRequests === 0 &&
+    uniqueStrings(remoteValue?.completedLessons).length === 0 &&
+    uniqueStrings(remoteValue?.milestoneEvents).length === 0
 
   if (remoteLooksEmpty) {
     return local
@@ -1194,8 +1380,8 @@ export function mergePicoProgress(localValue: Partial<PicoProgressState> | null 
     ...remote,
     selectedTrack: local.selectedTrack || remote.selectedTrack,
     startedLessons: Array.from(new Set([...remote.startedLessons, ...local.startedLessons])),
-    completedLessons: Array.from(new Set([...remote.completedLessons, ...local.completedLessons])),
-    milestoneEvents: Array.from(new Set([...remote.milestoneEvents, ...local.milestoneEvents])),
+    completedLessons: requestedCompletedLessons,
+    milestoneEvents: requestedMilestoneEvents,
     sharedProjects: Array.from(new Set([...remote.sharedProjects, ...local.sharedProjects])),
     lessonWorkspaces: mergeLessonWorkspaceMaps(local.lessonWorkspaces, remote.lessonWorkspaces),
     platform: {
@@ -1253,10 +1439,12 @@ export function applyLessonCompleted(progressInput: Partial<PicoProgressState>, 
     return progress
   }
 
-  const milestoneEvents = new Set(progress.milestoneEvents)
-  if (progress.completedLessons.length === 0) {
-    milestoneEvents.add('first_tutorial_completed')
+  const completionStatus = getPicoLessonCompletionStatus(progress, lessonSlug)
+  if (!completionStatus.canComplete) {
+    return progress
   }
+
+  const milestoneEvents = new Set(progress.milestoneEvents)
   for (const eventId of lesson.milestoneEvents ?? []) {
     milestoneEvents.add(eventId)
   }

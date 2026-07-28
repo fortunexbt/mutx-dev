@@ -12,6 +12,7 @@ import {
 const PICO_BLOCKED_CRAWL_PREFIXES: string[] = [...BLOCKED_CRAWL_PREFIXES, 
   '/academy',
   '/autopilot',
+  '/build-ledger',
   '/pricing',
   '/support',
   '/tutor',

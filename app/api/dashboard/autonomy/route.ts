@@ -1,98 +1,128 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { promises as fs } from 'node:fs'
-import path from 'node:path'
 
-import { withErrorHandling, notFound } from '@/app/api/_lib/errors'
+import {
+  applyAuthCookies,
+  authenticatedFetch,
+  getApiBaseUrl,
+  hasAuthSession,
+} from '@/app/api/_lib/controlPlane'
+import {
+  AutonomyDataError,
+  loadAutonomySnapshot,
+} from '@/app/api/dashboard/autonomy/autonomyData'
 
 export const dynamic = 'force-dynamic'
 
-type QueueItem = {
-  id?: string
-  title?: string
-  status?: string
-  lane?: string
-  runner?: string
-  area?: string
-  priority?: string
-  notes?: Array<{ ts?: string; message?: string }>
+type ErrorCode =
+  | 'UNAUTHORIZED'
+  | 'FORBIDDEN'
+  | 'NOT_FOUND'
+  | 'SERVICE_UNAVAILABLE'
+
+function jsonResponse(payload: unknown, status: number) {
+  return NextResponse.json(payload, {
+    status,
+    headers: {
+      'Cache-Control': 'private, no-store, max-age=0',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  })
 }
 
-function isLocalRequest() {
-  return process.env.NODE_ENV === 'development'
+function errorResponse(code: ErrorCode, message: string, status: number) {
+  return jsonResponse({ status: 'error', error: { code, message } }, status)
 }
 
-async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
-  try {
-    const raw = await fs.readFile(filePath, 'utf-8')
-    return JSON.parse(raw) as T
-  } catch {
-    return fallback
-  }
-}
-
-async function readJsonlTail(filePath: string, limit: number) {
-  try {
-    const raw = await fs.readFile(filePath, 'utf-8')
-    const lines = raw.split('\n').filter(Boolean)
-    return lines.slice(-limit).map((line) => {
-      try {
-        return JSON.parse(line)
-      } catch {
-        return { status: 'error', summary: line }
-      }
-    })
-  } catch {
-    return []
-  }
+function localCapabilityEnabled() {
+  return (
+    process.env.MUTX_DESKTOP_MODE === 'true' ||
+    process.env.MUTX_LOCAL_AUTONOMY_CAPABILITY === 'enabled'
+  )
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  return withErrorHandling(async () => {
-    if (!isLocalRequest()) {
-      return notFound('Autonomy dashboard')
+  if (!hasAuthSession(request)) {
+    return errorResponse('UNAUTHORIZED', 'Unauthorized', 401)
+  }
+
+  let authResult: Awaited<ReturnType<typeof authenticatedFetch>>
+  try {
+    authResult = await authenticatedFetch(request, `${getApiBaseUrl()}/v1/auth/me`, {
+      cache: 'no-store',
+    })
+  } catch {
+    return errorResponse(
+      'SERVICE_UNAVAILABLE',
+      'Unable to verify the operator session',
+      503,
+    )
+  }
+
+  const finish = (response: NextResponse) => {
+    if (authResult.tokenRefreshed && authResult.refreshedTokens) {
+      applyAuthCookies(response, request, authResult.refreshedTokens)
+    }
+    return response
+  }
+
+  if (!authResult.response.ok) {
+    if (authResult.response.status === 401) {
+      return finish(errorResponse('UNAUTHORIZED', 'Unauthorized', 401))
+    }
+    if (authResult.response.status === 403) {
+      return finish(errorResponse('FORBIDDEN', 'Forbidden', 403))
+    }
+    return finish(
+      errorResponse(
+        'SERVICE_UNAVAILABLE',
+        'Unable to verify the operator session',
+        503,
+      ),
+    )
+  }
+
+  if (!localCapabilityEnabled()) {
+    return finish(
+      errorResponse(
+        'FORBIDDEN',
+        'Local autonomy is available only in an approved local capability context',
+        403,
+      ),
+    )
+  }
+
+  const configuredRoot = process.env.MUTX_AUTONOMY_ROOT?.trim()
+  if (!configuredRoot) {
+    return finish(
+      errorResponse(
+        'SERVICE_UNAVAILABLE',
+        'The local autonomy capability is not configured',
+        503,
+      ),
+    )
+  }
+
+  try {
+    const payload = await loadAutonomySnapshot(configuredRoot, {
+      staleAfterSeconds: process.env.MUTX_AUTONOMY_STALE_AFTER_SECONDS,
+    })
+    return finish(jsonResponse(payload, 200))
+  } catch (error) {
+    if (
+      error instanceof AutonomyDataError &&
+      (error.code === 'root_not_found' || error.code === 'data_not_found')
+    ) {
+      return finish(
+        errorResponse('NOT_FOUND', 'No local autonomy data was found', 404),
+      )
     }
 
-    const repoRoot = process.env.MUTX_REPO_ROOT || '/Users/fortune/MUTX'
-    const autonomyDir = path.join(repoRoot, '.autonomy')
-
-    const [daemonStatus, laneState, fleet, generatedTasks, queue, reports] = await Promise.all([
-      readJsonFile(path.join(autonomyDir, 'daemon-status.json'), {}),
-      readJsonFile(path.join(autonomyDir, 'lane-state.json'), { lanes: {} }),
-      readJsonFile(path.join(autonomyDir, 'fleet.json'), { roles: [] }),
-      readJsonFile(path.join(autonomyDir, 'generated-tasks.json'), []),
-      readJsonFile<{ items: QueueItem[] }>(path.join(repoRoot, 'mutx-engineering-agents/dispatch/action-queue.json'), { items: [] }),
-      readJsonlTail(path.join(repoRoot, 'reports/autonomy-status.jsonl'), 20),
-    ])
-
-    const items = Array.isArray(queue.items) ? queue.items : []
-    const counts = items.reduce<Record<string, number>>((acc, item) => {
-      const key = item.status || 'unknown'
-      acc[key] = (acc[key] || 0) + 1
-      return acc
-    }, {})
-
-    const activeRunners = Array.isArray((daemonStatus as { active_runners?: unknown }).active_runners)
-      ? ((daemonStatus as { active_runners: unknown[] }).active_runners as unknown[])
-      : []
-
-    const payload = {
-      status: 'ok',
-      daemon: daemonStatus,
-      lanes: laneState,
-      fleet,
-      generatedTasks,
-      queue: {
-        counts,
-        queued: items.filter((item) => item.status === 'queued').slice(0, 20),
-        running: items.filter((item) => item.status === 'running').slice(0, 20),
-        parked: items.filter((item) => item.status === 'parked').slice(0, 20),
-        completed: items.filter((item) => item.status === 'completed').slice(0, 10),
-      },
-      activeRunners,
-      reports,
-      repoRoot,
-    }
-
-    return NextResponse.json(payload, { status: 200 })
-  })(request)
+    return finish(
+      errorResponse(
+        'SERVICE_UNAVAILABLE',
+        'Local autonomy data could not be read safely',
+        503,
+      ),
+    )
+  }
 }

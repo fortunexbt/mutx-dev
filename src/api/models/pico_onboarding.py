@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -54,7 +55,17 @@ class PicoChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     message: str = Field(..., min_length=1, max_length=6000)
-    session_id: str | None = None
+    session_id: str | None = Field(
+        default=None,
+        max_length=36,
+        pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    )
+    request_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
 
 
 class PicoChatResponse(BaseModel):
@@ -63,9 +74,13 @@ class PicoChatResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     reply: str
-    session_id: str = ""
+    session_id: str | None = None
+    session_persisted: bool = False
     onboarding_state: OnboardingState | None = None
     ready_for_package: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    expires_at: datetime | None = None
 
 
 # ── Package generation ────────────────────────────────────────────────
@@ -76,7 +91,10 @@ class GeneratePackageRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    session_id: str
+    session_id: str = Field(
+        max_length=36,
+        pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    )
 
 
 class GeneratePackageResponse(BaseModel):
@@ -100,3 +118,17 @@ class CoachMessage(BaseModel):
     role: PicoMessageRole
     content: str
     onboarding_state: OnboardingState | None = None
+
+
+class PicoOnboardingSessionResponse(BaseModel):
+    """Durable, user-scoped onboarding conversation returned on resume."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    history: list[CoachMessage] = Field(default_factory=list)
+    onboarding_state: OnboardingState = Field(default_factory=OnboardingState)
+    ready_for_package: bool = False
+    created_at: datetime
+    updated_at: datetime
+    expires_at: datetime

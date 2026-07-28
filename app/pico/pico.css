@@ -72,3 +72,23 @@ body:has(.pico-root) {
   outline-offset: 2px;
   box-shadow: 0 0 0 5px #0a0a09;
 }
+
+.pico-root pre,
+.pico-root code,
+.pico-root kbd,
+.pico-root samp,
+.pico-root [data-technical-value] {
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pico-root,
+  .pico-root *,
+  .pico-root *::before,
+  .pico-root *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

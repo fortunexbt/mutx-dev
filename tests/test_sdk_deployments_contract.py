@@ -75,7 +75,7 @@ def test_deployments_create_hits_canonical_route_and_maps_payload() -> None:
         )
 
     with httpx.Client(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         deployment = Deployments(client).create(agent_id, replicas=3)
 
@@ -100,7 +100,7 @@ async def test_deployments_acreate_hits_canonical_route_and_maps_payload() -> No
         )
 
     async with httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     ) as client:
         deployment = await Deployments(client).acreate(agent_id, replicas=2)
@@ -124,7 +124,7 @@ def test_deployments_restart_hits_contract_route_and_maps_payload() -> None:
         )
 
     with httpx.Client(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         deployment = Deployments(client).restart(deployment_id)
 
@@ -147,7 +147,7 @@ async def test_deployments_arestart_hits_contract_route_and_maps_payload() -> No
         )
 
     async with httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     ) as client:
         deployment = await Deployments(client).arestart(deployment_id)
@@ -176,7 +176,7 @@ def test_deployments_events_hits_contract_route_and_maps_payload() -> None:
         )
 
     with httpx.Client(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         history = Deployments(client).events(
             deployment_id,
@@ -210,7 +210,7 @@ async def test_deployments_aevents_hits_contract_route_and_maps_payload() -> Non
         return httpx.Response(200, json=_event_history_payload(deployment_id))
 
     async with httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     ) as client:
         history = await Deployments(client).aevents(deployment_id, skip=1, limit=10)
@@ -284,7 +284,7 @@ def test_deployments_logs_support_level_filter_param() -> None:
         return httpx.Response(200, json=[])
 
     with httpx.Client(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         payload = Deployments(client).logs(deployment_id, skip=2, limit=50, level="ERROR")
 
@@ -304,7 +304,7 @@ async def test_deployments_alogs_support_level_filter_param() -> None:
         return httpx.Response(200, json=[])
 
     async with httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     ) as client:
         payload = await Deployments(client).alogs(deployment_id, skip=4, limit=75, level="INFO")
@@ -324,7 +324,7 @@ def test_deployments_metrics_hits_contract_route_and_query_params() -> None:
         return httpx.Response(200, json=_metrics_payload())
 
     with httpx.Client(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         payload = Deployments(client).metrics(deployment_id, skip=5, limit=15)
 
@@ -345,7 +345,7 @@ async def test_deployments_ametrics_hits_contract_route_and_query_params() -> No
         return httpx.Response(200, json=_metrics_payload())
 
     async with httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     ) as client:
         payload = await Deployments(client).ametrics(deployment_id, skip=6, limit=12)

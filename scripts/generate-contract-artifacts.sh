@@ -28,6 +28,11 @@ if [[ -z "$PYTHON_BIN" ]]; then
 fi
 
 echo "Generating OpenAPI spec with $PYTHON_BIN..."
+# Generated contracts must not vary with a developer's local dotenv file.
+MUTX_SETTINGS_ENV_FILE="" \
+ENVIRONMENT="development" \
+JWT_SECRET="mutx-contract-generation-jwt-secret" \
+SECRET_ENCRYPTION_KEY="mutx-contract-generation-encryption-key" \
 "$PYTHON_BIN" scripts/generate_openapi.py
 
 echo "Generating frontend API types..."

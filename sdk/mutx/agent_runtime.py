@@ -19,6 +19,7 @@ from typing import Any, Callable, Optional
 
 import httpx
 
+from mutx._http import DEFAULT_BASE_URL, api_path, normalize_api_base_url
 from mutx.guardrails import (
     GuardrailMiddleware,
 )
@@ -88,7 +89,7 @@ class MutxAgentClient:
 
     def __init__(
         self,
-        mutx_url: str = "https://api.mutx.dev",
+        mutx_url: str = DEFAULT_BASE_URL,
         api_key: Optional[str] = None,
         agent_id: Optional[str] = None,
         timeout: float = 30.0,
@@ -96,6 +97,7 @@ class MutxAgentClient:
         policy_client: Optional[MutxPolicyClient] = None,
     ):
         self.mutx_url = mutx_url.rstrip("/")
+        self.api_base_url = normalize_api_base_url(mutx_url)
         self.api_key = api_key
         self.agent_id = agent_id
         self.timeout = timeout
@@ -125,7 +127,7 @@ class MutxAgentClient:
                 headers["Authorization"] = f"Bearer {self.api_key}"
 
             self._client = httpx.AsyncClient(
-                base_url=self.mutx_url,
+                base_url=self.api_base_url,
                 timeout=self.timeout,
                 headers=headers,
             )
@@ -164,7 +166,7 @@ class MutxAgentClient:
         }
 
         try:
-            response = await client.post("/v1/agents/register", json=payload)
+            response = await client.post("agents/register", json=payload)
             response.raise_for_status()
             data = response.json()
 
@@ -215,7 +217,7 @@ class MutxAgentClient:
 
         # Verify connection with a simple request
         try:
-            response = await client.get(f"/v1/agents/{agent_id}/status")
+            response = await client.get(api_path("agents/{agent_id}/status", agent_id=agent_id))
             response.raise_for_status()
             self._registered = True
             logger.info(f"Connected to agent: {self.agent_id}")
@@ -254,7 +256,7 @@ class MutxAgentClient:
         }
 
         try:
-            response = await client.post("/v1/agents/heartbeat", json=payload)
+            response = await client.post("agents/heartbeat", json=payload)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as e:
@@ -291,7 +293,7 @@ class MutxAgentClient:
         }
 
         try:
-            response = await client.post("/v1/agents/metrics", json=payload)
+            response = await client.post("agents/metrics", json=payload)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as e:
@@ -321,7 +323,7 @@ class MutxAgentClient:
             params["since"] = since.isoformat()
 
         try:
-            response = await client.get("/v1/agents/commands", params=params)
+            response = await client.get("agents/commands", params=params)
             response.raise_for_status()
             data = response.json()
 
@@ -375,7 +377,7 @@ class MutxAgentClient:
         }
 
         try:
-            response = await client.post("/v1/agents/commands/acknowledge", json=payload)
+            response = await client.post("agents/commands/acknowledge", json=payload)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as e:
@@ -413,7 +415,7 @@ class MutxAgentClient:
         }
 
         try:
-            response = await client.post("/v1/agents/logs", json=payload)
+            response = await client.post("agents/logs", json=payload)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as e:
@@ -575,7 +577,7 @@ class MutxAgentSyncClient:
 
     def __init__(
         self,
-        mutx_url: str = "https://api.mutx.dev",
+        mutx_url: str = DEFAULT_BASE_URL,
         api_key: Optional[str] = None,
         agent_id: Optional[str] = None,
         timeout: float = 30.0,
@@ -583,6 +585,7 @@ class MutxAgentSyncClient:
         policy_client: Optional[MutxPolicyClient] = None,
     ):
         self.mutx_url = mutx_url.rstrip("/")
+        self.api_base_url = normalize_api_base_url(mutx_url)
         self.api_key = api_key
         self.agent_id = agent_id
         self.timeout = timeout
@@ -601,7 +604,7 @@ class MutxAgentSyncClient:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         return httpx.Client(
-            base_url=self.mutx_url,
+            base_url=self.api_base_url,
             timeout=self.timeout,
             headers=headers,
         )
@@ -619,7 +622,7 @@ class MutxAgentSyncClient:
                 "description": description or "",
                 "metadata": metadata or {},
             }
-            response = client.post("/v1/agents/register", json=payload)
+            response = client.post("agents/register", json=payload)
             response.raise_for_status()
             data = response.json()
 
@@ -651,7 +654,7 @@ class MutxAgentSyncClient:
                 "message": message,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
-            response = client.post("/v1/agents/heartbeat", json=payload)
+            response = client.post("agents/heartbeat", json=payload)
             response.raise_for_status()
             return response.json()
 
@@ -676,7 +679,7 @@ class MutxAgentSyncClient:
                 "custom": custom or {},
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
-            response = client.post("/v1/agents/metrics", json=payload)
+            response = client.post("agents/metrics", json=payload)
             response.raise_for_status()
             return response.json()
 
@@ -698,7 +701,7 @@ class MutxAgentSyncClient:
                 "metadata": metadata or {},
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
-            response = client.post("/v1/agents/logs", json=payload)
+            response = client.post("agents/logs", json=payload)
             response.raise_for_status()
             return response.json()
 
@@ -747,7 +750,7 @@ class MutxAgentSyncClient:
 
 # Convenience function for quick setup
 async def create_agent_client(
-    mutx_url: str = "https://api.mutx.dev",
+    mutx_url: str = DEFAULT_BASE_URL,
     agent_name: str = "default-agent",
     agent_description: str = "",
     api_key: Optional[str] = None,
@@ -842,13 +845,14 @@ class run_with_approval:  # noqa: N801
         self,
         *,
         api_key: str,
-        base_url: str = "https://api.mutx.dev",
+        base_url: str = DEFAULT_BASE_URL,
         approval_request: dict,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         poll_interval_seconds: int = DEFAULT_POLL_INTERVAL_SECONDS,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
+        self.api_base_url = normalize_api_base_url(base_url)
         self.request_payload = approval_request
         self.timeout_seconds = timeout_seconds
         self.poll_interval = poll_interval_seconds
@@ -859,7 +863,7 @@ class run_with_approval:  # noqa: N801
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
             self._client = httpx.AsyncClient(
-                base_url=self.base_url,
+                base_url=self.api_base_url,
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
                     "Content-Type": "application/json",
@@ -871,7 +875,7 @@ class run_with_approval:  # noqa: N801
     async def _submit(self) -> str:
         """POST to /v1/approvals and return the request ID."""
         client = await self._get_client()
-        response = await client.post("/v1/approvals", json=self.request_payload)
+        response = await client.post("approvals", json=self.request_payload)
         response.raise_for_status()
         data = response.json()
         return data["id"]
@@ -879,7 +883,7 @@ class run_with_approval:  # noqa: N801
     async def _poll(self) -> dict:
         """GET /v1/approvals/{request_id} and return the full approval record."""
         client = await self._get_client()
-        response = await client.get(f"/v1/approvals/{self._request_id}")
+        response = await client.get(api_path("approvals/{request_id}", request_id=self._request_id))
         response.raise_for_status()
         return response.json()
 

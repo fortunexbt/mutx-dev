@@ -6,7 +6,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +30,7 @@ from src.api.services.gateway_runtime import (
 
 DEFAULT_TEMPLATE_ID = "personal_assistant"
 DEFAULT_ASSISTANT_MODEL = "openai/gpt-5"
+SKILL_RECONCILIATION_METADATA_KEY = "skill_reconciliation"
 logger = logging.getLogger(__name__)
 
 
@@ -580,27 +581,75 @@ def get_skill_bundle(bundle_id: str) -> dict[str, Any] | None:
     return next((item for item in list_skill_bundles() if item["id"] == normalized), None)
 
 
+def _skill_reconciliation_entries(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    metadata = config.get("metadata")
+    if not isinstance(metadata, dict):
+        return {}
+    raw_entries = metadata.get(SKILL_RECONCILIATION_METADATA_KEY)
+    if not isinstance(raw_entries, dict):
+        return {}
+    return {
+        str(skill_id): dict(payload)
+        for skill_id, payload in raw_entries.items()
+        if isinstance(skill_id, str) and isinstance(payload, dict)
+    }
+
+
+def _set_skill_reconciliation_entries(
+    config: dict[str, Any], entries: dict[str, dict[str, Any]]
+) -> None:
+    metadata = config.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+    metadata[SKILL_RECONCILIATION_METADATA_KEY] = entries
+    config["metadata"] = metadata
+
+
+def _mark_skill_configured(
+    entries: dict[str, dict[str, Any]], *, skill_id: str, requested_at: str
+) -> None:
+    existing = entries.get(skill_id, {})
+    if str(existing.get("status") or "").lower() in {"reconciled", "runtime_ready"}:
+        return
+    entries[skill_id] = {
+        "status": "configured",
+        "requested_at": str(existing.get("requested_at") or requested_at),
+        "configured_at": requested_at,
+    }
+
+
 def install_skill_bundle(agent: Agent, *, bundle_id: str) -> dict[str, Any]:
     bundle = get_skill_bundle(bundle_id)
     if bundle is None:
         raise KeyError(bundle_id)
 
     config = deserialize_config(agent.config)
-    skills = list_installed_skill_ids(agent)
-    installed_now: list[str] = []
+    skills = list_configured_skill_ids(agent)
+    reconciliation_entries = _skill_reconciliation_entries(config)
+    configured_now: list[str] = []
+    requested_at = datetime.now(timezone.utc).isoformat()
     for skill_id in bundle["skill_ids"]:
         item = find_skill_catalog_item(skill_id)
         if item is None or not item.available:
             continue
         if skill_id not in skills:
             skills.append(skill_id)
-            installed_now.append(skill_id)
+            configured_now.append(skill_id)
+        _mark_skill_configured(
+            reconciliation_entries,
+            skill_id=skill_id,
+            requested_at=requested_at,
+        )
 
     config["skills"] = skills
+    _set_skill_reconciliation_entries(config, reconciliation_entries)
     agent.config = serialize_config(config)
     return {
         "bundle_id": bundle["id"],
-        "installed_skill_ids": installed_now,
+        "configured_skill_ids": [
+            skill_id for skill_id in bundle["skill_ids"] if skill_id in skills
+        ],
+        "newly_configured_skill_ids": configured_now,
         "unavailable_skill_ids": list(bundle["unavailable_skill_ids"]),
         "skills": skills,
     }
@@ -610,39 +659,125 @@ def list_swarm_blueprints() -> list[dict[str, Any]]:
     return [item for item in orchestra_swarm_blueprints() if isinstance(item, dict)]
 
 
-def list_installed_skill_ids(agent: Agent) -> list[str]:
+def list_configured_skill_ids(agent: Agent) -> list[str]:
     config = deserialize_config(agent.config)
     raw_skills = config.get("skills") or []
     return [str(skill_id) for skill_id in raw_skills if isinstance(skill_id, str)]
 
 
+def list_installed_skill_ids(agent: Agent) -> list[str]:
+    """Compatibility alias for callers that previously treated configuration as installation."""
+    return list_configured_skill_ids(agent)
+
+
+def skill_catalog_payload(item: SkillCatalogItem) -> dict[str, Any]:
+    status = "available" if item.available else "unavailable"
+    status_detail = (
+        "Available to configure; runtime activation has not been requested."
+        if item.available
+        else "The catalog entry exists, but its skill files are unavailable to this control plane."
+    )
+    return {
+        "id": item.id,
+        "name": item.name,
+        "description": item.description,
+        "author": item.author,
+        "category": item.category,
+        "source": item.source,
+        "is_official": item.is_official,
+        "installed": False,
+        "configured": False,
+        "runtime_ready": False,
+        "status": status,
+        "reconciliation_required": False,
+        "status_detail": status_detail,
+        "reconciliation_error": None,
+        "tags": list(item.tags),
+        "path": item.path,
+        "canonical_name": item.canonical_name,
+        "upstream_path": item.upstream_path,
+        "upstream_repo": item.upstream_repo,
+        "upstream_commit": item.upstream_commit,
+        "license": item.license,
+        "available": item.available,
+    }
+
+
+def _assistant_skill_lifecycle(
+    *,
+    item: SkillCatalogItem,
+    configured: bool,
+    reconciliation: dict[str, Any] | None,
+) -> dict[str, Any]:
+    reconciliation = reconciliation or {}
+    reconciliation_status = str(reconciliation.get("status") or "").lower()
+    runtime_ready = configured and reconciliation_status in {"reconciled", "runtime_ready"}
+    failed = configured and reconciliation_status == "failed"
+
+    if runtime_ready:
+        status = "runtime_ready"
+        detail = str(
+            reconciliation.get("detail")
+            or "The assistant runtime has reported successful skill reconciliation."
+        )
+    elif failed:
+        status = "failed"
+        detail = str(
+            reconciliation.get("error")
+            or reconciliation.get("detail")
+            or "Runtime reconciliation failed."
+        )
+    elif configured and not item.available:
+        status = "unavailable"
+        detail = (
+            "Configured for this assistant, but the skill files required for reconciliation "
+            "are unavailable to this control plane."
+        )
+    elif configured:
+        status = "configured"
+        detail = "Saved in the assistant configuration. Runtime reconciliation has not been proven."
+    elif item.available:
+        status = "available"
+        detail = "Available to configure; runtime activation has not been requested."
+    else:
+        status = "unavailable"
+        detail = "The catalog entry exists, but its skill files are unavailable."
+
+    return {
+        # Keep the legacy field truthful: it is only true after runtime evidence exists.
+        "installed": runtime_ready,
+        "configured": configured,
+        "runtime_ready": runtime_ready,
+        "status": status,
+        "reconciliation_required": configured and not runtime_ready,
+        "status_detail": detail,
+        "reconciliation_error": detail if failed else None,
+    }
+
+
 def list_assistant_skills(agent: Agent) -> list[dict[str, Any]]:
-    installed = set(list_installed_skill_ids(agent))
+    config = deserialize_config(agent.config)
+    configured_skill_ids = set(list_configured_skill_ids(agent))
+    reconciliation_entries = _skill_reconciliation_entries(config)
     entries = []
     for item in list_skill_catalog():
-        entries.append(
-            {
-                "id": item.id,
-                "name": item.name,
-                "description": item.description,
-                "author": item.author,
-                "category": item.category,
-                "source": item.source,
-                "is_official": item.is_official,
-                "installed": item.id in installed,
-                "tags": list(item.tags),
-                "path": item.path,
-                "canonical_name": item.canonical_name,
-                "upstream_path": item.upstream_path,
-                "upstream_repo": item.upstream_repo,
-                "upstream_commit": item.upstream_commit,
-                "license": item.license,
-                "available": item.available,
-            }
+        payload = skill_catalog_payload(item)
+        payload.update(
+            _assistant_skill_lifecycle(
+                item=item,
+                configured=item.id in configured_skill_ids,
+                reconciliation=reconciliation_entries.get(item.id),
+            )
         )
+        entries.append(payload)
     return sorted(
         entries,
-        key=lambda entry: (not entry["installed"], not entry["available"], entry["name"].lower()),
+        key=lambda entry: (
+            not entry["configured"],
+            not entry["runtime_ready"],
+            not entry["available"],
+            entry["name"].lower(),
+        ),
     )
 
 
@@ -651,17 +786,64 @@ def update_assistant_skills(agent: Agent, *, skill_id: str, install: bool) -> di
     if install and item is None:
         raise KeyError(skill_id)
     if install and item is not None and not item.available:
-        raise RuntimeError(f"Skill '{skill_id}' is catalogued but not available on this runtime")
+        raise RuntimeError(
+            f"Skill '{skill_id}' is catalogued but its files are unavailable to this control plane"
+        )
 
     config = deserialize_config(agent.config)
-    skills = list_installed_skill_ids(agent)
+    skills = list_configured_skill_ids(agent)
+    reconciliation_entries = _skill_reconciliation_entries(config)
     if install and skill_id not in skills:
         skills.append(skill_id)
+    if install:
+        _mark_skill_configured(
+            reconciliation_entries,
+            skill_id=skill_id,
+            requested_at=datetime.now(timezone.utc).isoformat(),
+        )
     if not install:
         skills = [existing for existing in skills if existing != skill_id]
+        reconciliation_entries.pop(skill_id, None)
     config["skills"] = skills
+    _set_skill_reconciliation_entries(config, reconciliation_entries)
     agent.config = serialize_config(config)
     return config
+
+
+def record_assistant_skill_reconciliation(
+    agent: Agent,
+    *,
+    skill_id: str,
+    status: str,
+    detail: str | None = None,
+) -> dict[str, Any]:
+    """Record runtime reconciliation evidence; the owning session must commit the agent."""
+    normalized_status = status.strip().lower()
+    if normalized_status not in {"configured", "runtime_ready", "failed"}:
+        raise ValueError(f"Unsupported skill reconciliation status: {status}")
+    if skill_id not in set(list_configured_skill_ids(agent)):
+        raise KeyError(skill_id)
+
+    config = deserialize_config(agent.config)
+    entries = _skill_reconciliation_entries(config)
+    now = datetime.now(timezone.utc).isoformat()
+    existing = entries.get(skill_id, {})
+    entry = {
+        "status": normalized_status,
+        "requested_at": str(existing.get("requested_at") or now),
+        "configured_at": str(existing.get("configured_at") or now),
+    }
+    if normalized_status == "runtime_ready":
+        entry["reconciled_at"] = now
+        if detail:
+            entry["detail"] = detail
+    elif normalized_status == "failed":
+        entry["failed_at"] = now
+        entry["error"] = detail or "Runtime reconciliation failed."
+    entries[skill_id] = entry
+    _set_skill_reconciliation_entries(config, entries)
+    agent.config = serialize_config(config)
+    return entry
 
 
 def list_assistant_channels(agent: Agent) -> list[dict[str, Any]]:
@@ -808,7 +990,7 @@ def _normalize_gateway_session(raw: dict[str, Any]) -> dict[str, Any] | None:
         or "unknown"
     )
 
-    return {
+    normalized = {
         "id": str(raw.get("id") or key),
         "key": key,
         "agent": agent,
@@ -823,6 +1005,11 @@ def _normalize_gateway_session(raw: dict[str, Any]) -> dict[str, Any] | None:
         "last_activity": last_activity or start_time,
         "source": str(raw.get("source") or "openclaw"),
     }
+    if raw.get("agent_id") is not None:
+        # Preserve immutable provider identity for the ownership layer. Mutable
+        # assistant names and workspace labels must never become authority.
+        normalized["agent_id"] = raw["agent_id"]
+    return normalized
 
 
 def _gateway_base_url() -> tuple[int | None, str | None]:
@@ -1012,7 +1199,21 @@ def list_gateway_sessions(*, assistant_id: str | None = None) -> list[dict[str, 
     return sessions
 
 
-def collect_gateway_health() -> dict[str, Any]:
+def collect_gateway_health(*, include_host_diagnostics: bool = False) -> dict[str, Any]:
+    if not include_host_diagnostics:
+        return {
+            "status": "restricted",
+            "cli_available": None,
+            "gateway_configured": None,
+            "gateway_reachable": None,
+            "gateway_port": None,
+            "gateway_url": None,
+            "credential_detected": None,
+            "config_path": None,
+            "state_dir": None,
+            "doctor_summary": "Gateway host diagnostics are restricted to administrators.",
+        }
+
     config_path = get_detected_openclaw_config_path()
     detected_state_dir = get_detected_openclaw_state_dir()
     state_dir = detected_state_dir if detected_state_dir and detected_state_dir.exists() else None
@@ -1052,7 +1253,12 @@ def collect_gateway_health() -> dict[str, Any]:
     }
 
 
-def collect_assistant_overview(agent: Agent, deployments: list[Any]) -> dict[str, Any]:
+def collect_assistant_overview(
+    agent: Agent,
+    deployments: list[Any],
+    *,
+    include_host_diagnostics: bool = False,
+) -> dict[str, Any]:
     config = deserialize_config(agent.config)
     assistant_id = str(config.get("assistant_id") or slugify_assistant_id(agent.name))
     onboarding_status = "needs_deployment" if not deployments else "deployed"
@@ -1072,7 +1278,9 @@ def collect_assistant_overview(agent: Agent, deployments: list[Any]) -> dict[str
         "installed_skills": [item for item in list_assistant_skills(agent) if item["installed"]],
         "channels": list_assistant_channels(agent),
         "wakeups": list_assistant_wakeups(agent),
-        "gateway": collect_gateway_health(),
+        "gateway": collect_gateway_health(
+            include_host_diagnostics=include_host_diagnostics,
+        ),
         "deployments": deployments,
         "config": config,
     }

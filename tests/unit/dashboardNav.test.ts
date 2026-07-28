@@ -88,6 +88,8 @@ describe('dashboard navigation helpers', () => {
       runs: 'Runs',
       sessions: 'Sessions',
       observability: 'Observability',
+      approvals: 'Approvals',
+      audit: 'Audit',
       apiKeys: 'API Keys',
       budgets: 'Usage',
       webhooks: 'Connectors',

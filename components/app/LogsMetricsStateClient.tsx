@@ -178,7 +178,7 @@ function StateMachineVisualization({ transitions }: { transitions: StateTransiti
               }`}
             >
               {state}
-              {isActive && <span className="ml-2 animate-pulse">●</span>}
+              {isActive && <span className="ml-2 motion-safe:animate-pulse motion-reduce:animate-none">●</span>}
             </div>
           );
         })}
@@ -427,7 +427,7 @@ export function LogsMetricsStateClient() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2.5 py-1 text-[10px] font-medium text-emerald-300">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 motion-safe:animate-pulse motion-reduce:animate-none" />
                       Running
                     </span>
                   </div>

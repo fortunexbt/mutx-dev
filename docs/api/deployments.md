@@ -13,7 +13,7 @@ The canonical create path is `POST /v1/deployments`.
 | `GET /v1/deployments/{deployment_id}` | Fetch one deployment |
 | `GET /v1/deployments/{deployment_id}/events` | Fetch paginated deployment events |
 | `POST /v1/deployments/{deployment_id}/scale` | Update replica count |
-| `POST /v1/deployments/{deployment_id}/restart` | Restart stopped, failed, or killed deployments |
+| `POST /v1/deployments/{deployment_id}/restart` | Restart a running, ready, or failed deployment |
 | `GET /v1/deployments/{deployment_id}/logs` | Fetch logs |
 | `GET /v1/deployments/{deployment_id}/metrics` | Fetch metrics |
 | `GET /v1/deployments/{deployment_id}/versions` | Fetch version history |
@@ -23,8 +23,10 @@ The canonical create path is `POST /v1/deployments`.
 ## Current Lifecycle Rules
 
 - creation requires an owned `agent_id`
-- scaling only succeeds for deployments in `running` or `ready`
-- restart only succeeds for deployments in `stopped`, `failed`, or `killed`
+- reads accept `VIEWER` or `DEVELOPER`; lifecycle mutations require `DEVELOPER`
+- scaling to zero stops an active deployment; scaling a stopped deployment above
+  zero starts it; positive scaling otherwise requires `running` or `ready`
+- restart succeeds only for `running`, `ready`, or `failed` deployments
 - delete does not hard-remove the record; it marks the deployment `killed`
 
 ## Create A Deployment
@@ -48,7 +50,7 @@ Example response:
   "id": "uuid",
   "agent_id": "uuid",
   "status": "pending",
-  "version": null,
+  "version": "v1.0.0",
   "replicas": 1,
   "node_id": null,
   "started_at": "2026-03-22T12:00:00Z",
@@ -64,7 +66,8 @@ Example response:
       "error_message": null,
       "created_at": "2026-03-22T12:00:00Z"
     }
-  ]
+  ],
+  "allowed_actions": ["stop", "terminate"]
 }
 ```
 

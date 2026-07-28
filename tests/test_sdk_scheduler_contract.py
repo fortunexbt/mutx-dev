@@ -92,7 +92,7 @@ def test_scheduler_task_raw_data_preserved() -> None:
 
 
 def test_scheduler_rejects_async_client_for_sync_methods() -> None:
-    client = httpx.AsyncClient(base_url="https://api.test")
+    client = httpx.AsyncClient(base_url="https://api.test/v1/")
     scheduler = Scheduler(client)
 
     with pytest.raises(RuntimeError, match="requires a sync httpx.Client"):
@@ -106,7 +106,7 @@ def test_scheduler_works_with_sync_client() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"status": "ok"})
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     scheduler = Scheduler(client)
 
     result = scheduler.get_status()
@@ -126,53 +126,44 @@ def test_scheduler_get_status_hits_correct_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json={"status": "scheduling"})
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     scheduler = Scheduler(client)
 
     scheduler.get_status()
 
-    assert captured["path"] == "/scheduler"
+    assert captured["path"] == "/v1/scheduler"
     assert captured["method"] == "GET"
 
 
-def test_scheduler_trigger_task_hits_correct_route_and_sends_task_id() -> None:
+def test_scheduler_trigger_task_hits_bodyless_task_route() -> None:
     captured: dict[str, Any] = {}
     task_id = str(uuid.uuid4())
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        captured["path"] = request.url.path
-        captured["method"] = request.method
-        captured["json"] = dict(
-            httpx.Request(request.method, request.url, content=request.content).read().decode()
-        )
-        return httpx.Response(200, json={"triggered": task_id})
-
-    # Reconstruct JSON from request
     def transport_handler(request: httpx.Request) -> httpx.Response:
-        import json as _json
-
         captured["path"] = request.url.path
         captured["method"] = request.method
-        captured["json"] = _json.loads(request.content.decode())
+        captured["content"] = request.content
+        captured["content_type"] = request.headers.get("content-type")
         return httpx.Response(200, json={"triggered": task_id})
 
     client = httpx.Client(
-        base_url="https://api.test", transport=httpx.MockTransport(transport_handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(transport_handler)
     )
     scheduler = Scheduler(client)
 
     scheduler.trigger_task(task_id=task_id)
 
-    assert captured["path"] == "/scheduler"
+    assert captured["path"] == f"/v1/scheduler/{task_id}/trigger"
     assert captured["method"] == "POST"
-    assert captured["json"]["task_id"] == task_id
+    assert captured["content"] == b""
+    assert captured["content_type"] is None
 
 
 def test_scheduler_get_status_raises_on_503() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503, json={"error": "not implemented"})
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     scheduler = Scheduler(client)
 
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
@@ -187,7 +178,7 @@ def test_scheduler_trigger_task_raises_on_503() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503, json={"error": "not implemented"})
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     scheduler = Scheduler(client)
 
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
@@ -202,7 +193,7 @@ def test_scheduler_trigger_task_raises_on_503() -> None:
 
 
 def test_scheduler_aget_status_rejects_sync_client() -> None:
-    client = httpx.Client(base_url="https://api.test")
+    client = httpx.Client(base_url="https://api.test/v1/")
     scheduler = Scheduler(client)
 
     with pytest.raises(RuntimeError, match="async resource helper requires an async"):
@@ -212,7 +203,7 @@ def test_scheduler_aget_status_rejects_sync_client() -> None:
 
 
 def test_scheduler_atrigger_task_rejects_sync_client() -> None:
-    client = httpx.Client(base_url="https://api.test")
+    client = httpx.Client(base_url="https://api.test/v1/")
     scheduler = Scheduler(client)
 
     with pytest.raises(RuntimeError, match="async resource helper requires an async"):
@@ -229,38 +220,42 @@ def test_scheduler_aget_status_hits_correct_route() -> None:
         captured["method"] = request.method
         return httpx.Response(200, json={"status": "scheduling"})
 
-    client = httpx.AsyncClient(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.AsyncClient(
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
+    )
     scheduler = Scheduler(client)
 
     import asyncio
 
     result = asyncio.run(scheduler.aget_status())
 
-    assert captured["path"] == "/scheduler"
+    assert captured["path"] == "/v1/scheduler"
     assert captured["method"] == "GET"
     assert result == {"status": "scheduling"}
 
 
-def test_scheduler_atrigger_task_hits_correct_route_and_sends_task_id() -> None:
+def test_scheduler_atrigger_task_hits_bodyless_task_route() -> None:
     captured: dict[str, Any] = {}
     task_id = str(uuid.uuid4())
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        import json as _json
-
         captured["path"] = request.url.path
         captured["method"] = request.method
-        captured["json"] = _json.loads(request.content.decode())
+        captured["content"] = request.content
+        captured["content_type"] = request.headers.get("content-type")
         return httpx.Response(200, json={"triggered": task_id})
 
-    client = httpx.AsyncClient(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.AsyncClient(
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
+    )
     scheduler = Scheduler(client)
 
     import asyncio
 
     result = asyncio.run(scheduler.atrigger_task(task_id=task_id))
 
-    assert captured["path"] == "/scheduler"
+    assert captured["path"] == f"/v1/scheduler/{task_id}/trigger"
     assert captured["method"] == "POST"
-    assert captured["json"]["task_id"] == task_id
+    assert captured["content"] == b""
+    assert captured["content_type"] is None
     assert result == {"triggered": task_id}

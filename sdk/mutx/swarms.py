@@ -7,6 +7,8 @@ from typing import Any, Optional
 
 import httpx
 
+from mutx._http import api_path
+
 
 class SwarmAgent:
     """Represents an agent within a swarm."""
@@ -100,7 +102,7 @@ class Swarms:
         """
         self._require_sync_client()
         response = self._client.get(
-            "/swarms",
+            "swarms",
             params={"skip": skip, "limit": limit},
         )
         response.raise_for_status()
@@ -110,7 +112,7 @@ class Swarms:
     def list_blueprints(self) -> list[SwarmBlueprint]:
         """List curated multi-agent swarm blueprints."""
         self._require_sync_client()
-        response = self._client.get("/swarms/blueprints")
+        response = self._client.get("swarms/blueprints")
         response.raise_for_status()
         return [SwarmBlueprint(item) for item in response.json()]
 
@@ -122,7 +124,7 @@ class Swarms:
         """List all swarms (async)."""
         self._require_async_client()
         response = await self._client.get(
-            "/swarms",
+            "swarms",
             params={"skip": skip, "limit": limit},
         )
         response.raise_for_status()
@@ -132,7 +134,7 @@ class Swarms:
     async def alist_blueprints(self) -> list[SwarmBlueprint]:
         """List curated multi-agent swarm blueprints (async)."""
         self._require_async_client()
-        response = await self._client.get("/swarms/blueprints")
+        response = await self._client.get("swarms/blueprints")
         response.raise_for_status()
         return [SwarmBlueprint(item) for item in response.json()]
 
@@ -142,7 +144,7 @@ class Swarms:
     ) -> Swarm:
         """Get swarm details."""
         self._require_sync_client()
-        response = self._client.get(f"/swarms/{swarm_id}")
+        response = self._client.get(api_path("swarms/{swarm_id}", swarm_id=swarm_id))
         response.raise_for_status()
         return Swarm(response.json())
 
@@ -152,7 +154,7 @@ class Swarms:
     ) -> Swarm:
         """Get swarm details (async)."""
         self._require_async_client()
-        response = await self._client.get(f"/swarms/{swarm_id}")
+        response = await self._client.get(api_path("swarms/{swarm_id}", swarm_id=swarm_id))
         response.raise_for_status()
         return Swarm(response.json())
 
@@ -183,7 +185,7 @@ class Swarms:
         if description:
             payload["description"] = description
 
-        response = self._client.post("/swarms", json=payload)
+        response = self._client.post("swarms", json=payload)
         response.raise_for_status()
         return Swarm(response.json())
 
@@ -206,7 +208,7 @@ class Swarms:
         if description:
             payload["description"] = description
 
-        response = await self._client.post("/swarms", json=payload)
+        response = await self._client.post("swarms", json=payload)
         response.raise_for_status()
         return Swarm(response.json())
 
@@ -223,7 +225,7 @@ class Swarms:
         """
         self._require_sync_client()
         response = self._client.post(
-            f"/swarms/{swarm_id}/scale",
+            api_path("swarms/{swarm_id}/scale", swarm_id=swarm_id),
             json={"replicas": replicas},
         )
         response.raise_for_status()
@@ -237,7 +239,7 @@ class Swarms:
         """Scale all agents in a swarm (async)."""
         self._require_async_client()
         response = await self._client.post(
-            f"/swarms/{swarm_id}/scale",
+            api_path("swarms/{swarm_id}/scale", swarm_id=swarm_id),
             json={"replicas": replicas},
         )
         response.raise_for_status()

@@ -55,20 +55,20 @@ open http://localhost:3000
 The production file in this repo is:
 
 ```
-infrastructure/docker/docker-compose.production.yml
+infrastructure/docker/docker-compose.prod.yml
 ```
 
 Bring it up with:
 
 ```bash
-docker compose -f infrastructure/docker/docker-compose.production.yml up -d --build
+docker compose -f infrastructure/docker/docker-compose.prod.yml up -d --build
 ```
 
 Inspect it with:
 
 ```bash
-docker compose -f infrastructure/docker/docker-compose.production.yml ps
-docker compose -f infrastructure/docker/docker-compose.production.yml logs -f api
+docker compose -f infrastructure/docker/docker-compose.prod.yml ps
+docker compose -f infrastructure/docker/docker-compose.prod.yml logs -f api
 ```
 
 ## Environment Variables

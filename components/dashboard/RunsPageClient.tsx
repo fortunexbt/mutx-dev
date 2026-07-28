@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ApiRequestError, readJson } from "@/components/app/http";
+import { readJson } from "@/components/app/http";
 import {
   LiveAuthRequired,
   LiveEmptyState,
   LiveErrorState,
+  LiveForbidden,
   LiveKpiGrid,
   LiveLoading,
   LivePanel,
@@ -15,6 +16,14 @@ import {
   asDashboardStatus,
   formatRelativeTime,
 } from "@/components/dashboard/livePrimitives";
+import {
+  dashboardRequestErrorMessage,
+  getDashboardRequestAccessFailure,
+} from "@/components/dashboard/dashboardRequestAccess";
+import {
+  hasNonterminalRunActivity,
+  useAdaptiveActivityPolling,
+} from "@/components/dashboard/useAdaptiveActivityPolling";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 
 import type { components } from "@/app/types/api";
@@ -30,44 +39,67 @@ type RunHistory = components["schemas"]["RunHistoryResponse"];
 
 export function RunsPageClient() {
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const requestRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadRuns = useCallback(async (initial = false) => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
 
-    async function load() {
-      setLoading(true);
-      setError(null);
+    if (initial) setLoading(true);
+    else setRefreshing(true);
+    setError(null);
+
+    try {
+      const response = await readJson<RunHistory>("/api/dashboard/runs?limit=32", {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+
+      setRuns(response.items ?? []);
+      setLastUpdated(new Date().toISOString());
       setAuthRequired(false);
+      setPermissionDenied(false);
+    } catch (loadError) {
+      if (controller.signal.aborted) return;
 
-      try {
-        const response = await readJson<RunHistory>("/api/dashboard/runs?limit=32");
-        if (!cancelled) {
-          setRuns(response.items ?? []);
-          setLoading(false);
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          if (
-            loadError instanceof ApiRequestError &&
-            (loadError.status === 401 || loadError.status === 403)
-          ) {
-            setAuthRequired(true);
-          } else {
-            setError(loadError instanceof Error ? loadError.message : "Failed to load runs");
-          }
-          setLoading(false);
-        }
+      const accessFailure = getDashboardRequestAccessFailure(loadError);
+      if (accessFailure === "authentication") {
+        setAuthRequired(true);
+        setPermissionDenied(false);
+      } else if (accessFailure === "permission") {
+        setPermissionDenied(true);
+        setAuthRequired(false);
+      } else {
+        setError(dashboardRequestErrorMessage(loadError, "Failed to load runs"));
+      }
+    } finally {
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        setLoading(false);
+        setRefreshing(false);
       }
     }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
   }, []);
+
+  useEffect(() => {
+    void loadRuns(true);
+    return () => {
+      requestRef.current?.abort();
+    };
+  }, [loadRuns]);
+
+  const hasNonterminalActivity = hasNonterminalRunActivity(runs);
+  const pollingState = useAdaptiveActivityPolling({
+    active: !loading && !refreshing && !authRequired && !permissionDenied && hasNonterminalActivity,
+    poll: () => loadRuns(false),
+  });
 
   const totals = useMemo(() => {
     const completed = runs.filter((run) => run.status === "completed").length;
@@ -87,10 +119,43 @@ export function RunsPageClient() {
       />
     );
   }
-  if (error) return <LiveErrorState title="Runs unavailable" message={error} />;
+  if (permissionDenied) {
+    return (
+      <LiveForbidden
+        title="Runs permission required"
+        message="Your account is signed in, but its role cannot read run history. Run controls and refresh actions are unavailable."
+      />
+    );
+  }
+  if (error && runs.length === 0) return <LiveErrorState title="Runs unavailable" message={error} />;
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3">
+        <div>
+          <p className="text-sm font-medium text-white">Run activity snapshot</p>
+          <p className="mt-1 text-xs text-slate-500" role="status" aria-live="polite">
+            {lastUpdated
+              ? `Last updated ${formatRelativeTime(lastUpdated)}. ${hasNonterminalActivity ? pollingState.isOnline ? pollingState.isVisible ? "Checking active runs every 5 seconds." : "Checking active runs every 30 seconds while this tab is hidden." : "Polling paused while offline." : "Polling is idle because every loaded run is terminal."}`
+              : "No successful refresh yet."}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void loadRuns(false)}
+          disabled={refreshing || !pollingState.isOnline}
+          className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-white/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
+        >
+          {refreshing ? "Refreshing…" : pollingState.isOnline ? "Refresh now" : "Offline"}
+        </button>
+      </div>
+
+      {error ? (
+        <div role="alert" aria-live="assertive" className="rounded-xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+          Run refresh failed: {error}. The last successful snapshot remains visible.
+        </div>
+      ) : null}
+
       <LiveKpiGrid>
         <LiveStatCard label="Total runs" value={String(runs.length)} detail="Recent execution records returned by the runs API." />
         <LiveStatCard

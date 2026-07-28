@@ -12,6 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.models.models import Agent, AgentLog, AgentStatus, User
 
 
+@pytest.fixture(autouse=True)
+def developer_principal(test_user):
+    test_user.roles = ["DEVELOPER"]
+
+
 class TestIngestEvents:
     """Tests for the generic event ingestion endpoint."""
 
@@ -133,7 +138,7 @@ class TestIngestEvents:
     async def test_ingest_event_agent_wrong_owner(
         self, client: AsyncClient, db_session: AsyncSession
     ):
-        """Return 403 when agent_id references an agent owned by another user."""
+        """Return opaque 404 when agent_id references another user's agent."""
         other_user = User(
             id=uuid.uuid4(),
             email="other-event@example.com",
@@ -160,7 +165,7 @@ class TestIngestEvents:
                 "agent_id": str(agent_id),
             },
         )
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     @pytest.mark.asyncio
     async def test_ingest_event_empty_event_type_rejected(self, client: AsyncClient):
@@ -210,7 +215,10 @@ class TestIngestEvents:
             (
                 await db_session.execute(
                     select(AgentLog)
-                    .where(AgentLog.agent_id == agent_id, AgentLog.message == "Adapter event: crew_task_end")
+                    .where(
+                        AgentLog.agent_id == agent_id,
+                        AgentLog.message == "Adapter event: crew_task_end",
+                    )
                     .order_by(AgentLog.timestamp.desc())
                 )
             )

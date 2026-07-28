@@ -12,7 +12,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.api.auth.dependencies import SSOTokenUser, get_current_sso_user, require_roles
+from src.api.auth.dependencies import require_roles
+from src.api.models.models import User
 from src.api.services.audit_log import (
     AuditEvent,
     AuditEventType,
@@ -104,10 +105,9 @@ class AuditEvidenceExportResponse(BaseModel):
 @router.get(
     "/events",
     response_model=AuditEventsResponse,
-    dependencies=[Depends(require_roles("ADMIN", "AUDIT_ADMIN"))],
 )
 async def query_audit_events(
-    current_user: Annotated[SSOTokenUser, Depends(get_current_sso_user)],
+    _current_user: Annotated[User, Depends(require_roles("ADMIN", "AUDIT_ADMIN"))],
     agent_id: Annotated[str | None, Query(description="Filter by agent ID")] = None,
     session_id: Annotated[str | None, Query(description="Filter by session ID")] = None,
     run_id: Annotated[str | None, Query(description="Filter by run ID")] = None,
@@ -175,10 +175,9 @@ async def query_audit_events(
 @router.get(
     "/export",
     response_model=AuditEvidenceExportResponse,
-    dependencies=[Depends(require_roles("ADMIN", "AUDIT_ADMIN"))],
 )
 async def export_audit_evidence(
-    current_user: Annotated[SSOTokenUser, Depends(get_current_sso_user)],
+    _current_user: Annotated[User, Depends(require_roles("ADMIN", "AUDIT_ADMIN"))],
     run_id: Annotated[str | None, Query(description="Run ID to export")] = None,
     session_id: Annotated[str | None, Query(description="Session ID to export")] = None,
 ) -> AuditEvidenceExportResponse:
@@ -202,11 +201,10 @@ async def export_audit_evidence(
 @router.get(
     "/traces/{trace_id}",
     response_model=AuditEventsResponse,
-    dependencies=[Depends(require_roles("ADMIN", "AUDIT_ADMIN"))],
 )
 async def get_trace_events(
     trace_id: str,
-    current_user: Annotated[SSOTokenUser, Depends(get_current_sso_user)],
+    _current_user: Annotated[User, Depends(require_roles("ADMIN", "AUDIT_ADMIN"))],
 ) -> AuditEventsResponse:
     """Get all events for a specific trace.
 

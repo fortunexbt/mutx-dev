@@ -1,201 +1,202 @@
-# MUTX Helm Chart
+# MUTX Helm chart
 
-A Helm chart for deploying MUTX agentic development platform to Kubernetes.
+This chart deploys the MUTX web product as separate Next.js and FastAPI workloads. It
+does not install PostgreSQL, Redis, an ingress controller, a certificate manager, an
+OpenTelemetry collector, or a secret manager.
+
+## Runtime shape
+
+The chart contains 13 template files and renders these application components:
+
+| Component | Default | Image/command | Port or purpose |
+| --- | --- | --- | --- |
+| Frontend | 1 replica | `mutx-frontend:1.4.0` | Next.js on `3000` |
+| API | 1 replica | `mutx-api:1.4.0` | FastAPI on `8000` |
+| Monitor | 1 replica | `python -m src.api.monitor_worker` | Singleton database monitor |
+| Document worker | Disabled | `python -m src.api.document_worker` | Optional document queue consumer |
+| Reasoning worker | Disabled | `python -m src.api.reasoning_worker` | Optional reasoning queue consumer |
+| Migration | Disabled | `alembic upgrade head` | Optional pre-install/pre-upgrade hook |
+
+The frontend receives an internal URL for the API Service. When ingress is enabled,
+`/v1`, `/health`, `/ready`, and `/metrics` route to FastAPI; `/` routes to Next.js.
+The API liveness path is `/health`, while readiness uses the database-aware `/ready`
+path. The frontend uses a TCP liveness check and an HTTP `/` readiness check.
+The monitor writes a successful-cycle heartbeat and all three monitor probes reject
+a missing or stale heartbeat; repeated cycle failures terminate the worker for restart.
 
 ## Prerequisites
 
-- **Helm** 3.0+
-- **Kubernetes** 1.24+
-- A container registry with the `mutx/mutx` image available
+- Kubernetes 1.24 or newer
+- Helm 3 or 4
+- Separately built frontend and API images from `Dockerfile` (or
+  `infrastructure/docker/Dockerfile.frontend`) and
+  `infrastructure/docker/Dockerfile.api.production`
+- A reachable PostgreSQL database for staging and production
+- An existing Kubernetes Secret for staging/production API credentials
 
-## Quick Install
+The `registry.example.com/*` repositories in the environment overlays are deliberate
+placeholders. Override them with images built from this repository before installing.
 
-```bash
-# Add the repo (if published to a Helm repo)
-# helm repo add mutx https://charts.mutx.dev
+## Render and validate
 
-# Install from local chart
-helm upgrade --install mutx ./infrastructure/helm/mutx \
-  --namespace mutx --create-namespace
-
-# Install with staging overrides
-helm upgrade --install mutx-staging ./infrastructure/helm/mutx \
-  -f ./infrastructure/helm/mutx/values.staging.yaml \
-  --namespace staging --create-namespace
-
-# Install with production overrides
-helm upgrade --install mutx-prod ./infrastructure/helm/mutx \
-  -f ./infrastructure/helm/mutx/values.prod.yaml \
-  --namespace production --create-namespace
-```
-
-## Configuration Reference
-
-The following table lists the configurable parameters of the MUTX chart and their default values.
-
-### Image
-
-| Parameter | Description | Default |
-| --- | --- | --- |
-| `image.repository` | Container image repository | `mutx/mutx` |
-| `image.tag` | Container image tag | `latest` |
-| `image.pullPolicy` | Image pull policy | `IfNotPresent` |
-
-### Replicas & Resources
-
-| Parameter | Description | Default |
-| --- | --- | --- |
-| `replicaCount` | Number of pod replicas | `1` |
-| `resources.limits.cpu` | CPU limit | `1000m` |
-| `resources.limits.memory` | Memory limit | `1Gi` |
-| `resources.requests.cpu` | CPU request | `100m` |
-| `resources.requests.memory` | Memory request | `256Mi` |
-
-### Service
-
-| Parameter | Description | Default |
-| --- | --- | --- |
-| `service.type` | Kubernetes Service type | `ClusterIP` |
-| `service.port` | Service port | `8000` |
-
-### Ingress
-
-| Parameter | Description | Default |
-| --- | --- | --- |
-| `ingress.enabled` | Enable ingress resource | `false` |
-| `ingress.className` | Ingress class name | `nginx` |
-| `ingress.host` | Hostname for the ingress | `mutx.local` |
-| `ingress.tls.enabled` | Enable TLS on ingress | `true` |
-| `ingress.tls.secretName` | TLS secret name | `mutx-tls` |
-
-### Autoscaling
-
-| Parameter | Description | Default |
-| --- | --- | --- |
-| `autoscaling.enabled` | Enable HPA | `false` |
-| `autoscaling.minReplicas` | Minimum replicas | `1` |
-| `autoscaling.maxReplicas` | Maximum replicas | `10` |
-| `autoscaling.targetCPUUtilizationPercentage` | CPU target for scale-up | `75` |
-
-### Environment Variables
-
-| Parameter | Description | Default |
-| --- | --- | --- |
-| `env.REDIS_URL` | Redis connection string | _(not set)_ |
-| `env.LOG_LEVEL` | Application log level | _(not set)_ |
-| `env.ENVIRONMENT` | Deployment environment name | _(not set)_ |
-| `secretEnv.DATABASE_URL` | PostgreSQL connection string | _(not set)_ |
-| `secretEnv.JWT_SECRET` | JWT signing secret | _(required in production)_ |
-| `secretEnv.SECRET_ENCRYPTION_KEY` | Secret encryption key | _(required in production)_ |
-| `secretEnv.OIDC_ISSUER` | OIDC provider issuer URL | _(not set)_ |
-| `secretEnv.OIDC_CLIENT_ID` | OIDC client ID | _(not set)_ |
-| `secretEnv.OIDC_JWKS_URI` | OIDC JWKS endpoint | _(not set)_ |
-
-## Production Deployment
-
-Use `values.prod.yaml` for production-grade settings:
+Rendering does not contact a cluster:
 
 ```bash
-helm upgrade --install mutx-prod ./infrastructure/helm/mutx \
-  -f ./infrastructure/helm/mutx/values.prod.yaml \
-  --namespace production --create-namespace
+helm lint infrastructure/helm/mutx
+helm lint infrastructure/helm/mutx -f infrastructure/helm/mutx/values.prod.yaml
+helm template mutx infrastructure/helm/mutx
+helm template mutx-prod infrastructure/helm/mutx \
+  -f infrastructure/helm/mutx/values.prod.yaml
+python -m unittest discover -s infrastructure/helm/mutx/tests -v
 ```
 
-`values.prod.yaml` sets:
+The default values are a development render, not a self-contained stack: no database
+is installed and no `DATABASE_URL` is supplied. Use the repository's development
+Compose stack when an all-in-one local environment is wanted.
 
-- `replicaCount: 1` until governance state is moved to shared storage
-- `image.pullPolicy: Always`
-- `resources.limits: cpu 2000m, memory 2Gi`
-- `resources.requests: cpu 500m, memory 1Gi`
-- `autoscaling.enabled: false` until governance state is moved to shared storage
-- `env.LOG_LEVEL: "WARNING"`
-- `env.ENVIRONMENT: "production"`
-- `secretEnv.JWT_SECRET` and `secretEnv.SECRET_ENCRYPTION_KEY` must be set
-- Ingress enabled with TLS
+## Production secret
 
-## RBAC Setup
-
-MUTX v1.4.0 uses role-based access control with four roles:
-
-| Role | Scope |
-| --- | --- |
-| `ADMIN` | Full access to all endpoints (super-role) |
-| `AUDIT_ADMIN` | Audit log and trace endpoints |
-| `DEVELOPER` | Agent CRUD and approval workflows |
-| `VIEWER` | Read-only access to owned resources |
-
-Roles are sourced from OIDC token claims. Configure your identity provider to include role claims in tokens, then set the OIDC env vars:
+`values.prod.yaml` expects an externally managed Secret named `mutx-prod-api-env`.
+It must exist before Helm runs because the migration is a pre-install/pre-upgrade
+hook. At minimum it needs:
 
 ```yaml
-# In values.yaml or a -f override
-secretEnv:
-  OIDC_ISSUER: "https://your-idp.example.com"
-  OIDC_CLIENT_ID: "mutx-production"
-  OIDC_JWKS_URI: "https://your-idp.example.com/.well-known/jwks.json"
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mutx-prod-api-env
+type: Opaque
+stringData:
+  DATABASE_URL: postgresql://mutx:replace-me@postgres.example.com:5432/mutx
+  JWT_SECRET: replace-with-at-least-32-random-characters
+  SECRET_ENCRYPTION_KEY: replace-with-a-distinct-fernet-key
 ```
 
-MUTX extracts roles from these token claims (checked in order): `roles`, `groups`, `custom:roles`, `realm_access.roles`, `resource_access.roles`.
+Do not commit real values. Create the Secret through the cluster's secret delivery
+system. If OIDC is configured, provide `OIDC_ISSUER`, `OIDC_CLIENT_ID`, and
+`OIDC_JWKS_URI` together in the API Secret. `api.secretEnv` can create a chart-owned
+Secret for non-production use, but it is mutually exclusive with
+`api.existingSecret`. Frontend-only credentials belong in
+`frontend.existingSecret` or `frontend.secretEnv`.
 
-See [Security Architecture](../../../docs/architecture/security.md#rbac-enforcement) for details.
+The chart does not install PostgreSQL or create database roles. The migration hook and
+API currently read the same `api.existingSecret`; consequently its `DATABASE_URL` role
+must have Alembic DDL privileges in addition to runtime DML privileges.
 
-## OIDC Configuration
-
-MUTX validates OIDC tokens from Okta, Auth0, Keycloak, and Google. Configure via environment variables:
-
-```yaml
-secretEnv:
-  OIDC_ISSUER: "https://your-org.okta.com"
-  OIDC_CLIENT_ID: "0oa1abc2def3ghi4jkl5"
-  OIDC_JWKS_URI: "https://your-org.okta.com/oauth2/v1/keys"
-```
-
-The validation flow:
-
-1. Fetches JWKS from `OIDC_JWKS_URI`
-2. Verifies token signature against the matching key
-3. Validates `iss`, `aud`, and `exp` claims
-4. Falls back to the provider `/userinfo` endpoint for opaque tokens
-5. Maps the verified claims to an internal `SSOTokenUser` with roles
-
-See [Authentication docs](../../../docs/api/authentication.md#oidc-token-validation) for the full flow.
-
-## OTel Collector Configuration
-
-To export traces and metrics to an OpenTelemetry Collector, set the following environment variables:
-
-```yaml
-env:
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
-  OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
-  OTEL_SERVICE_NAME: "mutx-api"
-  OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=production"
-```
-
-Ensure the OTel Collector is deployed in the cluster and reachable at the configured endpoint.
-
-## Verify Deployment
+Install only after replacing the image repositories, hostname, TLS Secret, and API
+Secret name as appropriate:
 
 ```bash
-# Check pod status
-kubectl get pods -n production
-
-# View logs
-kubectl logs -n production -l app.kubernetes.io/name=mutx
-
-# Run the Helm test
-helm test mutx-prod -n production
+helm upgrade --install mutx-prod infrastructure/helm/mutx \
+  -f infrastructure/helm/mutx/values.prod.yaml \
+  --namespace mutx --create-namespace \
+  --wait --timeout 10m
 ```
 
-## Upgrade
+The migration hook runs before application resources. A failed migration fails the
+Helm operation. The hook deliberately uses the namespace's `default` ServiceAccount
+with token mounting disabled, because the chart-created ServiceAccount does not exist
+yet during a pre-install hook. Set `migrations.serviceAccountName` to another
+pre-existing, unprivileged ServiceAccount if the namespace removes the default one.
+
+## Configuration
+
+### Images and processes
+
+| Parameter | Default | Meaning |
+| --- | --- | --- |
+| `api.image.repository` | `mutx-api` | FastAPI/worker image |
+| `api.image.tag` | `1.4.0` | API image tag |
+| `api.port` | `8000` | FastAPI container port |
+| `api.service.port` | `8000` | API Service port |
+| `api.replicaCount` | `1` | API pod replicas; currently constrained to one |
+| `frontend.image.repository` | `mutx-frontend` | Next.js image |
+| `frontend.image.tag` | `1.4.0` | Frontend image tag |
+| `frontend.port` | `3000` | Next.js container port |
+| `frontend.service.port` | `3000` | Frontend Service port |
+| `frontend.replicaCount` | `1` | Frontend pod replicas when its HPA is off |
+| `workers.monitor.enabled` | `true` | Run the singleton monitor outside the API |
+| `migrations.enabled` | `false` | Run Alembic as a Helm hook |
+
+`api.env` and `frontend.env` accept non-secret environment variables. The chart owns
+the process-critical `API_PORT`, `PORT`, `HOSTNAME`, `INTERNAL_API_URL`,
+`BACKGROUND_MONITOR_ENABLED`, `MUTX_DOCUMENTS_ENABLED`, `MUTX_REASONING_ENABLED`,
+`MUTX_HOME`, `MUTX_ARTIFACTS_DIR`, and `PYTHONPATH` values; entries with those names
+in an `env` map are overridden by explicit container environment variables.
+
+### Queue workers
+
+Setting `features.documents=true` or `features.reasoning=true` enables the matching
+FastAPI feature. With no standalone worker, its queue consumer runs inside the single
+API process, matching `src/api/main.py`. Enabling `workers.document` or
+`workers.reasoning` renders the corresponding standalone process and disables that
+in-process consumer while keeping the API feature available.
+
+Standalone artifact workers require persistent `ReadWriteMany` storage so uploads
+and generated artifacts resolve to the same paths in API and worker pods. Worker
+replicas are limited to one because the current database claim operation is not a
+multi-consumer locking primitive.
+
+### Persistence
+
+| Parameter | Default | Meaning |
+| --- | --- | --- |
+| `persistence.enabled` | `false` | Create or mount a PVC for API-local state |
+| `persistence.existingClaim` | empty | Reuse an existing claim instead of creating one |
+| `persistence.accessModes` | `[ReadWriteOnce]` | Claim access modes |
+| `persistence.size` | `10Gi` | Requested capacity |
+| `persistence.retain` | `true` | Add Helm's keep policy to a chart-created PVC |
+| `persistence.mountPath` | `/var/lib/mutx` | API and artifact-worker data directory |
+
+The mounted data directory is the API working directory and contains the local audit
+database. `MUTX_HOME` and `MUTX_ARTIFACTS_DIR` are placed beneath it for credential
+broker configuration and managed artifacts. With persistence disabled, an
+`emptyDir` is used and all of that local state is lost with the pod. A retained PVC
+is not deleted by `helm uninstall`; remove it explicitly only after preserving data.
+
+`ReadWriteOnce` is suitable for the production overlay's single API pod. Standalone
+artifact workers are rejected unless `ReadWriteMany` is declared, because they must
+mount the same claim as the API. The storage class must actually support that mode.
+
+### Ingress and scaling
+
+| Parameter | Default | Meaning |
+| --- | --- | --- |
+| `ingress.enabled` | `false` | Render the unified product Ingress |
+| `ingress.className` | empty | Ingress controller class |
+| `ingress.host` | `mutx.local` | Shared frontend/API hostname |
+| `ingress.tls.enabled` | `false` | Configure TLS on the Ingress |
+| `frontend.autoscaling.enabled` | `false` | Render a frontend CPU HPA |
+
+The frontend HPA uses `autoscaling/v2` and CPU utilization against its configured CPU
+request. When enabled, the frontend Deployment omits `spec.replicas`. The chart does
+not autoscale the API or workers: the API still owns pod-local SQLite audit and
+credential-broker files, and the current queue claim operations are not safe
+multi-consumer locks. `api.replicaCount` and every worker replica count are therefore
+schema-constrained to one.
+
+Set `api.env.ALLOWED_HOSTS` and `api.env.CORS_ORIGINS` to the ingress hostname.
+`FORWARDED_ALLOW_IPS` defaults to loopback for development. Production rendering
+rejects wildcard and loopback-only values; replace the overlay example with only the
+addresses or CIDRs used by that cluster's ingress proxies.
+
+## ServiceAccount and application RBAC
+
+The chart creates an unprivileged ServiceAccount and disables token automounting on
+all workloads. It intentionally creates no Kubernetes Role, ClusterRole, or binding:
+MUTX does not call the Kubernetes API in this deployment shape.
+
+MUTX's `ADMIN`, `AUDIT_ADMIN`, `DEVELOPER`, and `VIEWER` permissions are application
+RBAC roles derived from authenticated claims. They are unrelated to Kubernetes RBAC.
+OIDC is optional, but its three settings must be supplied as a complete set.
+
+## Helm test
+
+After the release is ready, verify both services:
 
 ```bash
-helm upgrade mutx-prod ./infrastructure/helm/mutx \
-  -f ./infrastructure/helm/mutx/values.prod.yaml \
-  --namespace production
+helm test mutx-prod --namespace mutx --logs
 ```
 
-## Uninstall
-
-```bash
-helm uninstall mutx-prod --namespace production
-```
+The test is a `batch/v1` Job. It checks FastAPI `/ready` and the Next.js root page;
+it does not mutate application data.

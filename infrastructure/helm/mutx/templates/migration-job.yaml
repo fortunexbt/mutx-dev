@@ -1,0 +1,60 @@
+{{- if .Values.migrations.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "mutx.fullname" . }}-migrate
+  labels:
+    {{- include "mutx.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "mutx.componentSelectorLabels" (dict "root" . "component" "migration") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.migrations.serviceAccountName }}
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "mutx.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          command: ["alembic"]
+          args: ["-c", "/app/alembic.ini", "upgrade", "head"]
+          workingDir: /app
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          env:
+            {{- range $name, $value := .Values.api.env }}
+            - name: {{ $name }}
+              value: {{ $value | toString | quote }}
+            {{- end }}
+            - name: BACKGROUND_MONITOR_ENABLED
+              value: "false"
+            - name: MUTX_DOCUMENTS_ENABLED
+              value: "false"
+            - name: MUTX_REASONING_ENABLED
+              value: "false"
+            - name: PYTHONPATH
+              value: /app
+          envFrom:
+            - secretRef:
+                name: {{ .Values.api.existingSecret }}
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

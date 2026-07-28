@@ -4,16 +4,28 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { ApiRequestError, readJson } from '@/components/app/http'
 import {
+  dashboardRequestErrorMessage,
+  getDashboardRequestAccessFailure,
+} from '@/components/dashboard/dashboardRequestAccess'
+import {
   LiveAuthRequired,
   LiveEmptyState,
   LiveErrorState,
+  LiveForbidden,
   LiveLoading,
   LivePanel,
 } from '@/components/dashboard/livePrimitives'
 import { FeatureHint } from '@/components/dashboard/FeatureHint'
 import { StatusBadge } from '@/components/dashboard/StatusBadge'
 
-type SkillRecord = {
+export type SkillLifecycleStatus =
+  | 'available'
+  | 'configured'
+  | 'runtime_ready'
+  | 'unavailable'
+  | 'failed'
+
+export type SkillRecord = {
   id: string
   name: string
   description: string
@@ -21,6 +33,12 @@ type SkillRecord = {
   category: string
   source: string
   installed?: boolean
+  configured?: boolean
+  runtime_ready?: boolean
+  status?: SkillLifecycleStatus
+  reconciliation_required?: boolean
+  status_detail?: string
+  reconciliation_error?: string | null
   is_official?: boolean
   tags?: string[]
   path?: string | null
@@ -55,15 +73,116 @@ type AssistantOverviewEnvelope = {
   } | null
 }
 
+type SkillLifecyclePresentation = {
+  status: SkillLifecycleStatus
+  badgeStatus: 'idle' | 'success' | 'error' | 'warning'
+  label: string
+  configured: boolean
+  runtimeReady: boolean
+  detail: string
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+export function skillsFromMutationEnvelope(payload: unknown): SkillRecord[] {
+  if (!isRecord(payload) || !Array.isArray(payload.skills)) {
+    throw new Error('The control plane did not return the persisted skill state')
+  }
+
+  const skills = payload.skills.filter(
+    (item): item is SkillRecord => isRecord(item) && typeof item.id === 'string',
+  )
+  if (skills.length !== payload.skills.length) {
+    throw new Error('The control plane returned an invalid skill state')
+  }
+  return skills
+}
+
+export function skillLifecyclePresentation(skill: SkillRecord): SkillLifecyclePresentation {
+  const configured = skill.configured === true || skill.installed === true
+  const runtimeReady = skill.status === 'runtime_ready' && skill.runtime_ready === true
+
+  if (runtimeReady) {
+    return {
+      status: 'runtime_ready',
+      badgeStatus: 'success',
+      label: 'Runtime ready',
+      configured: true,
+      runtimeReady: true,
+      detail:
+        skill.status_detail || 'The assistant runtime reported successful skill reconciliation.',
+    }
+  }
+  if (skill.status === 'failed') {
+    return {
+      status: 'failed',
+      badgeStatus: 'error',
+      label: 'Failed',
+      configured,
+      runtimeReady: false,
+      detail: skill.reconciliation_error || skill.status_detail || 'Runtime reconciliation failed.',
+    }
+  }
+  if (configured) {
+    return {
+      status: skill.status === 'unavailable' ? 'unavailable' : 'configured',
+      badgeStatus: 'warning',
+      label: skill.status === 'unavailable' ? 'Unavailable' : 'Configured',
+      configured: true,
+      runtimeReady: false,
+      detail:
+        skill.status_detail ||
+        'Saved in the assistant configuration. Runtime reconciliation has not been proven.',
+    }
+  }
+  if (skill.available === false || skill.status === 'unavailable') {
+    return {
+      status: 'unavailable',
+      badgeStatus: 'warning',
+      label: 'Unavailable',
+      configured: false,
+      runtimeReady: false,
+      detail: skill.status_detail || 'The skill files are unavailable to this control plane.',
+    }
+  }
+  return {
+    status: 'available',
+    badgeStatus: 'idle',
+    label: 'Available',
+    configured: false,
+    runtimeReady: false,
+    detail: skill.status_detail || 'Available to configure; runtime activation has not been requested.',
+  }
+}
+
+function mutationEnvelopeDetail(payload: unknown, fallback: string) {
+  if (!isRecord(payload)) return fallback
+  if (typeof payload.detail === 'string' && payload.detail.trim()) return payload.detail
+  if (isRecord(payload.detail) && typeof payload.detail.detail === 'string') {
+    return payload.detail.detail
+  }
+  return fallback
+}
+
+function mutationNotice(payload: unknown): string {
+  if (!isRecord(payload)) return 'Skill configuration saved.'
+  return mutationEnvelopeDetail(payload, `Skill lifecycle status: ${String(payload.status || 'updated')}`)
+}
+
 export function SkillsPageClient() {
   const [loading, setLoading] = useState(true)
   const [authRequired, setAuthRequired] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [permissionDenied, setPermissionDenied] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [mutationError, setMutationError] = useState<string | null>(null)
+  const [mutationStatus, setMutationStatus] = useState<string | null>(null)
   const [catalog, setCatalog] = useState<SkillRecord[]>([])
   const [bundles, setBundles] = useState<BundleRecord[]>([])
   const [assistantId, setAssistantId] = useState<string | null>(null)
   const [assistantName, setAssistantName] = useState<string | null>(null)
-  const [installedIds, setInstalledIds] = useState<string[]>([])
+  const [assistantSkills, setAssistantSkills] = useState<SkillRecord[]>([])
   const [search, setSearch] = useState('')
   const [busySkillId, setBusySkillId] = useState<string | null>(null)
   const [busyBundleId, setBusyBundleId] = useState<string | null>(null)
@@ -73,8 +192,9 @@ export function SkillsPageClient() {
 
     async function load() {
       setLoading(true)
-      setError(null)
+      setLoadError(null)
       setAuthRequired(false)
+      setPermissionDenied(false)
 
       try {
         const [catalogPayload, bundlePayload, overview] = await Promise.all([
@@ -83,17 +203,17 @@ export function SkillsPageClient() {
           readJson<AssistantOverviewEnvelope>('/api/dashboard/assistant/overview'),
         ])
 
-        let nextInstalledIds: string[] = []
+        let nextAssistantSkills: SkillRecord[] = []
         let nextAssistantId: string | null = null
         let nextAssistantName: string | null = null
 
         if (overview.has_assistant && overview.assistant?.agent_id) {
           nextAssistantId = overview.assistant.agent_id
           nextAssistantName = overview.assistant.name || null
-          const installedPayload = await readJson<SkillRecord[]>(
-            `/api/dashboard/assistant/${overview.assistant.agent_id}/skills`,
+          const assistantSkillPayload = await readJson<SkillRecord[]>(
+            `/api/dashboard/assistant/${encodeURIComponent(overview.assistant.agent_id)}/skills`,
           )
-          nextInstalledIds = installedPayload.filter((item) => item.installed).map((item) => item.id)
+          nextAssistantSkills = Array.isArray(assistantSkillPayload) ? assistantSkillPayload : []
         }
 
         if (!cancelled) {
@@ -101,18 +221,18 @@ export function SkillsPageClient() {
           setBundles(Array.isArray(bundlePayload) ? bundlePayload : [])
           setAssistantId(nextAssistantId)
           setAssistantName(nextAssistantName)
-          setInstalledIds(nextInstalledIds)
+          setAssistantSkills(nextAssistantSkills)
           setLoading(false)
         }
       } catch (loadError) {
         if (!cancelled) {
-          if (
-            loadError instanceof ApiRequestError &&
-            (loadError.status === 401 || loadError.status === 403)
-          ) {
+          const accessFailure = getDashboardRequestAccessFailure(loadError)
+          if (accessFailure === 'authentication') {
             setAuthRequired(true)
+          } else if (accessFailure === 'permission') {
+            setPermissionDenied(true)
           } else {
-            setError(loadError instanceof Error ? loadError.message : 'Failed to load skill catalog')
+            setLoadError(dashboardRequestErrorMessage(loadError, 'Failed to load skill catalog'))
           }
           setLoading(false)
         }
@@ -124,6 +244,11 @@ export function SkillsPageClient() {
       cancelled = true
     }
   }, [])
+
+  const assistantSkillById = useMemo(
+    () => new Map(assistantSkills.map((skill) => [skill.id, skill])),
+    [assistantSkills],
+  )
 
   const filteredSkills = useMemo(() => {
     const needle = search.trim().toLowerCase()
@@ -139,24 +264,35 @@ export function SkillsPageClient() {
   async function toggleSkill(skill: SkillRecord) {
     if (!assistantId) return
     setBusySkillId(skill.id)
-    setError(null)
+    setMutationError(null)
+    setMutationStatus(null)
     try {
-      const method = installedIds.includes(skill.id) ? 'DELETE' : 'POST'
-      const response = await fetch(`/api/dashboard/assistant/${assistantId}/skills/${skill.id}`, {
-        method,
+      const currentSkill = assistantSkillById.get(skill.id) || skill
+      const lifecycle = skillLifecyclePresentation(currentSkill)
+      const endpoint = lifecycle.configured
+        ? '/api/dashboard/clawhub/uninstall'
+        : '/api/dashboard/clawhub/install'
+      const response = await fetch(endpoint, {
+        method: 'POST',
         credentials: 'include',
         cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_id: assistantId, skill_id: skill.id }),
       })
-      const payload = await response.json().catch(() => [])
+      const payload: unknown = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error(typeof payload?.detail === 'string' ? payload.detail : 'Failed to update skill')
+        throw new ApiRequestError(
+          mutationEnvelopeDetail(payload, 'Failed to update skill configuration'),
+          response.status,
+        )
       }
-      const nextInstalled = Array.isArray(payload)
-        ? payload.filter((item) => item?.installed).map((item) => String(item.id))
-        : []
-      setInstalledIds(nextInstalled)
-    } catch (mutationError) {
-      setError(mutationError instanceof Error ? mutationError.message : 'Failed to update skill')
+      setAssistantSkills(skillsFromMutationEnvelope(payload))
+      setMutationStatus(mutationNotice(payload))
+    } catch (error) {
+      const accessFailure = getDashboardRequestAccessFailure(error)
+      if (accessFailure === 'authentication') setAuthRequired(true)
+      else if (accessFailure === 'permission') setPermissionDenied(true)
+      else setMutationError(dashboardRequestErrorMessage(error, 'Failed to update skill'))
     } finally {
       setBusySkillId(null)
     }
@@ -165,7 +301,8 @@ export function SkillsPageClient() {
   async function installBundle(bundleId: string) {
     if (!assistantId) return
     setBusyBundleId(bundleId)
-    setError(null)
+    setMutationError(null)
+    setMutationStatus(null)
     try {
       const response = await fetch('/api/dashboard/clawhub/install-bundle', {
         method: 'POST',
@@ -174,20 +311,20 @@ export function SkillsPageClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agent_id: assistantId, bundle_id: bundleId }),
       })
-      const payload = await response.json().catch(() => ({}))
+      const payload: unknown = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error(
-          typeof payload?.detail === 'string' ? payload.detail : 'Failed to install skill bundle',
+        throw new ApiRequestError(
+          mutationEnvelopeDetail(payload, 'Failed to configure skill bundle'),
+          response.status,
         )
       }
-      const nextInstalled = Array.isArray(payload?.skills)
-        ? payload.skills.filter((item: SkillRecord) => item?.installed).map((item: SkillRecord) => item.id)
-        : installedIds
-      setInstalledIds(nextInstalled)
-    } catch (mutationError) {
-      setError(
-        mutationError instanceof Error ? mutationError.message : 'Failed to install skill bundle',
-      )
+      setAssistantSkills(skillsFromMutationEnvelope(payload))
+      setMutationStatus(mutationNotice(payload))
+    } catch (error) {
+      const accessFailure = getDashboardRequestAccessFailure(error)
+      if (accessFailure === 'authentication') setAuthRequired(true)
+      else if (accessFailure === 'permission') setPermissionDenied(true)
+      else setMutationError(dashboardRequestErrorMessage(error, 'Failed to configure skill bundle'))
     } finally {
       setBusyBundleId(null)
     }
@@ -202,17 +339,29 @@ export function SkillsPageClient() {
       />
     )
   }
-  if (error) return <LiveErrorState title='Skill surface unavailable' message={error} />
+  if (permissionDenied) {
+    return <LiveForbidden title='Skill permission required' message='Your account cannot configure assistant skills. Install and removal controls are unavailable.' />
+  }
+  if (loadError) return <LiveErrorState title='Skill surface unavailable' message={loadError} />
 
   return (
     <div className='space-y-4'>
+      {mutationError ? (
+        <div role='alert' aria-live='assertive' className='rounded-2xl border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-100'>
+          {mutationError}
+        </div>
+      ) : null}
+      {mutationStatus ? (
+        <div className='rounded-2xl border border-cyan-400/30 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100'>
+          {mutationStatus}
+        </div>
+      ) : null}
       <LivePanel
         title='Curated bundles'
         meta={`${bundles.length} packs · ${assistantId ? `bound to ${assistantName || 'assistant'}` : 'no assistant bound'}`}
         action={
           <FeatureHint
-            tone='beta'
-            detail='Bundle install flows are active, but assistant binding and runtime availability checks are still being tightened.'
+            detail='Bundle actions persist assistant configuration. Runtime readiness appears only after explicit reconciliation evidence.'
           />
         }
       >
@@ -233,8 +382,8 @@ export function SkillsPageClient() {
                       <p className='mt-1 text-sm text-slate-400'>{bundle.summary}</p>
                     </div>
                     <StatusBadge
-                      status={unavailable > 0 ? 'warning' : 'success'}
-                      label={`${bundle.available_skill_count}/${bundle.skill_count} ready`}
+                      status={unavailable > 0 ? 'warning' : 'idle'}
+                      label={`${bundle.available_skill_count}/${bundle.skill_count} available`}
                     />
                   </div>
                   <p className='mt-3 text-sm text-slate-300'>{bundle.description}</p>
@@ -265,8 +414,8 @@ export function SkillsPageClient() {
                   <div className='mt-4 flex items-center justify-between gap-3'>
                     <p className='text-xs text-slate-500'>
                       {unavailable > 0
-                        ? `${unavailable} skills unavailable until runtime sync lands.`
-                        : 'All skills in this bundle are ready on the current runtime.'}
+                        ? `${unavailable} skill artifacts are unavailable to configure.`
+                        : 'All bundle artifacts are available to configure; runtime activation is separate.'}
                     </p>
                     <button
                       type='button'
@@ -274,7 +423,7 @@ export function SkillsPageClient() {
                       disabled={!assistantId || busyBundleId === bundle.id}
                       className='rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-3 py-2 text-sm font-medium text-cyan-200 disabled:cursor-not-allowed disabled:opacity-50'
                     >
-                      {busyBundleId === bundle.id ? 'Installing…' : 'Install bundle'}
+                      {busyBundleId === bundle.id ? 'Configuring…' : 'Configure bundle'}
                     </button>
                   </div>
                 </div>
@@ -289,8 +438,8 @@ export function SkillsPageClient() {
         meta={`${filteredSkills.length} visible`}
         action={
           <FeatureHint
-            tone='beta'
-            detail='Skill installs and removals are usable, but this catalog is still an operator beta while sync semantics settle.'
+            tone='boundary'
+            detail='Configured means persisted intent. Runtime ready is reserved for reconciled activation reported by the assistant runtime.'
           />
         }
       >
@@ -314,8 +463,9 @@ export function SkillsPageClient() {
         ) : (
           <div className='grid gap-3 xl:grid-cols-2'>
             {filteredSkills.map((skill) => {
-              const installed = installedIds.includes(skill.id)
-              const available = skill.available !== false
+              const currentSkill = { ...skill, ...assistantSkillById.get(skill.id) }
+              const lifecycle = skillLifecyclePresentation(currentSkill)
+              const available = currentSkill.available !== false
               return (
                 <div key={skill.id} className='rounded-2xl border border-white/10 bg-white/[0.02] p-4'>
                   <div className='flex flex-wrap items-start justify-between gap-3'>
@@ -329,8 +479,8 @@ export function SkillsPageClient() {
                       <p className='mt-1 text-sm text-slate-400'>{skill.description}</p>
                     </div>
                     <StatusBadge
-                      status={installed ? 'success' : available ? 'idle' : 'warning'}
-                      label={installed ? 'Installed' : available ? 'Ready' : 'Needs sync'}
+                      status={lifecycle.badgeStatus}
+                      label={lifecycle.label}
                     />
                   </div>
 
@@ -352,23 +502,42 @@ export function SkillsPageClient() {
                     </div>
                     <div className='rounded-xl border border-white/10 bg-black/20 px-3 py-2'>
                       <p className='text-[10px] uppercase tracking-[0.18em] text-slate-500'>Runtime path</p>
-                      <p className='mt-2 truncate text-sm text-white'>{skill.path || 'Not synced yet'}</p>
+                      <p className='mt-2 truncate text-sm text-white'>
+                        {skill.path || 'Artifact path not reported'}
+                      </p>
                     </div>
                   </div>
 
-                  <div className='mt-4 flex items-center justify-between gap-3'>
-                    <p className='text-xs text-slate-500'>
-                      {skill.upstream_commit
-                        ? `Pinned upstream commit ${skill.upstream_commit.slice(0, 7)} · ${skill.license || 'license unknown'}`
-                        : skill.author}
-                    </p>
+                  <p className='mt-3 text-xs text-slate-400'>{lifecycle.detail}</p>
+
+                  <div className='mt-4 flex items-end justify-between gap-3'>
+                    <div>
+                      <p className='text-xs text-slate-500'>
+                        {skill.upstream_commit
+                          ? `Pinned upstream commit ${skill.upstream_commit.slice(0, 7)} · ${skill.license || 'license unknown'}`
+                          : skill.author}
+                      </p>
+                      {lifecycle.configured && !lifecycle.runtimeReady ? (
+                        <p className='mt-1 text-[11px] text-amber-200/80'>
+                          Reconciliation required before runtime use can be claimed.
+                        </p>
+                      ) : null}
+                    </div>
                     <button
                       type='button'
                       onClick={() => void toggleSkill(skill)}
-                      disabled={!assistantId || !available || busySkillId === skill.id}
+                      disabled={
+                        !assistantId ||
+                        (!available && !lifecycle.configured) ||
+                        busySkillId === skill.id
+                      }
                       className='rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50'
                     >
-                      {busySkillId === skill.id ? 'Working…' : installed ? 'Uninstall' : 'Install'}
+                      {busySkillId === skill.id
+                        ? 'Saving…'
+                        : lifecycle.configured
+                          ? 'Remove config'
+                          : 'Configure'}
                     </button>
                   </div>
                 </div>

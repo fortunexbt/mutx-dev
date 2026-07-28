@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.database import get_db
-from src.api.auth.dependencies import get_current_agent, get_current_user
+from src.api.auth.dependencies import get_current_agent, require_roles
 from src.api.models import (
     Agent,
     AgentLog,
@@ -36,6 +36,11 @@ from src.api.models import (
     User,
 )
 from src.api.models.schemas import AgentResponse, AgentRollbackRequest, AgentVersionHistoryResponse
+from src.api.models.numeric import (
+    DegradedNumericResponseModel,
+    NonNegativeFiniteFloat,
+    PercentageFloat,
+)
 from src.api.services.user_service import generate_agent_api_key, hash_api_key
 from src.api.services.webhook_service import trigger_deployment_event, trigger_webhook_event
 from src.api.time_utils import as_utc, as_utc_naive
@@ -73,9 +78,9 @@ class HeartbeatRequest(BaseModel):
 
 class MetricsRequest(BaseModel):
     agent_id: str
-    cpu_usage: Optional[float] = 0.0
-    memory_usage: Optional[float] = 0.0
-    uptime_seconds: Optional[float] = 0.0
+    cpu_usage: Optional[PercentageFloat] = 0.0
+    memory_usage: Optional[PercentageFloat] = 0.0
+    uptime_seconds: Optional[NonNegativeFiniteFloat] = 0.0
     requests_processed: Optional[int] = 0
     errors_count: Optional[int] = 0
     custom: dict = {}
@@ -131,11 +136,11 @@ class LogSubmitResponse(BaseModel):
     agent_id: str
 
 
-class AgentStatusResponse(BaseModel):
+class AgentStatusResponse(DegradedNumericResponseModel):
     agent_id: str
     status: str
     last_heartbeat: Optional[str]
-    uptime_seconds: float
+    uptime_seconds: float | None
 
 
 # --- Routes ---
@@ -180,7 +185,7 @@ async def _promote_latest_deployment_from_heartbeat(
 async def register_agent(
     request: AgentRegisterRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     """
     Register a new agent with MUTX.
@@ -504,7 +509,7 @@ async def get_agent_versions(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     """Get version history for a specific agent."""
     # Verify ownership
@@ -549,7 +554,7 @@ async def rollback_agent(
     agent_id: uuid.UUID,
     rollback_data: AgentRollbackRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     """Rollback an agent to a specific version."""
     # Verify ownership

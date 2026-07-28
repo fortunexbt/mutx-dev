@@ -87,7 +87,7 @@ def test_create_event_sends_correct_payload() -> None:
         captured["json"] = json.loads(request.content.decode())
         return httpx.Response(201, json=_event_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     events = UsageEvents(client)
 
     events.create_event(
@@ -98,7 +98,7 @@ def test_create_event_sends_correct_payload() -> None:
         metadata={"model": "gpt-4o"},
     )
 
-    assert captured["path"] == "/usage/events"
+    assert captured["path"] == "/v1/usage/events"
     assert captured["json"]["event_type"] == "api_call"
     assert captured["json"]["resource_type"] == "agent"
     assert captured["json"]["resource_id"] == "550e8400-e29b-41d4-a716-446655440000"
@@ -112,7 +112,7 @@ def test_create_event_returns_usage_event() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(201, json=raw)
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     events = UsageEvents(client)
 
     result = events.create_event(event_type="api_call")
@@ -136,7 +136,7 @@ async def test_acreate_event_sends_correct_payload() -> None:
         return httpx.Response(201, json=_event_payload())
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         events = UsageEvents(client)
         await events.acreate_event(
@@ -144,7 +144,7 @@ async def test_acreate_event_sends_correct_payload() -> None:
             credits_used=0.5,
         )
 
-    assert captured["path"] == "/usage/events"
+    assert captured["path"] == "/v1/usage/events"
     assert captured["json"]["event_type"] == "starter_deployment_create"
     assert captured["json"]["credits_used"] == 0.5
 
@@ -157,7 +157,7 @@ async def test_acreate_event_returns_usage_event() -> None:
         return httpx.Response(201, json=raw)
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         events = UsageEvents(client)
         result = await events.acreate_event(event_type="api_call")
@@ -178,7 +178,7 @@ def test_list_returns_tuple_of_events_and_total() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_events_page_payload(items, total))
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     events = UsageEvents(client)
 
     result, result_total = events.list(skip=10, limit=5, event_type="api_call")
@@ -195,7 +195,7 @@ def test_list_passes_query_params() -> None:
         captured["params"] = dict(request.url.params)
         return httpx.Response(200, json=_events_page_payload([], 0))
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     events = UsageEvents(client)
 
     events.list(
@@ -225,7 +225,7 @@ async def test_alist_returns_tuple_of_events_and_total() -> None:
         return httpx.Response(200, json=_events_page_payload(items, total))
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         events = UsageEvents(client)
         result, result_total = await events.alist(event_type="api_call")
@@ -248,7 +248,7 @@ def test_get_returns_usage_event() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=raw)
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     events = UsageEvents(client)
 
     result = events.get(event_id)
@@ -271,7 +271,7 @@ async def test_aget_returns_usage_event() -> None:
         return httpx.Response(200, json=raw)
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         events = UsageEvents(client)
         result = await events.aget(event_id)
@@ -291,7 +291,7 @@ async def test_list_rejects_async_client() -> None:
         return httpx.Response(200, json=_events_page_payload([], 0))
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         events = UsageEvents(client)
         with pytest.raises(RuntimeError, match="sync"):
@@ -304,7 +304,7 @@ async def test_create_event_rejects_async_client() -> None:
         return httpx.Response(201, json=_event_payload())
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         events = UsageEvents(client)
         with pytest.raises(RuntimeError, match="sync"):
@@ -317,7 +317,7 @@ async def test_get_rejects_async_client() -> None:
         return httpx.Response(200, json=_event_payload())
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         events = UsageEvents(client)
         with pytest.raises(RuntimeError, match="sync"):
@@ -334,7 +334,7 @@ async def test_alist_rejects_sync_client() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_events_page_payload([], 0))
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     events = UsageEvents(client)
     with pytest.raises(RuntimeError, match="async"):
         await events.alist()
@@ -345,7 +345,7 @@ async def test_acreate_event_rejects_sync_client() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(201, json=_event_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     events = UsageEvents(client)
     with pytest.raises(RuntimeError, match="async"):
         await events.acreate_event(event_type="api_call")
@@ -356,7 +356,7 @@ async def test_aget_rejects_sync_client() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_event_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     events = UsageEvents(client)
     with pytest.raises(RuntimeError, match="async"):
         await events.aget("some-id")

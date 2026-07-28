@@ -32,8 +32,13 @@ jest.mock('@/components/site/docs/DocsLayout', () => {
   const React = jest.requireActual<typeof import('react')>('react')
 
   return {
-    DocsLayout: ({ children }: { children: ReactNode }) =>
-      React.createElement('div', { 'data-docs-layout': 'true' }, children),
+    DocsLayout: ({ children, title }: { children: ReactNode; title: string }) =>
+      React.createElement(
+        'div',
+        { 'data-docs-layout': 'true' },
+        React.createElement('h1', null, title),
+        children
+      ),
   }
 })
 
@@ -41,12 +46,26 @@ jest.mock('@/components/site/docs/DocsRenderer', () => {
   const React = jest.requireActual<typeof import('react')>('react')
 
   return {
-    DocsRenderer: ({ source, currentSlug }: { source: string; currentSlug: string[] }) =>
+    DocsRenderer: ({
+      source,
+      currentSlug,
+      omitFirstH1,
+    }: {
+      source: string
+      currentSlug: string[]
+      omitFirstH1?: boolean
+    }) =>
       React.createElement(
         'article',
-        { 'data-safe-docs-renderer': currentSlug.join('/') },
+        {
+          'data-safe-docs-renderer': currentSlug.join('/'),
+          'data-omit-first-h1': omitFirstH1 ? 'true' : 'false',
+        },
+        omitFirstH1 ? null : React.createElement('h1', null, 'Markdown title'),
         source
       ),
+    extractDocumentTitle: (source: string, fallback: string) =>
+      source.match(/^#\s+(.+)$/m)?.[1] ?? fallback,
   }
 })
 
@@ -73,8 +92,10 @@ describe('public long-form rendering', () => {
     const html = renderToStaticMarkup(await Page())
 
     expect(html).toContain(`data-safe-docs-renderer="${slug}"`)
+    expect(html).toContain('data-omit-first-h1="true"')
     expect(html).toContain('Rendered through the safe docs pipeline.')
     expect(html).toContain('type="application/ld+json"')
+    expect(html.match(/<h1(?:\s|>)/g)).toHaveLength(1)
   })
 
   it.each(longFormPages)(

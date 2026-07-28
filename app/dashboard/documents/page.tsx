@@ -16,11 +16,6 @@ export default function DashboardDocumentsPage() {
             icon={FileText}
             iconTone="text-amber-300 bg-amber-400/10"
             badge="document workflows"
-            hint={{
-              tone: 'beta',
-              detail:
-                'Document workflows are live, but this surface is still tightening its managed-vs-local contract and artifact flow. Expect operator-friendly guardrails, not a finished admin product.',
-            }}
             stats={[
               { label: 'Execution', value: 'Hybrid' },
               { label: 'Artifacts', value: 'Managed storage', tone: 'success' },

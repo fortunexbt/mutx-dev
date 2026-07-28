@@ -6,6 +6,8 @@ export type DashboardPanelId =
   | 'reasoning'
   | 'runs'
   | 'monitoring'
+  | 'approvals'
+  | 'audit'
   | 'traces'
   | 'observability'
   | 'chat'
@@ -32,6 +34,7 @@ export const DASHBOARD_SPA_EVENT = 'mutx:dashboard:navigate'
 export const ESSENTIAL_PANELS = new Set<DashboardPanelId>([
   'overview',
   'agents',
+  'approvals',
   'tasks',
   'chat',
   'activity',
@@ -47,6 +50,8 @@ export const DASHBOARD_PANEL_ROUTE_MAP: Record<DashboardPanelId, string> = {
   reasoning: '/dashboard/reasoning',
   runs: '/dashboard/runs',
   monitoring: '/dashboard/monitoring',
+  approvals: '/dashboard/approvals',
+  audit: '/dashboard/audit',
   traces: '/dashboard/traces',
   observability: '/dashboard/observability',
   chat: '/dashboard/sessions',
@@ -77,6 +82,8 @@ const DASHBOARD_PATH_TO_PANEL: Record<string, DashboardPanelId> = {
   reasoning: 'reasoning',
   runs: 'runs',
   monitoring: 'monitoring',
+  approvals: 'approvals',
+  audit: 'audit',
   traces: 'traces',
   observability: 'observability',
   sessions: 'chat',
@@ -106,11 +113,28 @@ const DASHBOARD_PATH_TO_PANEL: Record<string, DashboardPanelId> = {
   standup: 'standup',
 }
 
+const APP_HOST_DASHBOARD_ALIASES: Record<string, string> = {
+  '/': '/dashboard',
+  '/overview': '/dashboard',
+  '/agents': '/dashboard/agents',
+  '/deployments': '/dashboard/deployments',
+  '/runs': '/dashboard/runs',
+  '/environments': '/dashboard/monitoring',
+  '/access': '/dashboard/security',
+  '/connectors': '/dashboard/webhooks',
+  '/audit': '/dashboard/audit',
+  '/approvals': '/dashboard/approvals',
+  '/usage': '/dashboard/budgets',
+  '/settings': '/dashboard/control',
+}
+
 export function normalizeDashboardPanel(panel: string): string {
   return panel.trim().toLowerCase().replace(/^\/+|\/+$/g, '')
 }
 
-export function resolveDashboardPanel(pathname: string | null | undefined): DashboardPanelId {
+export function matchDashboardPanelPath(
+  pathname: string | null | undefined,
+): DashboardPanelId | null {
   if (!pathname || pathname === '/' || pathname === '/dashboard') {
     return 'overview'
   }
@@ -119,15 +143,61 @@ export function resolveDashboardPanel(pathname: string | null | undefined): Dash
     pathname !== '/dashboard' && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
   const segments = normalizedPath.split('/').filter(Boolean)
 
-  if (segments.length === 0 || segments[0] !== 'dashboard') {
-    return 'overview'
+  if (segments.length === 0 || segments[0] !== 'dashboard' || segments.length > 2) {
+    return null
   }
 
   if (segments.length === 1) {
     return 'overview'
   }
 
-  return DASHBOARD_PATH_TO_PANEL[segments[1]] ?? 'overview'
+  return DASHBOARD_PATH_TO_PANEL[segments[1]] ?? null
+}
+
+export function resolveDashboardPanel(pathname: string | null | undefined): DashboardPanelId {
+  return matchDashboardPanelPath(pathname) ?? 'overview'
+}
+
+export function shouldUseDashboardSpaPanelHost(
+  pathname: string | null | undefined,
+): boolean {
+  return matchDashboardPanelPath(pathname) !== null
+}
+
+export function canonicalizeDashboardNextPath(nextPath: string | null | undefined): string {
+  const fallback = '/dashboard'
+  if (!nextPath || !nextPath.startsWith('/') || nextPath.startsWith('//') || nextPath.includes('\\')) {
+    return fallback
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(nextPath, 'https://dashboard.invalid')
+  } catch {
+    return fallback
+  }
+
+  if (parsed.origin !== 'https://dashboard.invalid') return fallback
+
+  const normalizedPath =
+    parsed.pathname !== '/' && parsed.pathname.endsWith('/')
+      ? parsed.pathname.slice(0, -1)
+      : parsed.pathname
+  let canonicalPath = APP_HOST_DASHBOARD_ALIASES[normalizedPath]
+
+  if (
+    !canonicalPath &&
+    (normalizedPath === '/dashboard' || normalizedPath.startsWith('/dashboard/'))
+  ) {
+    canonicalPath = normalizedPath
+  }
+
+  if (!canonicalPath && (normalizedPath === '/app' || normalizedPath.startsWith('/app/'))) {
+    canonicalPath = `/dashboard${normalizedPath.slice('/app'.length)}`
+  }
+
+  if (!canonicalPath) return fallback
+  return `${canonicalPath}${parsed.search}`
 }
 
 export function panelHref(panel: string): string {

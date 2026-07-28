@@ -14,7 +14,7 @@ export async function POST(
   return withErrorHandling(async () => {
     const { swarmId } = await params;
     const body = await request.json();
-    return proxyJson(request, `${getApiBaseUrl()}/v1/swarms/${swarmId}/scale`, {
+    return proxyJson(request, `${getApiBaseUrl()}/v1/swarms/${encodeURIComponent(swarmId)}/scale`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

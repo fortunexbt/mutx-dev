@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 
 import { appFontVariables } from "@/app/fonts/app";
+import { getLocaleDirection, normalizeLocale } from "@/i18n/locale";
 import {
   buildPageMetadata,
   getSiteUrl,
@@ -11,14 +12,14 @@ import {
 
 const siteUrl = getSiteUrl();
 const rootSocialMetadata = buildPageMetadata({
-  title: "MUTX | Flight Recorder and Control Plane for AI Agents",
+  title: "MUTX | Governed Runtime and Control Plane for AI Agents",
   description:
-    "See every move, stop actions outside policy, and keep a reviewable receipt of every AI agent run.",
+    "Record submitted runtime evidence, evaluate registered tool calls before execution, and operate approvals, audit, and control workflows.",
   path: "/",
   socialDescription:
-    "MUTX is the flight recorder and control layer for AI agents operating across real deployment and policy boundaries.",
+    "MUTX links governed runtime decisions, submitted evidence, and operator workflows for AI agents.",
   twitterDescription:
-    "Observe the run, hold risky actions, and keep the evidence.",
+    "Record governed runtime decisions and keep the operator evidence attached.",
 });
 
 export const viewport = {
@@ -31,9 +32,9 @@ export const viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   ...rootSocialMetadata,
-  title: "MUTX | Flight Recorder and Control Plane for AI Agents",
+  title: "MUTX | Governed Runtime and Control Plane for AI Agents",
   description:
-    "See every move, stop actions outside policy, and keep a reviewable receipt of every AI agent run.",
+    "Record submitted runtime evidence, evaluate registered tool calls before execution, and operate approvals, audit, and control workflows.",
   applicationName: "MUTX",
   category: "developer tools",
   keywords: [
@@ -74,11 +75,12 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const locale = await getLocale()
+  const locale = normalizeLocale(await getLocale())
+  const direction = getLocaleDirection(locale)
   const messages = await getMessages()
 
   return (
-    <html lang={locale} className="h-full" suppressHydrationWarning>
+    <html lang={locale} dir={direction} className="h-full" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://calendly.com" />
         <link rel="dns-prefetch" href="https://calendly.com" />

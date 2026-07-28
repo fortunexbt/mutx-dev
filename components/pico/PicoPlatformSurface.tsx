@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useLocale, useTranslations } from 'next-intl'
 
 import {
   PICO_PLAN_MATRIX,
@@ -9,6 +10,7 @@ import {
   type PicoProgressState,
 } from '@/lib/pico/academy'
 import { usePicoHref } from '@/lib/pico/navigation'
+import { formatPicoDateTime } from '@/lib/pico/locale'
 import { type PicoSessionState } from '@/components/pico/usePicoSession'
 import { picoClasses, picoEmber, picoInset, picoPanel, picoSoft } from '@/components/pico/picoTheme'
 import { cn } from '@/lib/utils'
@@ -24,61 +26,29 @@ type PicoPlatformSurfaceProps = {
   currentPath: string
 }
 
-const surfaceOptions: Array<{
-  surface: NonNullable<PicoProgressState['platform']['activeSurface']>
-  label: string
-  note: string
-}> = [
-  {
-    surface: 'onboarding',
-    label: 'Onboarding',
-    note: 'Launch bay memory',
-  },
-  {
-    surface: 'academy',
-    label: 'Academy',
-    note: 'Primary learning spine',
-  },
-  {
-    surface: 'lesson',
-    label: 'Lesson',
-    note: 'Active step memory',
-  },
-  {
-    surface: 'tutor',
-    label: 'Tutor',
-    note: 'Grounded next-step help',
-  },
-  {
-    surface: 'autopilot',
-    label: 'Autopilot',
-    note: 'Runtime review',
-  },
-  {
-    surface: 'support',
-    label: 'Support',
-    note: 'Human setup help',
-  },
-] as const
+const surfaceIds: Array<NonNullable<PicoProgressState['platform']['activeSurface']>> = [
+  'onboarding',
+  'academy',
+  'lesson',
+  'tutor',
+  'autopilot',
+  'support',
+]
 
 function toPlan(value: string | null | undefined): PicoPlan {
   return value === 'starter' || value === 'pro' ? value : 'free'
 }
 
-function formatTimestamp(value?: string | null) {
-  if (!value) return 'not recorded'
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return 'not recorded'
-
-  return parsed.toLocaleString('en-US', {
+function formatTimestamp(value: string | null | undefined, locale: string) {
+  return value ? formatPicoDateTime(value, locale, {
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-  })
+  }) : null
 }
 
-function formatSyncState(syncState: string, ready: boolean) {
+function getSyncStateKey(syncState: string, ready: boolean) {
   if (!ready) {
     return 'hydrating'
   }
@@ -89,9 +59,9 @@ function formatSyncState(syncState: string, ready: boolean) {
     case 'saving':
       return 'saving'
     case 'offline':
-      return 'local only'
+      return 'localOnly'
     default:
-      return syncState
+      return 'localOnly'
   }
 }
 
@@ -105,11 +75,20 @@ export function PicoPlatformSurface({
   onReset,
   currentPath,
 }: PicoPlatformSurfaceProps) {
+  const locale = useLocale()
+  const t = useTranslations('pico.platformSurface')
+  const contentT = useTranslations('pico.content')
   const toHref = usePicoHref()
   const plan = toPlan(session.status === 'authenticated' ? session.user.plan : null)
   const planMatrix = PICO_PLAN_MATRIX[plan]
   const lastOpenedLesson = progress.platform.lastOpenedLessonSlug
   const activeSurface = progress.platform.activeSurface
+  const surfaceOptions = surfaceIds.map((surface) => ({
+    surface,
+    label: t(`surfaceOptions.${surface}.label`),
+    note: t(`surfaceOptions.${surface}.note`),
+  }))
+  const syncStateLabel = t(`syncState.${getSyncStateKey(syncState, ready)}`)
 
   function setActiveSurface(surface: NonNullable<PicoProgressState['platform']['activeSurface']>) {
     onSave({ activeSurface: surface })
@@ -119,16 +98,15 @@ export function PicoPlatformSurface({
     <section className={picoPanel('p-6 sm:p-7')} data-testid="pico-platform-surface">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className={picoClasses.label}>Platform desk</p>
+          <p className={picoClasses.label}>{t('header.label')}</p>
           <h2 className="mt-3 font-[family:var(--font-site-display)] text-3xl tracking-[-0.06em] text-[color:var(--pico-text)] sm:text-4xl">
-            Identity, page memory, and limits in one place
+            {t('header.title')}
           </h2>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-[color:var(--pico-text-secondary)]">
-            Review plan limits, your last workspace, and the display settings that keep Pico
-            focused on the work in front of you.
+            {t('header.body')}
           </p>
         </div>
-        <span className={picoClasses.chip}>{formatSyncState(syncState, ready)}</span>
+        <span className={picoClasses.chip}>{syncStateLabel}</span>
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.05fr),minmax(0,0.95fr)]">
@@ -136,23 +114,23 @@ export function PicoPlatformSurface({
           <div className={picoInset('grid gap-4 p-5')}>
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
-                <p className="text-sm text-[color:var(--pico-text-muted)]">Plan</p>
+                <p className="text-sm text-[color:var(--pico-text-muted)]">{t('summary.plan')}</p>
                 <p className="mt-1 text-lg font-medium text-[color:var(--pico-text)]">{plan.toUpperCase()}</p>
               </div>
               <div>
-                <p className="text-sm text-[color:var(--pico-text-muted)]">Verification</p>
+                <p className="text-sm text-[color:var(--pico-text-muted)]">{t('summary.verification')}</p>
                 <p className="mt-1 text-lg font-medium text-[color:var(--pico-text)]">
                   {session.status === 'authenticated'
                     ? session.user.isEmailVerified === false
-                      ? 'pending'
+                      ? t('summary.verificationState.pending')
                       : session.user.isEmailVerified === true
-                        ? 'verified'
-                        : 'unknown'
-                    : 'sign in'}
+                        ? t('summary.verificationState.verified')
+                        : t('summary.verificationState.unknown')
+                    : t('summary.verificationState.signIn')}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-[color:var(--pico-text-muted)]">Workspace saves</p>
+                <p className="text-sm text-[color:var(--pico-text-muted)]">{t('summary.workspaceSaves')}</p>
                 <p className="mt-1 text-lg font-medium text-[color:var(--pico-text)]">
                   {Object.keys(progress.lessonWorkspaces).length}
                 </p>
@@ -162,13 +140,13 @@ export function PicoPlatformSurface({
             <div className="grid gap-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className={picoClasses.label}>Page memory</p>
+                  <p className={picoClasses.label}>{t('routeMemory.label')}</p>
                   <p className="mt-1 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
-                    Keep this aligned with the page you are actually using.
+                    {t('routeMemory.body')}
                   </p>
                 </div>
                 <span className={picoClasses.chip} data-testid="pico-platform-active-surface">
-                  {activeSurface ?? 'not recorded'}
+                  {activeSurface ?? t('shared.notRecorded')}
                 </span>
               </div>
 
@@ -182,7 +160,7 @@ export function PicoPlatformSurface({
                       onClick={() => setActiveSurface(option.surface)}
                       aria-pressed={selected}
                       className={picoSoft(
-                        `grid gap-3 rounded-[24px] px-4 py-4 text-left transition sm:grid-cols-[minmax(0,1fr),auto] sm:items-center hover:border-[color:var(--pico-border-hover)] hover:bg-[color:var(--pico-bg-surface-hover)] ${
+                        `grid gap-3 rounded-[24px] px-4 py-4 text-start transition sm:grid-cols-[minmax(0,1fr),auto] sm:items-center hover:border-[color:var(--pico-border-hover)] hover:bg-[color:var(--pico-bg-surface-hover)] ${
                           selected
                             ? 'border-[color:var(--pico-accent)] bg-[rgba(var(--pico-accent-rgb),0.1)]'
                             : ''
@@ -196,7 +174,7 @@ export function PicoPlatformSurface({
                         <p className="mt-2 text-xl font-medium text-[color:var(--pico-text)]">{option.label}</p>
                       </div>
                       <span className={cn(picoClasses.chip, selected && 'text-[color:var(--pico-text)]')}>
-                        {selected ? 'active now' : 'set page'}
+                        {selected ? t('surfaceOptions.activeNow') : t('surfaceOptions.setRoute')}
                       </span>
                     </button>
                   )
@@ -206,22 +184,22 @@ export function PicoPlatformSurface({
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className={picoSoft('p-4')}>
-                  <p className={picoClasses.label}>Current page</p>
+                  <p className={picoClasses.label}>{t('routeMemory.currentSurface.label')}</p>
                 <p className="mt-2 text-lg font-medium text-[color:var(--pico-text)]">
-                  {activeSurface ?? 'not recorded'}
+                  {activeSurface ?? t('shared.notRecorded')}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
-                  Page memory should follow you through Pico instead of resetting every time the page changes.
+                  {t('routeMemory.currentSurface.body')}
                 </p>
               </div>
 
               <div className={picoSoft('p-4')}>
-                <p className={picoClasses.label}>Last lesson context</p>
+                <p className={picoClasses.label}>{t('routeMemory.lastLessonContext.label')}</p>
                 <p className="mt-2 text-lg font-medium text-[color:var(--pico-text)]">
-                  {lastOpenedLesson ?? 'not recorded'}
+                  {lastOpenedLesson ?? t('shared.notRecorded')}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
-                  This is the recovery point when you need to re-enter the lesson flow.
+                  {t('routeMemory.lastLessonContext.body')}
                 </p>
               </div>
             </div>
@@ -235,9 +213,9 @@ export function PicoPlatformSurface({
                   className="mt-1 h-4 w-4 rounded border-[color:var(--pico-border)] bg-transparent text-[color:var(--pico-accent)] accent-[color:var(--pico-accent)]"
                 />
                 <span>
-                  <span className="block font-medium text-[color:var(--pico-text)]">Collapse rail</span>
+                  <span className="block font-medium text-[color:var(--pico-text)]">{t('toggles.collapseRail.label')}</span>
                   <span className="block text-[color:var(--pico-text-secondary)]">
-                    Use a tighter layout when you already know the page and need more room.
+                    {t('toggles.collapseRail.body')}
                   </span>
                 </span>
               </label>
@@ -250,9 +228,9 @@ export function PicoPlatformSurface({
                   className="mt-1 h-4 w-4 rounded border-[color:var(--pico-border)] bg-transparent text-[color:var(--pico-accent)] accent-[color:var(--pico-accent)]"
                 />
                 <span>
-                  <span className="block font-medium text-[color:var(--pico-text)]">Keep help panel open</span>
+                  <span className="block font-medium text-[color:var(--pico-text)]">{t('toggles.keepHelpLaneOpen.label')}</span>
                   <span className="block text-[color:var(--pico-text-secondary)]">
-                    Keep guidance visible while the setup path is still unfamiliar.
+                    {t('toggles.keepHelpLaneOpen.body')}
                   </span>
                 </span>
               </label>
@@ -261,11 +239,11 @@ export function PicoPlatformSurface({
             <div className="flex flex-wrap gap-3">
               {lastOpenedLesson ? (
                 <Link href={toHref(`/academy/${lastOpenedLesson}`)} className={picoClasses.primaryButton}>
-                  Resume last lesson
+                  {t('actions.resumeLastLesson')}
                 </Link>
               ) : (
                 <Link href={toHref('/academy')} className={picoClasses.primaryButton}>
-                  Open academy
+                  {t('actions.openAcademy')}
                 </Link>
               )}
               {lastOpenedLesson ? (
@@ -274,31 +252,31 @@ export function PicoPlatformSurface({
                   onClick={() => onSave({ lastOpenedLessonSlug: null })}
                   className={picoClasses.secondaryButton}
                 >
-                  Clear lesson memory
+                  {t('actions.clearLessonMemory')}
                 </button>
               ) : null}
               <button type="button" onClick={onReset} className={picoClasses.secondaryButton}>
-                Reset platform memory
+                {t('actions.resetPlatformMemory')}
               </button>
               <Link href={toHref('/autopilot')} className={picoClasses.tertiaryButton}>
-                Open Autopilot
+                {t('actions.openLiveControlRoom')}
               </Link>
             </div>
           </div>
 
           <div className={picoEmber('p-5')}>
-            <p className={picoClasses.label}>Entitlements</p>
+            <p className={picoClasses.label}>{t('entitlements.label')}</p>
             <div className="mt-4 grid gap-3">
-              {(Object.entries(planMatrix) as Array<[keyof typeof planMatrix, string]>).map(([feature, value]) => (
+              {(Object.entries(planMatrix) as Array<[keyof typeof planMatrix, string]>).map(([feature]) => (
                 <div
                   key={feature}
                   className="flex items-start justify-between gap-4 border-b border-[color:var(--pico-border)] pb-3 last:border-b-0 last:pb-0"
                 >
                   <span className="text-sm uppercase tracking-[0.18em] text-[color:var(--pico-text-muted)]">
-                    {feature.replace('_', ' ')}
+                    {t(`entitlements.featureLabels.${feature}`)}
                   </span>
-                  <span className="max-w-[14rem] text-right text-sm leading-6 text-[color:var(--pico-text)]">
-                    {value}
+                  <span className="max-w-[14rem] text-end text-sm leading-6 text-[color:var(--pico-text)]">
+                    {contentT(`planMatrix.${plan}.${feature}`)}
                   </span>
                 </div>
               ))}
@@ -308,32 +286,31 @@ export function PicoPlatformSurface({
 
         <div className="grid gap-4">
           <div className={picoInset('p-5')}>
-            <p className={picoClasses.label}>Page record</p>
+            <p className={picoClasses.label}>{t('routeLedger.label')}</p>
             <div className="mt-4 grid gap-3">
               <div className={picoSoft('p-4')}>
-                <p className="text-sm text-[color:var(--pico-text-muted)]">Current path</p>
+                <p className="text-sm text-[color:var(--pico-text-muted)]">{t('routeLedger.currentPath')}</p>
                 <p className="mt-1 text-lg font-medium text-[color:var(--pico-text)]">{currentPath}</p>
               </div>
               <div className={picoSoft('p-4')}>
-                <p className="text-sm text-[color:var(--pico-text-muted)]">Platform state updated</p>
+                <p className="text-sm text-[color:var(--pico-text-muted)]">{t('routeLedger.platformStateUpdated')}</p>
                 <p className="mt-1 text-lg font-medium text-[color:var(--pico-text)]">
-                  {formatTimestamp(progress.platform.updatedAt)}
+                  {formatTimestamp(progress.platform.updatedAt, locale) ?? t('shared.notRecorded')}
                 </p>
               </div>
               <div className={picoSoft('p-4')}>
-                <p className="text-sm text-[color:var(--pico-text-muted)]">Sync confidence</p>
+                <p className="text-sm text-[color:var(--pico-text-muted)]">{t('routeLedger.syncConfidence')}</p>
                 <p className="mt-1 text-lg font-medium text-[color:var(--pico-text)]">
-                  {formatSyncState(syncState, ready)}
+                  {syncStateLabel}
                 </p>
               </div>
             </div>
           </div>
 
           <div className={picoInset('p-5')}>
-            <p className={picoClasses.label}>Stored page state</p>
+            <p className={picoClasses.label}>{t('operatorTruth.label')}</p>
             <p className="mt-3 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
-              Pico remembers the current page, last lesson, rail state, and help panel so setup can
-              resume without asking you to rebuild context.
+              {t('operatorTruth.body')}
             </p>
           </div>
         </div>

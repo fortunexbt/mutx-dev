@@ -25,9 +25,14 @@ python -m pip install build
 
 ```bash
 pytest tests/test_cli_auth_and_tui.py tests/test_cli_agents_contract.py tests/test_cli_deploy_contract.py
+pytest tests/test_cli_distribution.py
 mutx status
 mutx --help
 ```
+
+The distribution test builds the wheel, installs it with `--no-deps` into a fresh virtual
+environment, verifies its declared dependency metadata, and proves that no backend `src` package
+or queue-worker entrypoint leaked into the artifact.
 
 For an end-to-end local operator smoke:
 

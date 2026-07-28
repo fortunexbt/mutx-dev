@@ -40,10 +40,6 @@ def cli(ctx, api_url):
     ctx.obj["config"] = config
 
 
-def _echo_service_error(error: CLIServiceError) -> None:
-    click.echo(f"Error: {error}", err=True)
-
-
 def _auth_service() -> AuthService:
     return AuthService(config=click.get_current_context().obj["config"], client_factory=get_client)
 
@@ -64,16 +60,19 @@ def login(ctx, email: str, password: str, api_url: str | None):
         )
         click.echo("Logged in successfully!")
     except CLIServiceError as exc:
-        _echo_service_error(exc)
+        raise click.ClickException(str(exc)) from exc
 
 
 @cli.command(name="logout")
 def logout():
     """Logout from mutx.dev"""
-    if not _auth_service().logout():
-        click.echo("No local access token is stored.")
-        click.echo("Run 'mutx status' to inspect current CLI state.")
-        return
+    try:
+        if not _auth_service().logout():
+            click.echo("No local access token is stored.")
+            click.echo("Run 'mutx status' to inspect current CLI state.")
+            return
+    except CLIServiceError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     click.echo("Logged out successfully.")
     click.echo("Local access and refresh tokens cleared.")
@@ -86,8 +85,7 @@ def whoami():
     try:
         user = _auth_service().whoami()
     except CLIServiceError as exc:
-        _echo_service_error(exc)
-        return
+        raise click.ClickException(str(exc)) from exc
 
     click.echo(f"Email: {user.email}")
     click.echo(f"Name: {user.name}")

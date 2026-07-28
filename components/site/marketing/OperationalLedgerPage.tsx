@@ -13,7 +13,7 @@ import {
   type OperationalStoryItem,
 } from './operationalStories'
 
-const workflowStates = ['DEFINED', 'ENFORCED', 'RECORDED', 'REVIEWABLE'] as const
+const workflowStates = ['DEFINED', 'EVALUATED', 'RECORDED', 'REVIEWABLE'] as const
 
 type ArtifactTone = 'live' | 'muted' | 'signal' | 'trace'
 
@@ -34,15 +34,15 @@ type StoryArtifactConfig = {
 const STORY_ARTIFACTS = {
   '/ai-agent-approvals': {
     kind: 'gate',
-    caption: 'Approval gate / live decision envelope',
+    caption: 'Approval gate / governed decision envelope',
     metric: '01',
     metricLabel: 'operator decision pending',
     stamp: 'AUTH ROUTE / P1',
     rows: [
       { label: 'Scope match', detail: 'prod.release', level: 100, tone: 'live' },
       { label: 'Policy threshold', detail: 'human required', level: 86, tone: 'signal' },
-      { label: 'Operator route', detail: 'on-call / platform', level: 68, tone: 'trace' },
-      { label: 'Execution', detail: 'held at boundary', level: 6, tone: 'muted' },
+      { label: 'Operator route', detail: 'configured webhook', level: 68, tone: 'trace' },
+      { label: 'Handler', detail: 'not invoked', level: 6, tone: 'muted' },
     ],
   },
   '/ai-agent-audit-logs': {
@@ -50,7 +50,7 @@ const STORY_ARTIFACTS = {
     caption: 'Evidence chain / sealed execution record',
     metric: '4/4',
     metricLabel: 'hash links verified',
-    stamp: 'EXPORT / SOC2',
+    stamp: 'EXPORT / VERIFIED',
     rows: [
       { label: 'Intent', detail: 'b91e…0a4c', level: 100, tone: 'trace' },
       { label: 'Policy', detail: '294a…b910', level: 92, tone: 'signal' },
@@ -62,39 +62,39 @@ const STORY_ARTIFACTS = {
     kind: 'topology',
     caption: 'Control plane / runtime visibility map',
     metric: '12',
-    metricLabel: 'agents reporting',
+    metricLabel: 'sample agents reporting',
     stamp: 'PLANE / HEALTHY',
     rows: [
       { label: 'Ingress', detail: '3 active channels', level: 92, tone: 'trace' },
       { label: 'Policy plane', detail: '24 rules loaded', level: 78, tone: 'signal' },
       { label: 'Runtime fleet', detail: '12 / 12 online', level: 100, tone: 'live' },
-      { label: 'Evidence sink', detail: 'continuity 100%', level: 100, tone: 'trace' },
+      { label: 'Evidence sink', detail: 'governed calls', level: 100, tone: 'trace' },
     ],
   },
   '/ai-agent-cost': {
     kind: 'spend',
-    caption: 'Run economics / attributed spend profile',
-    metric: '$18.42',
-    metricLabel: 'run cost attributed',
-    stamp: 'BUDGET / 72% LEFT',
+    caption: 'Usage ledger / recorded credit profile',
+    metric: '28.0',
+    metricLabel: 'credits recorded',
+    stamp: 'BUDGET / REPORTED',
     rows: [
-      { label: 'Model', detail: '$12.08', level: 66, tone: 'signal' },
-      { label: 'Tools', detail: '$4.70', level: 26, tone: 'trace' },
-      { label: 'Storage', detail: '$1.64', level: 9, tone: 'muted' },
-      { label: 'Unattributed', detail: '$0.00', level: 2, tone: 'live' },
+      { label: 'Agent runs', detail: '16 credits', level: 66, tone: 'signal' },
+      { label: 'Deployments', detail: '8 credits', level: 26, tone: 'trace' },
+      { label: 'RAG', detail: '4 credits', level: 9, tone: 'muted' },
+      { label: 'Runtime cutoff', detail: 'operator-owned', level: 2, tone: 'live' },
     ],
   },
   '/ai-agent-deployment': {
     kind: 'rollout',
-    caption: 'Deployment wave / progressive health proof',
-    metric: '3/3',
-    metricLabel: 'targets healthy',
-    stamp: 'ROLLBACK / ARMED',
+    caption: 'Deployment record / lifecycle history',
+    metric: 'v3',
+    metricLabel: 'record version selected',
+    stamp: 'PROVIDER / OPERATOR-OWNED',
     rows: [
-      { label: 'Canary', detail: 'healthy · 8m', level: 100, tone: 'live' },
-      { label: 'Wave 01', detail: 'healthy · 5m', level: 100, tone: 'live' },
-      { label: 'Wave 02', detail: 'healthy · 2m', level: 100, tone: 'live' },
-      { label: 'Previous', detail: 'retained · 1.3.9', level: 42, tone: 'muted' },
+      { label: 'Desired replicas', detail: '3', level: 100, tone: 'live' },
+      { label: 'Lifecycle state', detail: 'ready reported', level: 100, tone: 'live' },
+      { label: 'Version record', detail: 'current · v3', level: 100, tone: 'live' },
+      { label: 'Provider rollout', detail: 'verify separately', level: 42, tone: 'muted' },
     ],
   },
   '/ai-agent-governance': {
@@ -102,7 +102,7 @@ const STORY_ARTIFACTS = {
     caption: 'Policy evaluation / effective ruleset',
     metric: 'v24',
     metricLabel: 'policy bundle active',
-    stamp: 'SIGNED / 09:42 UTC',
+    stamp: 'POLICY / 09:42 UTC',
     rows: [
       { label: 'Identity', detail: 'role matched', level: 100, tone: 'live' },
       { label: 'Environment', detail: 'production', level: 84, tone: 'trace' },
@@ -125,20 +125,20 @@ const STORY_ARTIFACTS = {
   },
   '/ai-agent-infrastructure': {
     kind: 'topology',
-    caption: 'Runtime topology / resolved infrastructure',
+    caption: 'Runtime topology / reported infrastructure',
     metric: '03',
-    metricLabel: 'execution zones visible',
-    stamp: 'EU-WEST / ONLINE',
+    metricLabel: 'sample signals visible',
+    stamp: 'INTEGRATION / REPORTED',
     rows: [
       { label: 'Control', detail: 'mutx-core-01', level: 88, tone: 'signal' },
       { label: 'Runtime', detail: '12 workers', level: 100, tone: 'live' },
       { label: 'Telemetry', detail: 'OTLP connected', level: 92, tone: 'trace' },
-      { label: 'Evidence', detail: 'object lock on', level: 76, tone: 'muted' },
+      { label: 'Provider state', detail: 'verify external', level: 76, tone: 'muted' },
     ],
   },
   '/ai-agent-monitoring': {
     kind: 'trace',
-    caption: 'Trace waterfall / one complete tool path',
+    caption: 'Trace waterfall / one submitted tool path',
     metric: '1.24s',
     metricLabel: 'end-to-end duration',
     stamp: 'TRACE / 7F2A91',
@@ -151,15 +151,15 @@ const STORY_ARTIFACTS = {
   },
   '/ai-agent-reliability': {
     kind: 'health',
-    caption: 'Readiness envelope / failure containment',
-    metric: '99.98%',
-    metricLabel: 'readiness window',
-    stamp: 'SLO / WITHIN BUDGET',
+    caption: 'Readiness envelope / reported health',
+    metric: '120s',
+    metricLabel: 'stale heartbeat threshold',
+    stamp: 'HEALTH / CONTROL PLANE',
     rows: [
-      { label: 'Runtime', detail: 'healthy', level: 100, tone: 'live' },
-      { label: 'Dependencies', detail: '8 / 8 ready', level: 100, tone: 'live' },
-      { label: 'Retry budget', detail: '91% remains', level: 91, tone: 'trace' },
-      { label: 'Open circuit', detail: 'none', level: 3, tone: 'muted' },
+      { label: 'Agent signal', detail: 'heartbeat fresh', level: 100, tone: 'live' },
+      { label: 'API readiness', detail: 'database ready', level: 100, tone: 'live' },
+      { label: 'Owned alerts', detail: 'queryable', level: 91, tone: 'trace' },
+      { label: 'Webhook circuit', detail: 'delivery only', level: 3, tone: 'muted' },
     ],
   },
 } as const satisfies Record<string, StoryArtifactConfig>
@@ -249,7 +249,7 @@ export function OperationalLedgerPage({ story }: { story: OperationalStory }) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <main id="main-content" className={styles.main}>
+      <main id="main-content" tabIndex={-1} className={styles.main}>
         <section className={styles.hero} aria-labelledby={heroTitleId}>
           <div className={`${styles.shell} ${styles.heroGrid}`}>
             <div className={styles.heroCopy}>

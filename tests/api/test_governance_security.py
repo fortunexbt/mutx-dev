@@ -7,6 +7,11 @@ from src.api.services.credential_broker import Credential
 from src.api.services.faramesh_supervisor import SupervisionValidationError
 
 
+@pytest.fixture(autouse=True)
+def administrator_principal(test_user):
+    test_user.roles = ["ADMIN"]
+
+
 @pytest.mark.asyncio
 async def test_governance_credentials_require_internal_user_and_redact_secret(
     client: AsyncClient, other_user_client: AsyncClient, monkeypatch

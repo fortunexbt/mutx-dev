@@ -25,8 +25,7 @@ def _matrix_rows(matrix: str) -> dict[str, tuple[str, str]]:
         re.MULTILINE,
     )
     return {
-        risk_id: (name.strip(), status)
-        for risk_id, name, status in row_pattern.findall(matrix)
+        risk_id: (name.strip(), status) for risk_id, name, status in row_pattern.findall(matrix)
     }
 
 
@@ -35,9 +34,7 @@ def test_agentic_risk_matrix_uses_the_complete_official_taxonomy() -> None:
     rows = _matrix_rows(matrix)
 
     assert list(rows) == list(OFFICIAL_RISKS)
-    assert {
-        risk_id: name for risk_id, (name, _status) in rows.items()
-    } == OFFICIAL_RISKS
+    assert {risk_id: name for risk_id, (name, _status) in rows.items()} == OFFICIAL_RISKS
     assert sum(status == "Partial" for _name, status in rows.values()) == 8
     assert sum(status == "Gap" for _name, status in rows.values()) == 2
 

@@ -81,7 +81,7 @@ class TestMutxCrewAICallbackSpans:
         # on_agent_start logs to audit store, not spans
         handler._http.post.assert_called_once()
         call_args = handler._http.post.call_args
-        assert call_args[0][0] == "/v1/events"
+        assert call_args[0][0] == "events"
         event = call_args[1]["json"]
         assert event["event_type"] == "crew_agent_start"
         assert event["crew_name"] == "test-crew"
@@ -110,7 +110,7 @@ class TestMutxCrewAICallbackSpans:
         # on_task_start logs to audit store, not spans
         handler._http.post.assert_called_once()
         call_args = handler._http.post.call_args
-        assert call_args[0][0] == "/v1/events"
+        assert call_args[0][0] == "events"
         event = call_args[1]["json"]
         assert event["event_type"] == "crew_task_start"
         assert event["crew_name"] == "test-crew"
@@ -127,7 +127,7 @@ class TestRunCrew:
         mock_crew.agents = []
 
         with patch.dict("sys.modules", {"crewai": MagicMock(), "crewai.Crew": MagicMock()}):
-            result = run_crew(mock_crew, {"topic": "AI"})
+            result = run_crew(mock_crew, {"topic": "AI"}, api_key="test-key")
 
         mock_crew.kickoff.assert_called_once()
         assert result.output == "crew result"
@@ -143,7 +143,7 @@ class TestRunCrew:
         mock_crew.kickoff = MagicMock(return_value=MagicMock(output="result"))
 
         with patch.dict("sys.modules", {"crewai": MagicMock(), "crewai.Crew": MagicMock()}):
-            result = run_crew(mock_crew, {"topic": "AI"})
+            run_crew(mock_crew, {"topic": "AI"}, api_key="test-key")
 
         # Callback should be attached to agents that don't have one
         assert mock_agent.callback is not None

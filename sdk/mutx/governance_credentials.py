@@ -7,6 +7,8 @@ from typing import Any, Optional
 
 import httpx
 
+from mutx._http import api_path
+
 
 class CredentialBackend:
     """Represents a registered credential backend."""
@@ -60,14 +62,14 @@ class GovernanceCredentials:
     def list_backends(self) -> list[CredentialBackend]:
         """List all registered credential backends."""
         self._require_sync_client()
-        response = self._client.get("/governance/credentials/backends")
+        response = self._client.get("governance/credentials/backends")
         response.raise_for_status()
         return [CredentialBackend(d) for d in response.json()]
 
     async def alist_backends(self) -> list[CredentialBackend]:
         """List all registered credential backends (async)."""
         self._require_async_client()
-        response = await self._client.get("/governance/credentials/backends")
+        response = await self._client.get("governance/credentials/backends")
         response.raise_for_status()
         return [CredentialBackend(d) for d in response.json()]
 
@@ -98,7 +100,7 @@ class GovernanceCredentials:
         if config:
             payload["config"] = config
 
-        response = self._client.post("/governance/credentials/backends", json=payload)
+        response = self._client.post("governance/credentials/backends", json=payload)
         response.raise_for_status()
         return response.json()
 
@@ -121,7 +123,7 @@ class GovernanceCredentials:
         if config:
             payload["config"] = config
 
-        response = await self._client.post("/governance/credentials/backends", json=payload)
+        response = await self._client.post("governance/credentials/backends", json=payload)
         response.raise_for_status()
         return response.json()
 
@@ -131,7 +133,9 @@ class GovernanceCredentials:
     ) -> dict[str, Any]:
         """Unregister a credential backend."""
         self._require_sync_client()
-        response = self._client.delete(f"/governance/credentials/backends/{backend_name}")
+        response = self._client.delete(
+            api_path("governance/credentials/backends/{backend_name}", backend_name=backend_name)
+        )
         response.raise_for_status()
         return response.json()
 
@@ -141,7 +145,9 @@ class GovernanceCredentials:
     ) -> dict[str, Any]:
         """Unregister a credential backend (async)."""
         self._require_async_client()
-        response = await self._client.delete(f"/governance/credentials/backends/{backend_name}")
+        response = await self._client.delete(
+            api_path("governance/credentials/backends/{backend_name}", backend_name=backend_name)
+        )
         response.raise_for_status()
         return response.json()
 
@@ -151,7 +157,12 @@ class GovernanceCredentials:
     ) -> dict[str, Any]:
         """Check health of a specific credential backend."""
         self._require_sync_client()
-        response = self._client.get(f"/governance/credentials/backends/{backend_name}/health")
+        response = self._client.get(
+            api_path(
+                "governance/credentials/backends/{backend_name}/health",
+                backend_name=backend_name,
+            )
+        )
         response.raise_for_status()
         return response.json()
 
@@ -161,21 +172,26 @@ class GovernanceCredentials:
     ) -> dict[str, Any]:
         """Check health of a specific credential backend (async)."""
         self._require_async_client()
-        response = await self._client.get(f"/governance/credentials/backends/{backend_name}/health")
+        response = await self._client.get(
+            api_path(
+                "governance/credentials/backends/{backend_name}/health",
+                backend_name=backend_name,
+            )
+        )
         response.raise_for_status()
         return response.json()
 
     def health_check(self) -> dict[str, Any]:
         """Check health of all registered credential backends."""
         self._require_sync_client()
-        response = self._client.get("/governance/credentials/health")
+        response = self._client.get("governance/credentials/health")
         response.raise_for_status()
         return response.json()
 
     async def ahealth_check(self) -> dict[str, Any]:
         """Check health of all backends (async)."""
         self._require_async_client()
-        response = await self._client.get("/governance/credentials/health")
+        response = await self._client.get("governance/credentials/health")
         response.raise_for_status()
         return response.json()
 
@@ -192,7 +208,13 @@ class GovernanceCredentials:
                             gcpsm:/my-project/my-secret
         """
         self._require_sync_client()
-        response = self._client.get(f"/governance/credentials/get/{full_path}")
+        response = self._client.get(
+            api_path(
+                "governance/credentials/get/{full_path}",
+                full_path=full_path,
+                path_parameters={"full_path"},
+            )
+        )
         response.raise_for_status()
         return Credential(response.json())
 
@@ -202,6 +224,12 @@ class GovernanceCredentials:
     ) -> Credential:
         """Retrieve a credential by its full path (async)."""
         self._require_async_client()
-        response = await self._client.get(f"/governance/credentials/get/{full_path}")
+        response = await self._client.get(
+            api_path(
+                "governance/credentials/get/{full_path}",
+                full_path=full_path,
+                path_parameters={"full_path"},
+            )
+        )
         response.raise_for_status()
         return Credential(response.json())

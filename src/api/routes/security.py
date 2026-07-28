@@ -1,17 +1,9 @@
 """
 MUTX Security API Routes.
 
-REST API for MUTX runtime-security capabilities.
-
-Routes:
-- POST   /v1/security/actions/evaluate        - Evaluate action without executing
-- POST   /v1/security/approvals/request    - Request human approval
-- POST   /v1/security/approvals/{id}/approve - Approve deferred action
-- POST   /v1/security/approvals/{id}/deny   - Deny deferred action
-- GET    /v1/security/approvals/{id}        - Get approval status
-- GET    /v1/security/receipts/{id}         - Get action receipt
-- GET    /v1/security/compliance             - Run local AARM-alignment checks
-- GET    /v1/security/metrics               - Get governance metrics
+REST API for MUTX runtime-security capabilities. Legacy tenant state exposed
+here is durably scoped to the authenticated principal. Global compliance and
+metrics operations are restricted to ADMIN principals.
 
 Informed by the AARM specification. The local check is not an AARM conformance
 report and does not establish Core, Extended, or organizational conformance.
@@ -20,215 +12,161 @@ https://github.com/aarm-dev/docs/tree/8eff208b98786b2c9a578b26cb7eaca440ec4020
 AARM documentation reference: MIT License, Copyright (c) 2023 Mintlify.
 """
 
-from typing import Any, Optional
+from datetime import datetime, timedelta, timezone
+from time import perf_counter
+from typing import Annotated
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import PlainTextResponse, Response
-from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.auth.dependencies import get_current_user
-from src.api.models import User
-from src.api.services.governance_runtime import get_governance_runtime
-from src.security import (
-    AARMComplianceChecker,
-    NormalizedAction,
+from src.api.auth.dependencies import require_plan, require_roles
+from src.api.config import get_settings
+from src.api.database import get_db
+from src.api.models import ApprovalRecord, User
+from src.api.models.security_schemas import (
+    ActionEvaluateRequest,
+    ActionEvaluateResponse,
+    ApprovalActionRequest,
+    ApprovalActionResponse,
+    ApprovalRequestCreate,
+    ApprovalRequestResponse,
+    ComplianceResponse,
+    MetricsResponse,
+    ReceiptResponse,
+    SessionCloseResponse,
+    SessionCreateRequest,
+    SessionCreateResponse,
+    SessionReceiptListResponse,
+    SessionSummaryResponse,
 )
-from src.security.telemetry import TelemetryEventType
+from src.api.services.approval import ApprovalStatus
+from src.api.services.approval_persistence import (
+    ApprovalForbiddenError,
+    ApprovalNotFoundError,
+    ApprovalReviewerError,
+    ApprovalTransitionConflictError,
+    approval_request_from_record,
+    create_approval_record,
+    deliver_approval_notification,
+    get_persisted_roles,
+    get_visible_approval as get_visible_canonical_approval,
+    list_visible_approvals,
+    resolve_approval,
+)
+from src.api.services.governance_runtime import get_governance_runtime
+from src.api.services.security_state import (
+    SecurityStateConflictError,
+    SecurityStateForbiddenError,
+    SecurityStateNotFoundError,
+    close_visible_session,
+    create_or_replace_session,
+    get_global_metrics,
+    get_owned_action_context,
+    get_visible_receipt,
+    get_visible_session,
+    list_visible_session_receipts,
+    metrics_to_prometheus,
+    record_evaluation,
+    validate_approval_context,
+)
+from src.security import AARMComplianceChecker, NormalizedAction
+from src.security.receipts import ReceiptSigningError
 
 router = APIRouter(prefix="/security", tags=["security"])
+SAFE_READ_ROLES = ("VIEWER", "DEVELOPER")
+require_paid_approval_plan = require_plan("starter")
 
 
+async def require_paid_security_approval_developer(
+    current_user: User = Depends(require_roles("DEVELOPER")),
+    _paid_user: User = Depends(require_paid_approval_plan),
+) -> User:
+    """Require paid ownership to create an approval, not to review one."""
+    return current_user
+
+
+# These components hold global policy/runtime instrumentation. Tenant-owned
+# approval and session data is intentionally never read from their process-local
+# stores by this router.
 _governance = get_governance_runtime()
 _mediator = _governance.mediator
 _context_accumulator = _governance.context_accumulator
 _policy_engine = _governance.policy_engine
-_approval_service = _governance.approval_service
 _receipt_generator = _governance.receipt_generator
 _telemetry_exporter = _governance.telemetry_exporter
 
 
-class ActionEvaluateRequest(BaseModel):
-    """Request to evaluate an action without executing."""
-
-    tool_name: str = Field(..., description="Name of the tool")
-    tool_args: dict[str, Any] = Field(default_factory=dict, description="Tool arguments")
-    agent_id: str = Field(..., description="Agent ID")
-    session_id: str = Field(..., description="Session ID")
-    user_id: Optional[str] = Field(default=None, description="User ID")
-    trigger: str = Field(default="manual", description="What triggered this")
-    runtime: str = Field(default="mutx", description="Runtime identifier")
-
-
-class ActionEvaluateResponse(BaseModel):
-    """Response from action evaluation."""
-
-    decision: str
-    rule_id: Optional[str] = None
-    rule_name: Optional[str] = None
-    reason: str
-    would_modify: bool = False
-    action_id: str
-    action_hash: str
-
-
-class ApprovalRequestCreate(BaseModel):
-    """Request human approval for an action."""
-
-    tool_name: str = Field(..., description="Name of the tool")
-    tool_args: dict[str, Any] = Field(default_factory=dict, description="Tool arguments")
-    agent_id: str = Field(..., description="Agent ID")
-    session_id: str = Field(..., description="Session ID")
-    user_id: Optional[str] = Field(default=None, description="User ID")
-    reason: str = Field(default="", description="Why approval is needed")
-    timeout_minutes: int = Field(default=5, ge=1, le=60, description="Timeout in minutes")
-
-
-class ApprovalRequestResponse(BaseModel):
-    """Response for approval request."""
-
-    request_id: str
-    token: str
-    status: str
-    tool_name: str
-    reason: str
-    created_at: str
-    expires_at: str
-    remaining_seconds: int
-
-
-class ApprovalActionRequest(BaseModel):
-    """Approve or deny a request."""
-
-    reviewer: str = Field(..., description="Who is approving/denying")
-    comment: str = Field(default="", description="Optional comment")
-
-
-class ComplianceResponse(BaseModel):
-    """Backward-compatible local AARM-alignment check response."""
-
-    overall_satisfied: bool
-    version: str
-    checked_at: str
-    summary: dict[str, Any]
-    results: list[dict[str, Any]]
-
-
-class ApprovalActionResponse(BaseModel):
-    """Response for approve/deny action on an approval request."""
-
-    status: str
-    request_id: str
-
-
-class ReceiptActionModel(BaseModel):
-    """Action summary within a receipt."""
-
-    id: str = ""
-    tool_name: str = ""
-    action_hash: str = ""
-    timestamp: str = ""
-    effect: str = ""
-
-
-class ReceiptResponse(BaseModel):
-    """Response for a single action receipt."""
-
-    receipt_id: str = ""
-    action_id: str = ""
-    action_hash: str = ""
-    session_id: str = ""
-    tool_name: str = ""
-    tool_args: dict[str, Any] = Field(default_factory=dict)
-    agent_id: str = ""
-    user_id: str = ""
-    policy_decision: str = ""
-    policy_rule_id: Optional[str] = None
-    policy_rule_name: Optional[str] = None
-    decision_reason: str = ""
-    outcome: str = ""
-    outcome_detail: str = ""
-    timestamp: str = ""
-    duration_ms: Optional[int] = None
-    signature: Optional[str] = None
-    signed_by: Optional[str] = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class SessionReceiptListResponse(BaseModel):
-    """Response for listing receipts in a session."""
-
-    session_id: str
-    count: int
-    receipts: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class SessionCreateResponse(BaseModel):
-    """Response for creating a security session."""
-
-    session_id: str
-    agent_id: str
-    created_at: str
-
-
-class SessionSummaryResponse(BaseModel):
-    """Response for getting a session summary."""
-
-    session_id: str
-    agent_id: str
-    duration_seconds: float = 0.0
-    total_actions: int = 0
-    permits: int = 0
-    denials: int = 0
-    defers: int = 0
-    errors: int = 0
-    intent_alignment: str = "unknown"
-
-
-class SessionCloseResponse(BaseModel):
-    """Response for closing a session."""
-
-    session_id: str
-    status: str
-
-
-class MetricsResponse(BaseModel):
-    """Governance metrics response."""
-
-    total_evaluations: int
-    permits: int
-    denials: int
-    defers: int
-    pending_approvals: int
-    intent_drifts: int
-    active_sessions: int
-    avg_latency_ms: float
-    decisions_per_minute: int
-    decisions_per_hour: int
+def _not_found(resource: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"{resource} not found",
+    )
 
 
 @router.post("/actions/evaluate", response_model=ActionEvaluateResponse)
 async def evaluate_action(
     request: ActionEvaluateRequest,
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
-    """
-    Evaluate an action against policy without executing.
+    """Evaluate an action without executing it and durably account for the result."""
+    try:
+        agent, context = await get_owned_action_context(
+            db,
+            user=current_user,
+            agent_id=request.agent_id,
+            session_id=request.session_id,
+        )
+    except SecurityStateNotFoundError as exc:
+        raise _not_found("Agent or security session") from exc
+    except SecurityStateConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
-    This endpoint allows you to check what the policy decision would be
-    for a given action without actually executing it.
-    """
     action = NormalizedAction(
         tool_name=request.tool_name,
         tool_args=request.tool_args,
-        agent_id=request.agent_id,
+        agent_id=str(agent.id),
         session_id=request.session_id,
-        user_id=request.user_id or str(current_user.id),
+        user_id=str(current_user.id),
         trigger=request.trigger,
         runtime=request.runtime,
     )
 
-    context = _context_accumulator.get_context(request.session_id)
+    started_at = perf_counter()
     result = _policy_engine.evaluate(action, context)
+    latency_ms = (perf_counter() - started_at) * 1000
+    receipt = _receipt_generator.generate(
+        action=action,
+        context=context,
+        decision=result,
+        outcome="evaluated",
+        outcome_detail="Dry-run policy evaluation",
+        duration_ms=max(0, round(latency_ms)),
+    )
+    try:
+        _receipt_generator.sign_for_persistence(receipt)
+    except ReceiptSigningError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security receipt signing is unavailable",
+        ) from exc
+    try:
+        evaluation_id, receipt_id = await record_evaluation(
+            db,
+            owner=current_user,
+            action=action,
+            result=result,
+            receipt=receipt,
+            latency_ms=latency_ms,
+            receipt_verifier=_receipt_generator,
+            require_verified_receipt=_receipt_generator.signing_required,
+        )
+    except SecurityStateNotFoundError as exc:
+        raise _not_found("Agent or security session") from exc
+    except SecurityStateConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     return ActionEvaluateResponse(
         decision=result.decision.value,
@@ -236,6 +174,8 @@ async def evaluate_action(
         rule_name=result.rule_name,
         reason=result.reason,
         would_modify=result.is_modified,
+        evaluation_id=str(evaluation_id),
+        receipt_id=str(receipt_id),
         action_id=action.id,
         action_hash=action.action_hash,
     )
@@ -248,217 +188,246 @@ async def evaluate_action(
 )
 async def request_approval(
     request: ApprovalRequestCreate,
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_paid_security_approval_developer),
 ):
-    """
-    Request human approval for a deferred action.
+    """Create a canonical durable approval owned by the authenticated principal."""
+    try:
+        await validate_approval_context(
+            db,
+            owner=current_user,
+            agent_id=request.agent_id,
+            session_id=request.session_id,
+        )
+        created = await create_approval_record(
+            db,
+            owner=current_user,
+            agent_id=str(request.agent_id),
+            session_id=request.session_id,
+            action_type=request.tool_name,
+            payload={
+                "tool_args": request.tool_args,
+                "reason": request.reason,
+                "timeout_minutes": request.timeout_minutes,
+                "source": "legacy_security",
+            },
+            reviewer_id=request.reviewer_id,
+            idempotency_key=None,
+            webhook_url=getattr(get_settings(), "approval_webhook_url", None),
+        )
+    except SecurityStateNotFoundError as exc:
+        raise _not_found("Agent or security session") from exc
+    except SecurityStateConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ApprovalReviewerError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    await deliver_approval_notification(db, approval_id=created.record.id)
+    return await _legacy_approval_response(db, record=created.record, user=current_user)
 
-    Creates an approval request that can be approved or denied via
-    the approve/deny endpoints.
-    """
-    action = NormalizedAction(
-        tool_name=request.tool_name,
-        tool_args=request.tool_args,
-        agent_id=request.agent_id,
-        session_id=request.session_id,
-        user_id=request.user_id or str(current_user.id),
+
+async def _legacy_approval_response(
+    db: AsyncSession,
+    *,
+    record: ApprovalRecord,
+    user: User,
+) -> ApprovalRequestResponse:
+    """Render the legacy shape from the canonical record without secret tokens."""
+    public = approval_request_from_record(
+        record,
+        user_id=user.id,
+        roles=await get_persisted_roles(db, user),
     )
-
-    approval_request = _approval_service.request_approval(
-        action=action,
-        reason=request.reason,
-        timeout_minutes=request.timeout_minutes,
-    )
-
-    _telemetry_exporter.export_approval_event(
-        event_type=TelemetryEventType.APPROVAL_REQUESTED,
-        request_id=approval_request.id,
-        token=approval_request.token,
-        reviewer="",
-        tool_name=request.tool_name,
-        agent_id=request.agent_id,
-        session_id=request.session_id,
-    )
-
+    payload = record.payload if isinstance(record.payload, dict) else {}
+    timeout_minutes = payload.get("timeout_minutes", 5)
+    if not isinstance(timeout_minutes, int) or not 1 <= timeout_minutes <= 60:
+        timeout_minutes = 5
+    expires_at = public.created_at + timedelta(minutes=timeout_minutes)
+    status_value = str(public.status)
+    legacy_status = {
+        ApprovalStatus.PENDING.value: "pending",
+        ApprovalStatus.APPROVED.value: "approved",
+        ApprovalStatus.REJECTED.value: "denied",
+        ApprovalStatus.EXPIRED.value: "expired",
+    }.get(status_value, status_value.lower())
+    remaining = max(0, int((expires_at - datetime.now(timezone.utc)).total_seconds()))
+    if legacy_status == "pending" and remaining == 0:
+        legacy_status = "expired"
+    reason = payload.get("reason", "")
     return ApprovalRequestResponse(
-        request_id=approval_request.id,
-        token=approval_request.token,
-        status=approval_request.status.value,
-        tool_name=approval_request.tool_name,
-        reason=approval_request.reason,
-        created_at=approval_request.created_at.isoformat(),
-        expires_at=approval_request.expires_at.isoformat(),
-        remaining_seconds=approval_request.remaining_seconds,
+        request_id=str(public.id),
+        owner_id=str(public.owner_id),
+        reviewer_id=str(public.reviewer_id) if public.reviewer_id else None,
+        can_resolve=public.can_resolve,
+        status=legacy_status,
+        tool_name=public.action_type,
+        reason=reason if isinstance(reason, str) else "",
+        created_at=public.created_at.isoformat(),
+        expires_at=expires_at.isoformat(),
+        remaining_seconds=remaining,
     )
 
 
 @router.get("/approvals/{request_id}", response_model=ApprovalRequestResponse)
 async def get_approval(
     request_id: str,
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(*SAFE_READ_ROLES)),
 ):
-    """Get the status of an approval request."""
-    approval_request = _approval_service.get_request(request_id)
+    """Get an owner-visible approval, or any unambiguous approval as ADMIN."""
+    try:
+        approval = await get_visible_canonical_approval(
+            db,
+            user=current_user,
+            request_id=uuid.UUID(request_id),
+        )
+        return await _legacy_approval_response(db, record=approval, user=current_user)
+    except (ValueError, ApprovalNotFoundError) as exc:
+        raise _not_found("Approval request") from exc
 
-    if not approval_request:
-        raise HTTPException(status_code=404, detail="Approval request not found")
 
-    return ApprovalRequestResponse(
-        request_id=approval_request.id,
-        token=approval_request.token,
-        status=approval_request.status.value,
-        tool_name=approval_request.tool_name,
-        reason=approval_request.reason,
-        created_at=approval_request.created_at.isoformat(),
-        expires_at=approval_request.expires_at.isoformat(),
-        remaining_seconds=approval_request.remaining_seconds,
-    )
+async def _resolve_request(
+    *,
+    request_id: str,
+    request: ApprovalActionRequest,
+    decision: str,
+    db: AsyncSession,
+    current_user: User,
+) -> ApprovalActionResponse:
+    try:
+        approval = await resolve_approval(
+            db,
+            user=current_user,
+            request_id=uuid.UUID(request_id),
+            target_status=(
+                ApprovalStatus.APPROVED if decision == "approved" else ApprovalStatus.REJECTED
+            ),
+            comment=request.comment,
+        )
+    except (ValueError, ApprovalNotFoundError) as exc:
+        raise _not_found("Approval request") from exc
+    except ApprovalTransitionConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ApprovalForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    return ApprovalActionResponse(status=decision, request_id=str(approval.id))
 
 
 @router.post(
-    "/approvals/{token}/approve",
+    "/approvals/{request_id}/approve",
     response_model=ApprovalActionResponse,
     status_code=status.HTTP_200_OK,
 )
 async def approve_request(
-    token: str,
+    request_id: str,
     request: ApprovalActionRequest,
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
-    """Approve a pending request."""
-    success = _approval_service.approve(token, reviewer=request.reviewer, comment=request.comment)
-
-    if not success:
-        raise HTTPException(
-            status_code=400,
-            detail="Request not found or not pending",
-        )
-
-    approval_request = _approval_service.get_by_token(token)
-
-    _telemetry_exporter.export_approval_event(
-        event_type=TelemetryEventType.APPROVAL_APPROVED,
-        request_id=approval_request.id,
-        token=token,
-        reviewer=request.reviewer,
-        tool_name=approval_request.tool_name,
-        agent_id=approval_request.agent_id,
-        session_id=approval_request.session_id,
-        comment=request.comment,
-    )
-
-    return ApprovalActionResponse(
-        status="approved",
-        request_id=approval_request.id,
+    """Approve by request ID using the authenticated reviewer identity."""
+    return await _resolve_request(
+        request_id=request_id,
+        request=request,
+        decision="approved",
+        db=db,
+        current_user=current_user,
     )
 
 
 @router.post(
-    "/approvals/{token}/deny",
+    "/approvals/{request_id}/deny",
     response_model=ApprovalActionResponse,
     status_code=status.HTTP_200_OK,
 )
 async def deny_request(
-    token: str,
+    request_id: str,
     request: ApprovalActionRequest,
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
-    """Deny a pending request."""
-    success = _approval_service.deny(token, reviewer=request.reviewer, reason=request.comment)
-
-    if not success:
-        raise HTTPException(
-            status_code=400,
-            detail="Request not found or not pending",
-        )
-
-    approval_request = _approval_service.get_by_token(token)
-
-    _telemetry_exporter.export_approval_event(
-        event_type=TelemetryEventType.APPROVAL_DENIED,
-        request_id=approval_request.id,
-        token=token,
-        reviewer=request.reviewer,
-        tool_name=approval_request.tool_name,
-        agent_id=approval_request.agent_id,
-        session_id=approval_request.session_id,
-        comment=request.comment,
-    )
-
-    return ApprovalActionResponse(
-        status="denied",
-        request_id=approval_request.id,
+    """Deny by request ID using the authenticated reviewer identity."""
+    return await _resolve_request(
+        request_id=request_id,
+        request=request,
+        decision="denied",
+        db=db,
+        current_user=current_user,
     )
 
 
 @router.get("/approvals", response_model=list[ApprovalRequestResponse])
 async def list_pending_approvals(
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(*SAFE_READ_ROLES)),
 ):
-    """List all pending approval requests."""
-    pending = _approval_service.list_pending()
-
+    """List owner-scoped pending approvals; ADMIN receives the global list."""
+    approvals, _ = await list_visible_approvals(
+        db,
+        user=current_user,
+        status_filter=ApprovalStatus.PENDING,
+        agent_id=None,
+        offset=0,
+        limit=1000,
+    )
     return [
-        ApprovalRequestResponse(
-            request_id=r.id,
-            token=r.token,
-            status=r.status.value,
-            tool_name=r.tool_name,
-            reason=r.reason,
-            created_at=r.created_at.isoformat(),
-            expires_at=r.expires_at.isoformat(),
-            remaining_seconds=r.remaining_seconds,
-        )
-        for r in pending
+        await _legacy_approval_response(db, record=item, user=current_user) for item in approvals
     ]
 
 
 @router.get("/receipts/{receipt_id}", response_model=ReceiptResponse)
 async def get_receipt(
     receipt_id: str,
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(*SAFE_READ_ROLES)),
 ):
-    """Get a receipt by ID."""
-    receipt = _receipt_generator.get_receipt(receipt_id)
-
-    if not receipt:
-        raise HTTPException(status_code=404, detail="Receipt not found")
-
-    return ReceiptResponse(**receipt.to_dict())
+    """Get a durable receipt visible to the authenticated principal."""
+    try:
+        return ReceiptResponse(
+            **await get_visible_receipt(db, user=current_user, receipt_id=receipt_id)
+        )
+    except SecurityStateNotFoundError as exc:
+        raise _not_found("Receipt") from exc
 
 
 @router.get("/receipts/session/{session_id}", response_model=SessionReceiptListResponse)
 async def get_session_receipts(
     session_id: str,
     limit: int = Query(default=100, ge=1, le=1000),
-    current_user: User = Depends(get_current_user),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(*SAFE_READ_ROLES)),
 ):
-    """Get receipts for a session."""
-    receipts = _receipt_generator.get_receipts_for_session(session_id, limit)
-
+    """Get an owner-filtered page of durable session receipts."""
+    receipts, total = await list_visible_session_receipts(
+        db,
+        user=current_user,
+        session_id=session_id,
+        limit=limit,
+        offset=offset,
+    )
     return SessionReceiptListResponse(
         session_id=session_id,
         count=len(receipts),
-        receipts=[r.to_dict() for r in receipts],
+        total=total,
+        limit=limit,
+        offset=offset,
+        receipts=receipts,
     )
 
 
 @router.get("/compliance", response_model=ComplianceResponse)
 async def run_compliance_check(
-    current_user: User = Depends(get_current_user),
+    _current_user: User = Depends(require_roles("ADMIN")),
 ):
-    """Run local capability checks mapped to AARM; not a conformance report."""
+    """Run the genuinely global local capability check as ADMIN."""
     checker = AARMComplianceChecker(
         mediator=_mediator,
         context_accumulator=_context_accumulator,
         policy_engine=_policy_engine,
-        approval_service=_approval_service,
+        approval_service=None,
         receipt_generator=_receipt_generator,
         telemetry_exporter=_telemetry_exporter,
     )
-
     report = checker.full_audit()
-
     return ComplianceResponse(
         overall_satisfied=report.overall_satisfied,
         version=report.version,
@@ -466,82 +435,105 @@ async def run_compliance_check(
         summary=report.summary(),
         results=[
             {
-                "requirement_id": r.requirement_id,
-                "level": r.level.value,
-                "description": r.description,
-                "satisfied": r.satisfied,
-                "details": r.details,
+                "requirement_id": result.requirement_id,
+                "level": result.level.value,
+                "description": result.description,
+                "satisfied": result.satisfied,
+                "details": result.details,
             }
-            for r in report.results
+            for result in report.results
         ],
     )
 
 
 @router.get("/metrics", response_model=MetricsResponse)
 async def get_metrics(
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles("ADMIN")),
 ):
-    """Get governance metrics."""
-    return MetricsResponse(**_telemetry_exporter.get_metrics_summary())
+    """Get global metrics aggregated from durable state as ADMIN."""
+    try:
+        return await get_global_metrics(db, user=current_user)
+    except SecurityStateForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin required") from exc
 
 
 @router.get("/metrics/prometheus", response_class=Response)
 async def get_prometheus_metrics(
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles("ADMIN")),
 ):
-    """Get metrics in Prometheus format."""
-    return PlainTextResponse(content=_telemetry_exporter.get_prometheus_metrics())
+    """Get global durable metrics in Prometheus format as ADMIN."""
+    try:
+        metrics = await get_global_metrics(db, user=current_user)
+    except SecurityStateForbiddenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin required") from exc
+    return PlainTextResponse(content=metrics_to_prometheus(metrics))
 
 
 @router.post("/sessions", response_model=SessionCreateResponse, status_code=status.HTTP_200_OK)
 async def create_session(
-    session_id: str = Query(..., description="Session ID"),
-    agent_id: str = Query(..., description="Agent ID"),
-    user_id: Optional[str] = Query(default=None, description="User ID"),
-    original_request: str = Query(default="", description="Original user request"),
-    stated_intent: str = Query(default="", description="Stated user intent"),
-    current_user: User = Depends(get_current_user),
+    request: Annotated[SessionCreateRequest, Query()],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
-    """Create a new session context."""
-    context = _context_accumulator.create_session(
-        session_id=session_id,
-        agent_id=agent_id,
-        user_id=user_id or str(current_user.id),
-        original_request=original_request,
-        stated_intent=stated_intent,
-    )
-
+    """Create or refresh a durable session owned by the authenticated principal."""
+    try:
+        session = await create_or_replace_session(
+            db,
+            owner=current_user,
+            session_id=request.session_id,
+            agent_id=request.agent_id,
+            original_request=request.original_request,
+            stated_intent=request.stated_intent,
+        )
+    except SecurityStateNotFoundError as exc:
+        raise _not_found("Agent") from exc
+    except SecurityStateConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return SessionCreateResponse(
-        session_id=context.session_id,
-        agent_id=context.agent_id,
-        created_at=context.created_at.isoformat(),
+        session_id=session.session_id,
+        agent_id=session.agent_id,
+        created_at=session.created_at.astimezone(timezone.utc).isoformat(),
     )
 
 
 @router.get("/sessions/{session_id}", response_model=SessionSummaryResponse)
 async def get_session(
     session_id: str,
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(*SAFE_READ_ROLES)),
 ):
-    """Get session context."""
-    context = _context_accumulator.get_context(session_id)
-
-    if not context:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    summary = _context_accumulator.get_session_summary(session_id)
-    return SessionSummaryResponse(**summary)
+    """Get an owner-visible session, or any unambiguous session as ADMIN."""
+    try:
+        session = await get_visible_session(db, user=current_user, session_id=session_id)
+    except SecurityStateNotFoundError as exc:
+        raise _not_found("Session") from exc
+    return SessionSummaryResponse(
+        session_id=session.session_id,
+        agent_id=session.agent_id,
+        duration_seconds=max(
+            0.0,
+            (session.updated_at - session.created_at).total_seconds(),
+        ),
+        total_actions=session.total_actions,
+        permits=session.permits,
+        denials=session.denials,
+        defers=session.defers,
+        errors=session.errors,
+        intent_alignment=session.intent_alignment,
+    )
 
 
 @router.delete("/sessions/{session_id}", response_model=SessionCloseResponse)
 async def close_session(
     session_id: str,
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
-    """Close a session."""
-    context = _context_accumulator.close_session(session_id)
-
-    if not context:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    return SessionCloseResponse(session_id=session_id, status="closed")
+    """Close an owner-visible session, or any unambiguous session as ADMIN."""
+    try:
+        session = await close_visible_session(db, user=current_user, session_id=session_id)
+    except SecurityStateNotFoundError as exc:
+        raise _not_found("Session") from exc
+    return SessionCloseResponse(session_id=session.session_id, status="closed")

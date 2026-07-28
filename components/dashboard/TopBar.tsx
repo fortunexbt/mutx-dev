@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
@@ -55,19 +55,39 @@ export function TopBar({
   className,
 }: TopBarProps) {
   const [open, setOpen] = useState(false);
+  const menuId = useId();
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  const focusMenuItem = (position: "first" | "last") => {
+    const items = menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]');
+    if (!items?.length) return;
+    items[position === "first" ? 0 : items.length - 1]?.focus();
+  };
 
   useEffect(() => {
     if (!open) return undefined;
 
     const handleOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
     };
 
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+
     window.addEventListener("mousedown", handleOutside);
-    return () => window.removeEventListener("mousedown", handleOutside);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("mousedown", handleOutside);
+      window.removeEventListener("keydown", handleEscape);
+    };
   }, [open]);
 
   return (
@@ -96,7 +116,7 @@ export function TopBar({
                   ) : (
                     <span>{crumb.label}</span>
                   )}
-                  {index < breadcrumbs.length - 1 ? <ChevronRight className="h-3.5 w-3.5" /> : null}
+                  {index < breadcrumbs.length - 1 ? <ChevronRight className="rtl-directional-icon h-3.5 w-3.5" /> : null}
                 </span>
               ))}
             </nav>
@@ -104,7 +124,7 @@ export function TopBar({
           <h1 className="truncate font-[family:var(--font-site-display)] text-[1.5rem] font-semibold tracking-[-0.06em] sm:text-[1.6rem]">
             {title}
           </h1>
-          {hint ? <FeatureHint {...hint} align="left" className="pt-0.5" /> : null}
+          {hint ? <FeatureHint {...hint} align="start" className="pt-0.5" /> : null}
           {subtitle ? (
             <p className="max-w-3xl text-[13px] leading-6" style={{ color: dashboardTokens.textSubtle }}>
               {subtitle}
@@ -116,17 +136,27 @@ export function TopBar({
           {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
 
           {user ? (
-            <div className="relative" ref={menuRef}>
+            <div className="relative" ref={containerRef}>
               <button
+                ref={triggerRef}
                 type="button"
-                className="inline-flex items-center gap-2 rounded-[16px] border px-3 py-2 text-left transition-colors"
+                className="inline-flex items-center gap-2 rounded-[16px] border px-3 py-2 text-start transition-colors"
                 style={{
                   borderColor: dashboardTokens.borderSubtle,
                   background: dashboardTokens.panelGradient,
                 }}
                 aria-haspopup="menu"
                 aria-expanded={open}
+                aria-controls={open ? menuId : undefined}
                 onClick={() => setOpen((value) => !value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+                  event.preventDefault();
+                  setOpen(true);
+                  window.requestAnimationFrame(() => {
+                    focusMenuItem(event.key === "ArrowDown" ? "first" : "last");
+                  });
+                }}
               >
                 <span
                   className="flex h-9 w-9 items-center justify-center rounded-[12px] text-xs font-semibold"
@@ -150,8 +180,29 @@ export function TopBar({
 
               {open ? (
                 <div
+                  id={menuId}
+                  ref={menuRef}
                   role="menu"
-                  className="absolute right-0 mt-2 min-w-[220px] overflow-hidden rounded-[22px] border py-1 shadow-2xl"
+                  aria-label={`${user.name} actions`}
+                  onKeyDown={(event) => {
+                    const items = Array.from(
+                      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+                    );
+                    if (!items.length) return;
+
+                    const currentIndex = Math.max(items.indexOf(document.activeElement as HTMLElement), 0);
+                    let nextIndex: number | null = null;
+                    if (event.key === "ArrowDown") nextIndex = (currentIndex + 1) % items.length;
+                    else if (event.key === "ArrowUp") nextIndex = (currentIndex - 1 + items.length) % items.length;
+                    else if (event.key === "Home") nextIndex = 0;
+                    else if (event.key === "End") nextIndex = items.length - 1;
+                    else if (event.key === "Tab") setOpen(false);
+
+                    if (nextIndex === null) return;
+                    event.preventDefault();
+                    items[nextIndex]?.focus();
+                  }}
+                  className="absolute end-0 mt-2 min-w-[220px] overflow-hidden rounded-[22px] border py-1 shadow-2xl"
                   style={{
                     borderColor: dashboardTokens.borderSubtle,
                     backgroundColor: dashboardTokens.bgSurfaceStrong,
@@ -160,7 +211,7 @@ export function TopBar({
                 >
                   {userActions.map((action, index) => {
                     const rowClass = cn(
-                      "block w-full px-3 py-2 text-left text-sm transition-colors",
+                      "block min-h-11 w-full px-3 py-2 text-start text-sm transition-colors",
                       action.destructive ? "text-rose-300" : undefined,
                     );
 

@@ -9,10 +9,9 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
-from src.api.config import get_settings
+from src.api.auth.jwt import create_access_token
 from src.api.services.agent_runtime import AgentRuntime, RuntimeConfig
 from src.api.services.audit_log import AuditEvent, AuditEventType, AuditLog, AuditQuery
-from src.api.services.auth import TokenPayload, create_access_token
 from src.api.services.governance_runtime import GovernanceRuntime
 from src.api.integrations.langchain_agent import (
     AgentConfig,
@@ -23,6 +22,7 @@ from src.api.integrations.langchain_agent import (
 )
 from src.security import PolicyDecision, PolicyEngine
 from src.security.policy import PolicyRule, PolicySet
+from src.security.receipts import ReceiptGenerator
 
 
 def _governance_for(
@@ -97,7 +97,42 @@ async def test_runtime_security_denial_blocks_handler_and_emits_evidence(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_runtime_security_defer_creates_approval_without_execution(tmp_path: Path) -> None:
+async def test_governed_runtime_signs_receipt_before_audit_persistence(tmp_path: Path) -> None:
+    audit_log = AuditLog(str(tmp_path / "signed-receipt.db"))
+    await audit_log.initialize()
+    governance = _governance_for(PolicyDecision.DENY, audit_log)
+    key_id = "mutx-platform-runtime-test"
+    private_key = bytes.fromhex("01" * 32)
+    public_key = ReceiptGenerator.public_key_bytes(private_key)
+    governance.receipt_generator = ReceiptGenerator(
+        signing_private_key=private_key,
+        signing_key_id=key_id,
+        trusted_public_keys={key_id: public_key},
+        signing_required=True,
+    )
+    runtime = AgentRuntime(RuntimeConfig(vector_store_enabled=False), governance=governance)
+
+    result = await runtime.tool_handler.execute_tool(
+        "test_tool",
+        {},
+        agent_id="agent-signed",
+        session_id="session-signed",
+        run_id="run-signed",
+    )
+
+    receipt = governance.receipt_generator.get_receipt(result["receipt_id"])
+    assert receipt is not None
+    assert receipt.signer_key_id == key_id
+    assert governance.receipt_generator.verify(receipt) == (True, "")
+    events = await audit_log.query(AuditQuery(run_id="run-signed"))
+    assert events[0].payload["receipt_hash"] == receipt.compute_hash()
+    await audit_log.close()
+
+
+@pytest.mark.asyncio
+async def test_runtime_security_defer_fails_closed_without_a_durable_resume_binding(
+    tmp_path: Path,
+) -> None:
     audit_log = AuditLog(str(tmp_path / "defer.db"))
     await audit_log.initialize()
     governance = _governance_for(PolicyDecision.DEFER, audit_log)
@@ -120,13 +155,13 @@ async def test_runtime_security_defer_creates_approval_without_execution(tmp_pat
 
     assert handler_called is False
     assert result["decision"] == "defer"
-    approval = governance.approval_service.get_request(result["approval_id"])
-    assert approval is not None
-    assert approval.metadata["run_id"] == "run-2"
+    assert result["resumable"] is False
+    assert "approval_id" not in result
+    assert "no durable canonical approval resume binding" in result["error"]
 
     events = await audit_log.query(AuditQuery(run_id="run-2"))
-    assert events[0].approval_id == approval.id
-    assert events[0].payload["outcome"] == "approval_required"
+    assert events[0].approval_id is None
+    assert events[0].payload["outcome"] == "blocked_no_resume_binding"
     await audit_log.close()
 
 
@@ -565,6 +600,8 @@ def test_langchain_custom_tools_cannot_shadow_governed_builtins() -> None:
 @pytest.mark.asyncio
 async def test_audit_evidence_export_route_is_authenticated_and_verified(
     client_no_auth: AsyncClient,
+    db_session,
+    test_user,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -594,15 +631,10 @@ async def test_audit_evidence_export_route_is_authenticated_and_verified(
     unauthorized = await client_no_auth.get("/v1/audit/export?run_id=export-run")
     assert unauthorized.status_code == 401
 
-    token = create_access_token(
-        TokenPayload(
-            sub="audit-admin-1",
-            email="audit@example.com",
-            roles=["AUDIT_ADMIN"],
-            exp=datetime.now(timezone.utc) + timedelta(hours=1),
-        ),
-        get_settings().jwt_secret,
-    )
+    test_user.roles = ["AUDIT_ADMIN"]
+    db_session.add(test_user)
+    await db_session.commit()
+    token, _ = create_access_token(test_user.id)
     response = await client_no_auth.get(
         "/v1/audit/export?run_id=export-run",
         headers={"Authorization": f"Bearer {token}"},

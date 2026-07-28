@@ -6,11 +6,19 @@ import json
 import uuid
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.models.models import Agent, AgentStatus, Deployment, UsageEvent
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def developer_principals(db_session, test_user, other_user):
+    test_user.roles = ["DEVELOPER"]
+    other_user.roles = ["DEVELOPER"]
+    await db_session.commit()
 
 
 class TestCreateAgent:
@@ -244,7 +252,7 @@ class TestCreateAgent:
                 "config": {"model": "gpt-4o", "temperature": 5.0},  # Invalid temperature > 2.0
             },
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
         assert "Configuration validation failed" in response.json()["detail"]
 
     @pytest.mark.asyncio
@@ -414,7 +422,7 @@ class TestGetAgent:
     ):
         """Test that users cannot access other users' agents."""
         response = await other_user_client.get(f"/v1/agents/{test_agent.id}")
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 class TestDeleteAgent:
@@ -452,7 +460,7 @@ class TestDeleteAgent:
     ):
         """Test that users cannot delete other users' agents."""
         response = await other_user_client.delete(f"/v1/agents/{test_agent.id}")
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 class TestAgentConfig:
@@ -505,7 +513,7 @@ class TestAgentConfig:
             f"/v1/agents/{test_agent.id}/config",
             json={"config": {"model": "gpt-4o", "temperature": 3.5}},
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
         assert "Configuration validation failed" in response.json()["detail"]
 
     @pytest.mark.asyncio
@@ -516,7 +524,7 @@ class TestAgentConfig:
             f"/v1/agents/{test_agent.id}/config",
             json={"config": {"model": "gpt-4o", "temperature": 0.3}},
         )
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 class TestDeployAgent:
@@ -554,7 +562,7 @@ class TestDeployAgent:
     ):
         """Test that users cannot deploy other users' agents."""
         response = await other_user_client.post(f"/v1/agents/{test_agent.id}/deploy")
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 class TestStopAgent:
@@ -587,7 +595,7 @@ class TestStopAgent:
     ):
         """Test that users cannot stop other users' agents."""
         response = await other_user_client.post(f"/v1/agents/{test_agent.id}/stop")
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 class TestAgentLogs:
@@ -617,7 +625,7 @@ class TestAgentLogs:
     ):
         """Test that users cannot access other users' agent logs."""
         response = await other_user_client.get(f"/v1/agents/{test_agent.id}/logs")
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 class TestAgentMetrics:
@@ -647,4 +655,4 @@ class TestAgentMetrics:
     ):
         """Test that users cannot access other users' agent metrics."""
         response = await other_user_client.get(f"/v1/agents/{test_agent.id}/metrics")
-        assert response.status_code == 403
+        assert response.status_code == 404

@@ -66,6 +66,9 @@ export type AutopilotUsageBreakdown = {
 
 export type AutopilotApprovalSummary = {
   id: string
+  owner_id: string
+  reviewer_id: string | null
+  can_resolve: boolean
   agent_id: string
   session_id?: string
   action_type: string
@@ -104,7 +107,7 @@ export type AutopilotIntegrationStatus = {
   hasBudget: boolean
   hasUsage: boolean
   hasApprovalRecords: boolean
-  approvalGateConfigured: boolean
+  approvalGatePreferenceEnabled: boolean
 }
 
 export type AutopilotNextStep = {
@@ -146,11 +149,20 @@ function titleCase(value: string) {
     .join(' ')
 }
 
-export function formatTimestamp(value?: string | null) {
-  const date = toDate(value)
-  if (!date) return 'Unknown time'
+export type AutopilotTranslator = (
+  key: string,
+  values?: Record<string, string | number>,
+) => string
 
-  return new Intl.DateTimeFormat('en', {
+export function formatTimestamp(
+  value?: string | null,
+  locale = 'en',
+  unknownTime = 'Unknown time',
+) {
+  const date = toDate(value)
+  if (!date) return unknownTime
+
+  return new Intl.DateTimeFormat(locale, {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -158,13 +170,18 @@ export function formatTimestamp(value?: string | null) {
   }).format(date)
 }
 
-export function formatRelativeTime(value?: string | null, now = new Date()) {
+export function formatRelativeTime(
+  value?: string | null,
+  now = new Date(),
+  locale = 'en',
+  unknownTime = 'unknown time',
+) {
   const date = toDate(value)
-  if (!date) return 'unknown time'
+  if (!date) return unknownTime
 
   const diffMs = date.getTime() - now.getTime()
   const diffMinutes = Math.round(diffMs / 60000)
-  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
+  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
 
   if (Math.abs(diffMinutes) < 60) {
     return formatter.format(diffMinutes, 'minute')
@@ -184,8 +201,8 @@ export function formatPercent(value: number) {
   return `${Math.round(value)}%`
 }
 
-export function humanizeRunStatus(status: string) {
-  return titleCase(status)
+export function humanizeRunStatus(status: string, t?: AutopilotTranslator) {
+  return t?.(`shared.statusLabels.${status.toUpperCase()}`) ?? titleCase(status)
 }
 
 export function getRunSeverity(status: string): AutopilotTimelineItem['severity'] {
@@ -196,7 +213,11 @@ export function getRunSeverity(status: string): AutopilotTimelineItem['severity'
   return 'neutral'
 }
 
-export function describeRunDetail(run: AutopilotRunSummary, traces: AutopilotRunTrace[] = []) {
+export function describeRunDetail(
+  run: AutopilotRunSummary,
+  traces: AutopilotRunTrace[] = [],
+  t?: AutopilotTranslator,
+) {
   const status = run.status.toUpperCase()
   const latestTrace = traces
     .filter((trace) => typeof trace.message === 'string' && trace.message.trim())
@@ -206,60 +227,60 @@ export function describeRunDetail(run: AutopilotRunSummary, traces: AutopilotRun
     }, undefined)
 
   if (['FAILED', 'ERROR', 'CANCELLED'].includes(status)) {
-    return excerpt(run.error_message) ?? excerpt(latestTrace?.message) ?? 'The run stopped without a stored error message.'
+    return excerpt(run.error_message) ?? excerpt(latestTrace?.message) ?? t?.('shared.runDetail.failedNoMessage') ?? 'The run stopped without a stored error message.'
   }
 
   if (['RUNNING', 'QUEUED', 'PENDING'].includes(status)) {
-    return excerpt(latestTrace?.message) ?? 'The run is still moving through the pipeline.'
+    return excerpt(latestTrace?.message) ?? t?.('shared.runDetail.inFlight') ?? 'The run is still moving through the pipeline.'
   }
 
   if (status === 'AWAITING_OWNER') {
-    return excerpt(latestTrace?.message) ?? 'The run is paused — waiting for owner input before continuing.'
+    return excerpt(latestTrace?.message) ?? t?.('shared.runDetail.awaitingOwner') ?? 'The run is paused — waiting for owner input before continuing.'
   }
 
-  return excerpt(run.output_text) ?? excerpt(latestTrace?.message) ?? excerpt(run.input_text) ?? 'The run completed without a short summary.'
+  return excerpt(run.output_text) ?? excerpt(latestTrace?.message) ?? excerpt(run.input_text) ?? t?.('shared.runDetail.completedNoSummary') ?? 'The run completed without a short summary.'
 }
 
-export function explainRunImpact(run: AutopilotRunSummary) {
+export function explainRunImpact(run: AutopilotRunSummary, t?: AutopilotTranslator) {
   const status = run.status.toUpperCase()
   if (['FAILED', 'ERROR', 'CANCELLED'].includes(status)) {
-    return 'This workflow did not finish cleanly. Check the error and traces before trusting the next attempt.'
+    return t?.('shared.runImpact.failed') ?? 'This workflow did not finish cleanly. Check the error and traces before trusting the next attempt.'
   }
 
   if (['RUNNING', 'QUEUED', 'PENDING'].includes(status)) {
-    return 'Work is still in flight. Watch for hangs, retries, or silence that lasts too long.'
+    return t?.('shared.runImpact.active') ?? 'Work is still in flight. Watch for hangs, retries, or silence that lasts too long.'
   }
 
   if (status === 'AWAITING_OWNER') {
-    return 'The run is paused waiting for owner action. Respond to unblock the pipeline.'
+    return t?.('shared.runImpact.awaitingOwner') ?? 'The run is paused waiting for owner action. Respond to unblock the pipeline.'
   }
 
-  return 'This run completed. Verify the output is useful before you automate more of this work.'
+  return t?.('shared.runImpact.completed') ?? 'This run completed. Verify the output is useful before you automate more of this work.'
 }
 
-export function explainAlertImpact(alert: AutopilotAlertSummary) {
+export function explainAlertImpact(alert: AutopilotAlertSummary, t?: AutopilotTranslator) {
   if (alert.resolved) {
-    return 'The alert is cleared, but you still want the root cause to make sense.'
+    return t?.('shared.alertImpact.resolved') ?? 'The alert is cleared, but you still want the root cause to make sense.'
   }
 
-  return 'This active alert needs review before the runtime keeps running unattended.'
+  return t?.('shared.alertImpact.active') ?? 'This active alert needs review before the runtime keeps running unattended.'
 }
 
-export function explainApprovalImpact(approval: AutopilotApprovalSummary) {
+export function explainApprovalImpact(approval: AutopilotApprovalSummary, t?: AutopilotTranslator) {
   const normalized = approval.status.toUpperCase()
   if (normalized === 'PENDING') {
-    return 'A risky action is waiting for a human decision. Nothing should proceed past this gate yet.'
+    return t?.('shared.approvalImpact.pending') ?? 'A risky action is waiting for a human decision. Nothing should proceed past this gate yet.'
   }
 
   if (normalized === 'APPROVED') {
-    return 'The gate opened. Make sure the approved action actually matches the request you intended to allow.'
+    return t?.('shared.approvalImpact.approved') ?? 'The gate opened. Make sure the approved action actually matches the request you intended to allow.'
   }
 
   if (normalized === 'REJECTED') {
-    return 'The risky action was blocked. Good. Now decide whether the request was wrong or the guardrail is too strict.'
+    return t?.('shared.approvalImpact.rejected') ?? 'The risky action was blocked. Good. Now decide whether the request was wrong or the guardrail is too strict.'
   }
 
-  return 'This approval changed state and should be reviewed if it affects live behavior.'
+  return t?.('shared.approvalImpact.changed') ?? 'This approval changed state and should be reviewed if it affects live behavior.'
 }
 
 export function analyzeAutopilotIntegration(input: {
@@ -269,7 +290,7 @@ export function analyzeAutopilotIntegration(input: {
   approvals: AutopilotApprovalSummary[]
   budget: AutopilotBudgetSummary | null
   usage: AutopilotUsageBreakdown | null
-  approvalGateConfigured: boolean
+  approvalGatePreferenceEnabled: boolean
 }): AutopilotIntegrationStatus {
   const agents = input.agents ?? []
   const hasRuns = input.runs.length > 0
@@ -297,78 +318,78 @@ export function analyzeAutopilotIntegration(input: {
     hasBudget,
     hasUsage,
     hasApprovalRecords,
-    approvalGateConfigured: input.approvalGateConfigured,
+    approvalGatePreferenceEnabled: input.approvalGatePreferenceEnabled,
   }
 }
 
-export function getRunsEmptyState(status: AutopilotIntegrationStatus, nextStep: AutopilotNextStep): AutopilotEmptyState {
+export function getRunsEmptyState(status: AutopilotIntegrationStatus, nextStep: AutopilotNextStep, t?: AutopilotTranslator): AutopilotEmptyState {
   if (!status.hasLiveAgent) {
     return {
-      title: 'No monitored agent exists yet',
-      body: 'Pico has no real MUTX agent to attach to. Create or deploy one actual agent first, then come back for run history.',
+      title: t?.('emptyStates.runs.noAgent.title') ?? 'No monitored agent exists yet',
+      body: t?.('emptyStates.runs.noAgent.body') ?? 'Pico has no real MUTX agent to attach to. Create or deploy one actual agent first, then come back for run history.',
       nextStep,
     }
   }
 
   return {
-    title: 'An agent exists, but nothing has run yet',
-    body: 'MUTX knows about at least one agent, but there is no run history yet. Trigger one real task or wait for the first schedule tick, then come back here.',
+    title: t?.('emptyStates.runs.noHistory.title') ?? 'An agent exists, but nothing has run yet',
+    body: t?.('emptyStates.runs.noHistory.body') ?? 'MUTX knows about at least one agent, but there is no run history yet. Trigger one real task or wait for the first schedule tick, then come back here.',
     nextStep,
   }
 }
 
-export function getAlertsEmptyState(status: AutopilotIntegrationStatus, nextStep: AutopilotNextStep): AutopilotEmptyState {
+export function getAlertsEmptyState(status: AutopilotIntegrationStatus, nextStep: AutopilotNextStep, t?: AutopilotTranslator): AutopilotEmptyState {
   if (!status.hasRuns) {
     return {
-      title: 'No alerts because nothing is running yet',
-      body: 'An empty alert feed means nothing until the agent has executed real work. Get one run into MUTX first.',
+      title: t?.('emptyStates.alerts.noRuns.title') ?? 'No alerts because nothing is running yet',
+      body: t?.('emptyStates.alerts.noRuns.body') ?? 'An empty alert feed means nothing until the agent has executed real work. Get one run into MUTX first.',
       nextStep,
     }
   }
 
   return {
-    title: 'No live alerts right now',
-    body: 'Good. The monitoring feed is quiet right now. Keep watching the next real run and failure path.',
+    title: t?.('emptyStates.alerts.none.title') ?? 'No live alerts right now',
+    body: t?.('emptyStates.alerts.none.body') ?? 'Good. The monitoring feed is quiet right now. Keep watching the next real run and failure path.',
     nextStep,
   }
 }
 
-export function getUsageEmptyState(status: AutopilotIntegrationStatus, nextStep: AutopilotNextStep): AutopilotEmptyState {
+export function getUsageEmptyState(status: AutopilotIntegrationStatus, nextStep: AutopilotNextStep, t?: AutopilotTranslator): AutopilotEmptyState {
   if (!status.hasBudget) {
     return {
-      title: 'No live budget snapshot yet',
-      body: 'There is no MUTX budget snapshot to compare against yet. Until that exists, cost awareness is incomplete.',
+      title: t?.('emptyStates.usage.noBudget.title') ?? 'No live budget snapshot yet',
+      body: t?.('emptyStates.usage.noBudget.body') ?? 'There is no MUTX budget snapshot to compare against yet. Until that exists, cost awareness is incomplete.',
       nextStep,
     }
   }
 
   return {
-    title: 'Budget exists, but usage is empty',
-    body: 'The budget page is live, but no usage events landed in the current window. Either the agent has not spent anything yet or usage emission is missing.',
+    title: t?.('emptyStates.usage.empty.title') ?? 'Budget exists, but usage is empty',
+    body: t?.('emptyStates.usage.empty.body') ?? 'The budget page is live, but no usage events landed in the current window. Either the agent has not spent anything yet or usage emission is missing.',
     nextStep,
   }
 }
 
-export function getApprovalsEmptyState(status: AutopilotIntegrationStatus, nextStep: AutopilotNextStep): AutopilotEmptyState {
+export function getApprovalsEmptyState(status: AutopilotIntegrationStatus, nextStep: AutopilotNextStep, t?: AutopilotTranslator): AutopilotEmptyState {
   if (!status.hasLiveAgent) {
     return {
-      title: 'No agent exists to gate yet',
-      body: 'Approval queues only matter when a real agent is capable of doing something risky. Create or deploy the agent first.',
+      title: t?.('emptyStates.approvals.noAgent.title') ?? 'No agent exists to gate yet',
+      body: t?.('emptyStates.approvals.noAgent.body') ?? 'Approval queues only matter when a real agent is capable of doing something risky. Create or deploy the agent first.',
       nextStep,
     }
   }
 
-  if (status.hasApprovalRecords && !status.approvalGateConfigured) {
+  if (status.hasApprovalRecords) {
     return {
-      title: 'Approval history exists, but the gate is off locally',
-      body: 'MUTX already has approval records, but Pico still says the gate is disabled. Turn the gate on here so local product state matches backend state.',
+      title: t?.('emptyStates.approvals.gateOff.title') ?? 'Approval history exists; enforcement is unverified',
+      body: t?.('emptyStates.approvals.gateOff.body') ?? 'Approval records prove the review workflow was used. They do not prove a runtime enforcement gate is active.',
       nextStep,
     }
   }
 
   return {
-    title: 'No approval records yet',
-    body: 'No risky action has reached the approval queue yet. Run one gated action before relying on this page for approval review.',
+    title: t?.('emptyStates.approvals.none.title') ?? 'No approval records yet',
+    body: t?.('emptyStates.approvals.none.body') ?? 'No risky action has reached the approval queue yet. Run one gated action before relying on this page for approval review.',
     nextStep,
   }
 }
@@ -380,6 +401,7 @@ export function buildAutopilotTimeline(input: {
   budget: AutopilotBudgetSummary | null
   thresholdPercent: number
   tracesByRunId?: Record<string, AutopilotRunTrace[]>
+  t?: AutopilotTranslator
 }): AutopilotTimelineItem[] {
   const timeline: AutopilotTimelineItem[] = []
   const tracesByRunId = input.tracesByRunId ?? {}
@@ -389,12 +411,12 @@ export function buildAutopilotTimeline(input: {
       id: `run-${run.id}`,
       kind: 'run',
       occurredAt: fallbackTimestamp(run.completed_at, run.started_at, run.created_at),
-      title: `${humanizeRunStatus(run.status)} run ${run.id.slice(0, 8)}`,
-      detail: describeRunDetail(run, tracesByRunId[run.id] ?? []),
-      impact: explainRunImpact(run),
+      title: input.t?.('shared.timeline.runTitle', { status: humanizeRunStatus(run.status, input.t), runId: run.id.slice(0, 8) }) ?? `${humanizeRunStatus(run.status)} run ${run.id.slice(0, 8)}`,
+      detail: describeRunDetail(run, tracesByRunId[run.id] ?? [], input.t),
+      impact: explainRunImpact(run, input.t),
       severity: getRunSeverity(run.status),
-      href: '#runs-section',
-      sourceLabel: 'Runs',
+      href: '#recent-runs',
+      sourceLabel: input.t?.('shared.timelineSources.runs') ?? 'Runs',
     })
   })
 
@@ -403,12 +425,12 @@ export function buildAutopilotTimeline(input: {
       id: `alert-${alert.id}`,
       kind: 'alert',
       occurredAt: fallbackTimestamp(alert.resolved_at, alert.created_at),
-      title: `${titleCase(alert.type)} ${alert.resolved ? 'resolved' : 'triggered'}`,
-      detail: excerpt(alert.message, 180) ?? 'Alert recorded without a message.',
-      impact: explainAlertImpact(alert),
+      title: input.t?.('shared.timeline.alertTitle', { type: titleCase(alert.type), state: alert.resolved ? input.t('shared.timeline.alertResolved') : input.t('shared.timeline.alertTriggered') }) ?? `${titleCase(alert.type)} ${alert.resolved ? 'resolved' : 'triggered'}`,
+      detail: excerpt(alert.message, 180) ?? input.t?.('shared.timeline.alertNoMessage') ?? 'Alert recorded without a message.',
+      impact: explainAlertImpact(alert, input.t),
       severity: alert.resolved ? 'good' : 'critical',
       href: '#alerts-section',
-      sourceLabel: 'Alerts',
+      sourceLabel: input.t?.('shared.timelineSources.alerts') ?? 'Alerts',
     })
   })
 
@@ -430,18 +452,18 @@ export function buildAutopilotTimeline(input: {
     const summary =
       typeof approval.payload?.summary === 'string' && approval.payload.summary.trim()
         ? approval.payload.summary
-        : `Requested by ${approval.requester}.`
+        : input.t?.('shared.timeline.approvalRequestedBy', { requester: approval.requester }) ?? `Requested by ${approval.requester}.`
 
     timeline.push({
       id: `approval-${approval.id}`,
       kind: 'approval',
       occurredAt: fallbackTimestamp(approval.resolved_at, approval.created_at),
-      title: `${titleCase(approval.action_type)} ${normalized.toLowerCase()}`,
-      detail: excerpt(summary, 180) ?? `Requested by ${approval.requester}.`,
-      impact: explainApprovalImpact(approval),
+      title: input.t?.('shared.timeline.approvalTitle', { action: titleCase(approval.action_type), status: input.t(`shared.timeline.approvalStatus.${normalized.toLowerCase()}`) }) ?? `${titleCase(approval.action_type)} ${normalized.toLowerCase()}`,
+      detail: excerpt(summary, 180) ?? input.t?.('shared.timeline.approvalRequestedBy', { requester: approval.requester }) ?? `Requested by ${approval.requester}.`,
+      impact: explainApprovalImpact(approval, input.t),
       severity: getApprovalSeverity(normalized),
       href: '#approvals-section',
-      sourceLabel: 'Approvals',
+      sourceLabel: input.t?.('shared.timelineSources.approvals') ?? 'Approvals',
     })
   })
 

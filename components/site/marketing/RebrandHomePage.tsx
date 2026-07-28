@@ -16,8 +16,8 @@ const RUN_EVENTS = [
   {
     time: '09:42:04.907',
     type: 'tool',
-    title: 'Deployment prepared',
-    detail: 'deploy.production · 3 targets',
+    title: 'Deployment record prepared',
+    detail: 'desired replicas · 3 targets',
     state: 'observed',
     gated: false,
   },
@@ -40,9 +40,9 @@ const RUN_EVENTS = [
   {
     time: '09:43:18.620',
     type: 'result',
-    title: 'Deployment completed',
-    detail: '3/3 healthy · rollback retained',
-    state: 'proved',
+    title: 'Lifecycle record updated',
+    detail: 'status ready · provider check external',
+    state: 'recorded',
     gated: false,
   },
 ] as const
@@ -57,7 +57,7 @@ const CONTROL_LOOP = [
   {
     number: '02',
     label: 'Bound',
-    title: 'Match every move to policy.',
+    title: 'Match governed moves to policy.',
     href: '/ai-agent-guardrails',
   },
   {
@@ -87,14 +87,14 @@ const PREVIEW_RUNS = [
 ] as const
 
 const SETUP_STEPS = [
-  { number: '01', label: 'Install', value: 'Download MUTX for macOS' },
+  { number: '01', label: 'Install', value: 'Check macOS availability' },
   { number: '02', label: 'Connect', value: 'mutx setup' },
   { number: '03', label: 'Operate', value: 'Open the dashboard' },
 ] as const
 
 export function RebrandHomePage() {
   return (
-    <main id="main-content" className={styles.page}>
+    <main id="main-content" tabIndex={-1} className={styles.page}>
       <section className={styles.hero} aria-labelledby="home-title">
         <PublicNav overlay />
 
@@ -105,16 +105,16 @@ export function RebrandHomePage() {
               Source-available agent operations
             </p>
             <h1 id="home-title">
-              See every move.
+              Read the governed path.
               <span>Hold the line.</span>
             </h1>
             <p className={styles.heroLede}>
-              MUTX shows what agents do, stops actions outside policy, and keeps a
-              reviewable receipt of every run.
+              MUTX records submitted runtime evidence and evaluates registered tool
+              calls before they execute through its governed runtime.
             </p>
             <div className={styles.heroActions}>
               <Link href="/download" className={styles.primaryAction}>
-                Download for Mac <ArrowRight aria-hidden="true" />
+                Check Mac availability <ArrowRight className="rtl-directional-icon" aria-hidden="true" />
               </Link>
               <Link href="/dashboard" className={styles.secondaryAction}>
                 Open dashboard <ArrowUpRight aria-hidden="true" />
@@ -129,7 +129,7 @@ export function RebrandHomePage() {
           </div>
 
           <div className={styles.ledgerWrap}>
-            <div className={styles.ledger} aria-label="Example MUTX production deployment run">
+            <div className={styles.ledger} aria-label="Example MUTX governed deployment record">
               <header className={styles.ledgerHeader}>
                 <div>
                   <p>Run / 4812</p>
@@ -186,8 +186,8 @@ export function RebrandHomePage() {
           <div>
             <h2 id="control-title">One line from intent to evidence.</h2>
             <p>
-              The operational record is not an afterthought. MUTX carries context,
-              policy, approval, execution, and proof through the same run.
+              For calls routed through the governed MUTX runtime, policy and
+              authorization evidence stay linked to the observed handler outcome.
             </p>
           </div>
         </header>
@@ -217,13 +217,13 @@ export function RebrandHomePage() {
               one hierarchy—so operators can act before the postmortem.
             </p>
             <ul>
-              <li>Live run state and trace context</li>
+              <li>Submitted run state and trace context</li>
               <li>Policy decisions beside the action</li>
-              <li>Receipts that remain readable later</li>
+              <li>Receipts for governed runtime decisions</li>
             </ul>
             <div className={styles.textLinks}>
               <Link href="/dashboard">
-                Explore the dashboard <ArrowRight aria-hidden="true" />
+                Explore the dashboard <ArrowRight className="rtl-directional-icon" aria-hidden="true" />
               </Link>
               <Link href="/docs">
                 Read the docs <ArrowUpRight aria-hidden="true" />
@@ -291,7 +291,7 @@ export function RebrandHomePage() {
 
                 <div className={styles.previewFooter}>
                   <span>Latest receipt · rcpt_7F2A91</span>
-                  <span>Trace continuity 100%</span>
+                  <span>Governed receipt linked</span>
                 </div>
               </div>
             </div>
@@ -304,8 +304,8 @@ export function RebrandHomePage() {
           <p className={styles.sectionIndex}>03 / At the boundary</p>
           <h2 id="boundary-title">Helpful is not the same as permitted.</h2>
           <p>
-            When an agent reaches beyond its mandate, MUTX makes the edge visible and
-            holds the action with its context intact.
+            When a registered MUTX runtime tool reaches a DENY or DEFER verdict, the
+            handler stays uncalled and the decision keeps its action context.
           </p>
         </header>
 
@@ -327,9 +327,9 @@ export function RebrandHomePage() {
         </div>
 
         <div className={styles.boundaryFooter}>
-          <p><span>Outcome</span> The risky move stops. The useful context remains.</p>
+          <p><span>Outcome</span> The governed handler stays stopped. Its review context remains.</p>
           <div className={styles.textLinksDark}>
-            <Link href="/ai-agent-guardrails">Explore guardrails <ArrowRight aria-hidden="true" /></Link>
+            <Link href="/ai-agent-guardrails">Explore guardrails <ArrowRight className="rtl-directional-icon" aria-hidden="true" /></Link>
             <Link href="/ai-agent-approvals">Approval workflows <ArrowUpRight aria-hidden="true" /></Link>
           </div>
         </div>
@@ -339,10 +339,10 @@ export function RebrandHomePage() {
         <header className={styles.sectionIntro}>
           <p className={styles.sectionIndex}>04 / Start operating</p>
           <div>
-            <h2 id="setup-title">From download to first record.</h2>
+            <h2 id="setup-title">From setup to first record.</h2>
             <p>
-              Start on your Mac, connect the runtime you already use, and inspect the
-              first governed run from the app or API.
+              Check the Mac release lane or start with the API, then instrument the
+              runtime path whose evidence you need to inspect.
             </p>
           </div>
         </header>
@@ -380,12 +380,12 @@ export function RebrandHomePage() {
       <section className={styles.finalSection} aria-labelledby="final-title">
         <p className={styles.sectionIndex}>05 / Your next run</p>
         <div className={styles.finalGrid}>
-          <h2 id="final-title">Run the agent.<br />Keep the evidence.</h2>
+          <h2 id="final-title">Instrument the run.<br />Keep the evidence.</h2>
           <div>
-            <p>Download MUTX for macOS or start with the control-plane documentation.</p>
+            <p>Check macOS availability or start with the control-plane documentation.</p>
             <div className={styles.finalActions}>
               <Link href="/download">
-                Get MUTX <ArrowRight aria-hidden="true" />
+                Get MUTX <ArrowRight className="rtl-directional-icon" aria-hidden="true" />
               </Link>
               <Link href="/docs">
                 Read the docs <ArrowUpRight aria-hidden="true" />

@@ -61,7 +61,7 @@ class APIService:
         ):
             response = self._perform_request(method, path, **kwargs)
 
-        if response.status_code == 401:
+        if response.status_code == 401 and require_auth:
             raise AuthenticationExpiredError("Authentication expired. Run 'mutx login' again.")
 
         return response
@@ -91,7 +91,7 @@ class APIService:
         if response.status_code != 200:
             return False
 
-        payload = response.json()
+        payload = self._decode_json(response, expected_type=dict)
         access_token = payload.get("access_token")
         next_refresh_token = payload.get("refresh_token")
 
@@ -117,13 +117,88 @@ class APIService:
         if not_found_message and response.status_code == 404:
             raise ResourceNotFoundError(not_found_message)
 
-        if invalid_message and response.status_code == 400:
+        if invalid_message and response.status_code in {400, 422}:
             raise ValidationError(self._extract_error_message(response, invalid_message))
 
         raise APIRequestError(
             self._extract_error_message(response, "Request failed."),
             status_code=response.status_code,
         )
+
+    def request_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        ok_statuses: Iterable[int],
+        expected_type: type[Any] | tuple[type[Any], ...] | None = None,
+        not_found_message: str | None = None,
+        invalid_message: str | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        response = self._request(method, path, **kwargs)
+        self._expect_status(
+            response,
+            ok_statuses,
+            not_found_message=not_found_message,
+            invalid_message=invalid_message,
+        )
+        return self._decode_json(response, expected_type=expected_type)
+
+    def request_response(self, method: str, path: str, **kwargs: Any):
+        """Return a fully read response after shared auth and network handling."""
+        return self._request(method, path, **kwargs)
+
+    def request_text(
+        self,
+        method: str,
+        path: str,
+        *,
+        ok_statuses: Iterable[int],
+        **kwargs: Any,
+    ) -> str:
+        response = self._request(method, path, **kwargs)
+        self._expect_status(response, ok_statuses)
+        return str(response.text)
+
+    def request_empty(
+        self,
+        method: str,
+        path: str,
+        *,
+        ok_statuses: Iterable[int],
+        not_found_message: str | None = None,
+        invalid_message: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        response = self._request(method, path, **kwargs)
+        self._expect_status(
+            response,
+            ok_statuses,
+            not_found_message=not_found_message,
+            invalid_message=invalid_message,
+        )
+
+    def _decode_json(
+        self,
+        response,
+        *,
+        expected_type: type[Any] | tuple[type[Any], ...] | None = None,
+    ) -> Any:
+        try:
+            payload = response.json()
+        except Exception as exc:
+            raise APIRequestError(
+                "API returned malformed JSON.",
+                status_code=getattr(response, "status_code", None),
+            ) from exc
+
+        if expected_type is not None and not isinstance(payload, expected_type):
+            raise APIRequestError(
+                "API returned an unexpected response shape.",
+                status_code=getattr(response, "status_code", None),
+            )
+        return payload
 
     @staticmethod
     def _extract_error_message(response, fallback: str) -> str:
@@ -142,8 +217,15 @@ class APIService:
                 except TypeError:
                     return str(detail)
 
+            for key in ("message", "error"):
+                value = payload.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+
         text = getattr(response, "text", None)
         if text:
-            return str(text)
+            normalized = " ".join(str(text).split())
+            if normalized and not normalized.startswith("<"):
+                return normalized[:240]
 
         return fallback

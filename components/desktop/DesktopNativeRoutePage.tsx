@@ -43,9 +43,16 @@ import {
 } from "@/components/dashboard/livePrimitives";
 import {
   DESKTOP_ROUTE_META,
+  getDesktopRouteKeyForPath,
+  getDesktopWindowRoleForPath,
+  getDesktopWorkspacePaneForPath,
   type DesktopRouteKey,
 } from "@/components/desktop/desktopRouteConfig";
 import { DesktopJobNotice } from "@/components/desktop/DesktopJobNotice";
+import {
+  DESKTOP_ACTION_CLASS,
+  DESKTOP_FOCUS_CLASS,
+} from "@/components/desktop/desktopVisualContract";
 import type {
   AssistantOverview,
   DesktopContextMenuItem,
@@ -57,6 +64,8 @@ import type {
   SystemInfo,
 } from "@/components/desktop/types";
 import { useDesktopJob } from "@/components/desktop/useDesktopJob";
+import { useDesktopDialog } from "@/components/desktop/useDesktopDialog";
+import { useDesktopRouteNavigation } from "@/components/desktop/useDesktopRouteNavigation";
 import { useDesktopStatus } from "@/components/desktop/useDesktopStatus";
 import { useDesktopWindow } from "@/components/desktop/useDesktopWindow";
 import { cn } from "@/lib/utils";
@@ -221,15 +230,19 @@ function SectionButton({
       onClick={onClick}
       disabled={busy || disabled}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-[9px] border px-3 py-1.5 text-[12.5px] transition disabled:cursor-not-allowed disabled:opacity-50",
+        `inline-flex items-center justify-center gap-2 px-3 ${DESKTOP_ACTION_CLASS}`,
         tone === "primary"
-          ? "border-[#586679] bg-[linear-gradient(180deg,#2a313b_0%,#232a32_100%)] text-[#f4f7fb] hover:bg-[#2b323a]"
+          ? "border-[#ff6a32] bg-[#ff571c] text-[#090a08] hover:bg-[#ff7545]"
           : tone === "danger"
-            ? "border-rose-400/20 bg-rose-500/10 text-rose-100 hover:bg-rose-500/15"
-            : "border-[#2c333a] bg-[#171b20] text-[#dde4ed] hover:bg-[#1d2229]",
+            ? "border-[#66302e] bg-[#241312] text-[#ff9b96] hover:border-[#ff6d66]"
+            : "border-[#48463e] bg-[#151612] text-[#c8c0b0] hover:border-[#777268] hover:text-[#eee9dc]",
       )}
     >
-      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Icon className="h-4 w-4" />}
+      {busy ? (
+        <Loader2 className="h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" aria-hidden="true" />
+      ) : (
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      )}
       {label}
     </button>
   );
@@ -246,11 +259,12 @@ function InlineAlert({
 }) {
   return (
     <div
+      role={tone === "danger" ? "alert" : "status"}
       className={cn(
-        "rounded-2xl border px-4 py-4",
+        "rounded-[6px] border px-4 py-4",
         tone === "danger"
-          ? "border-rose-500/25 bg-rose-500/10 text-rose-100"
-          : "border-amber-400/20 bg-amber-400/10 text-amber-100",
+          ? "border-[#66302e] bg-[#241312] text-[#ff9b96]"
+          : "border-[#65502b] bg-[#211a0e] text-[#f4cc82]",
       )}
     >
       <p className="text-sm font-semibold">{title}</p>
@@ -268,8 +282,8 @@ function ValueList({
     <div className="space-y-3">
       {items.map((item) => (
         <div key={`${item.label}-${item.value}`} className="flex items-start justify-between gap-4 text-sm">
-          <span className="text-slate-500">{item.label}</span>
-          <span className="max-w-[65%] break-all text-right text-slate-200">{item.value}</span>
+          <span className="text-[#8d867a]">{item.label}</span>
+          <span className="max-w-[65%] break-all text-right text-[#c8c0b0]">{item.value}</span>
         </div>
       ))}
     </div>
@@ -314,10 +328,10 @@ function SnapshotDetails({
   return (
     <details
       open={defaultOpen}
-      className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+      className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] p-4"
     >
-      <summary className="cursor-pointer text-sm font-semibold text-white">{title}</summary>
-      <pre className="mt-3 max-h-72 overflow-auto rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-slate-400">
+      <summary className={cn("cursor-pointer text-sm font-semibold text-[#eee9dc]", DESKTOP_FOCUS_CLASS)}>{title}</summary>
+      <pre className="mt-3 max-h-72 overflow-auto rounded-[4px] border border-[#34342e] bg-[#090a08] p-3 font-[family:var(--font-mono)] text-xs text-[#999284]">
         {jsonPreview(value)}
       </pre>
     </details>
@@ -335,18 +349,18 @@ function InspectorFactGrid({
         <div
           key={`${item.label}-${item.value}`}
           className={cn(
-            "rounded-2xl border px-4 py-3",
+            "rounded-[4px] border px-4 py-3",
             item.tone === "success"
-              ? "border-emerald-400/20 bg-emerald-400/10"
+              ? "border-[#285a43] bg-[#0f2018]"
               : item.tone === "warning"
-                ? "border-amber-400/20 bg-amber-400/10"
+                ? "border-[#65502b] bg-[#211a0e]"
                 : item.tone === "danger"
-                  ? "border-rose-400/20 bg-rose-400/10"
-                  : "border-white/10 bg-white/[0.03]",
+                  ? "border-[#66302e] bg-[#241312]"
+                  : "border-[#34342e] bg-[#151612]",
           )}
         >
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
-          <p className="mt-2 text-sm font-semibold text-white">{item.value}</p>
+          <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">{item.label}</p>
+          <p className="mt-2 text-sm font-semibold text-[#eee9dc]">{item.value}</p>
         </div>
       ))}
     </div>
@@ -385,28 +399,28 @@ function SelectionCard({
         onContextMenu();
       }}
       className={cn(
-        "group relative w-full overflow-hidden rounded-[12px] border px-3.5 py-3 text-left transition",
+        `group relative w-full overflow-hidden rounded-[4px] border px-3.5 py-3 text-left transition-colors ${DESKTOP_FOCUS_CLASS}`,
         active
-          ? "border-[#6b7c92] bg-[linear-gradient(180deg,rgba(33,40,48,0.98)_0%,rgba(23,28,34,0.99)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_10px_24px_rgba(0,0,0,0.18)]"
-          : "border-white/8 bg-[#12171d]/92 hover:border-[#39424d] hover:bg-[#171d24]",
+          ? "border-[#663619] bg-[#21150f] shadow-[inset_3px_0_0_#ff571c]"
+          : "border-[#2b2b26] bg-[#11120f] hover:border-[#48463e] hover:bg-[#151612]",
       )}
     >
       <span
         className={cn(
-          "absolute inset-y-2 left-1.5 w-[3px] rounded-full transition",
-          active ? "bg-cyan-300/90" : "bg-transparent group-hover:bg-white/15",
+          "absolute inset-y-2 left-1.5 w-[2px] rounded-[4px] transition-colors",
+          active ? "bg-[#ff571c]" : "bg-transparent group-hover:bg-[#48463e]",
         )}
       />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-[13px] font-semibold text-[#f4f7fb]">{title}</p>
-          {subtitle ? <p className="mt-1 text-[12px] text-[#97a1ae]">{subtitle}</p> : null}
+          <p className="truncate text-[13px] font-semibold text-[#eee9dc]">{title}</p>
+          {subtitle ? <p className="mt-1 text-[12px] text-[#999284]">{subtitle}</p> : null}
         </div>
         {statusLabel ? (
           <StatusBadge status={asDashboardStatus(statusLabel)} label={statusLabel} />
         ) : null}
       </div>
-      {detail ? <p className="mt-2.5 text-[12px] leading-5 text-[#97a1ae]">{detail}</p> : null}
+      {detail ? <p className="mt-2.5 text-[12px] leading-5 text-[#999284]">{detail}</p> : null}
       {footer ? <div className="mt-4">{footer}</div> : null}
     </button>
   );
@@ -424,14 +438,14 @@ function ChipRow({
       {items.map((item) => (
         <span
           key={item}
-          className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-slate-300"
+          className="rounded-full border border-[#34342e] bg-[#171813] px-2.5 py-1 font-[family:var(--font-mono)] text-[9px] uppercase tracking-[0.1em] text-[#aaa397]"
         >
           {item}
         </span>
       ))}
     </div>
   ) : (
-    <p className="text-sm text-slate-500">{emptyLabel}</p>
+    <p className="text-sm text-[#8d867a]">{emptyLabel}</p>
   );
 }
 
@@ -446,31 +460,31 @@ function WorkbenchMetricStrip({
   }>;
 }) {
   return (
-    <div className="overflow-hidden rounded-[18px] border border-[#2b3238] bg-[#0d1116] shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
-      <div className="grid gap-px bg-[#20262d] [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
+    <div className="overflow-hidden rounded-[6px] border border-[#34342e] bg-[#0c0d0b]">
+      <div className="grid gap-px bg-[#2b2b26] [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
         {items.map((item) => (
           <div
             key={`${item.label}-${item.value}`}
-            className="bg-[linear-gradient(180deg,#151a20_0%,#10151b_100%)] px-4 py-4"
+            className="bg-[#11120f] px-4 py-4"
           >
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7e8896]">
+            <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">
               {item.label}
             </p>
             <p
               className={cn(
-                "mt-2 text-lg font-semibold tracking-[-0.02em]",
+                "mt-2 font-[family:var(--font-mono)] text-lg font-medium tracking-[-0.03em]",
                 item.tone === "success"
-                  ? "text-emerald-100"
+                  ? "text-[#78e3b4]"
                   : item.tone === "warning"
-                    ? "text-amber-100"
+                    ? "text-[#f4cc82]"
                     : item.tone === "danger"
-                      ? "text-rose-100"
-                      : "text-[#f4f7fb]",
+                      ? "text-[#ff9b96]"
+                      : "text-[#eee9dc]",
               )}
             >
               {item.value}
             </p>
-            <p className="mt-2 text-xs leading-5 text-[#8f98a5]">{item.detail}</p>
+            <p className="mt-2 text-xs leading-5 text-[#999284]">{item.detail}</p>
           </div>
         ))}
       </div>
@@ -496,14 +510,14 @@ function WorkbenchPane({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-[16px] border border-[#273039] bg-[linear-gradient(180deg,#12171d_0%,#0d1116_100%)] shadow-[0_16px_42px_rgba(0,0,0,0.2)]",
+        "overflow-hidden rounded-[6px] border border-[#2b2b26] bg-[#11120f]",
         className,
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#252c33] bg-[rgba(255,255,255,0.02)] px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#2b2b26] bg-[#0c0d0b] px-4 py-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7e8896]">{title}</p>
-          {meta ? <p className="mt-1 text-xs text-[#8f98a5]">{meta}</p> : null}
+          <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#ff8355]">REC / {title}</p>
+          {meta ? <p className="mt-1 text-xs text-[#999284]">{meta}</p> : null}
         </div>
         {toolbar ? <div className="flex flex-wrap items-center gap-2">{toolbar}</div> : null}
       </div>
@@ -548,25 +562,36 @@ function InspectorDrawer({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const dialogRef = useDesktopDialog<HTMLElement>(open, onClose);
+
   if (!open) {
     return null;
   }
 
   return (
-    <div className="fixed inset-0 z-[110] flex justify-end bg-[#090c11]/46 backdrop-blur-[4px]">
+    <div className="fixed inset-0 z-[110] flex justify-end bg-[#090a08]/84 motion-reduce:backdrop-blur-none">
       <button
         type="button"
         aria-label="Close inspector"
         className="flex-1 cursor-default"
         onClick={onClose}
       />
-      <aside className="flex h-full w-full max-w-[430px] flex-col border-l border-[#273039] bg-[linear-gradient(180deg,#10151b_0%,#0b1016_100%)] shadow-[-18px_0_54px_rgba(0,0,0,0.34)]">
-        <div className="flex items-center justify-between gap-3 border-b border-[#252c33] px-4 py-3.5">
+      <aside
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="desktop-inspector-title"
+        tabIndex={-1}
+        className="flex h-full w-full max-w-[430px] flex-col border-l border-[#48463e] bg-[#0d0e0c] shadow-[-24px_0_64px_rgba(0,0,0,0.48)]"
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-[#34342e] bg-[#0c0d0b] px-4 py-3.5">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7e8896]">
+            <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#ff8355]">
               Compact Inspector
             </p>
-            <p className="mt-1 text-sm font-semibold text-white">{title}</p>
+            <h2 id="desktop-inspector-title" className="mt-1 font-[family:var(--font-site-display)] text-base font-medium text-[#eee9dc]">
+              {title}
+            </h2>
           </div>
           <SectionButton label="Close" icon={ArrowRight} onClick={onClose} />
         </div>
@@ -595,91 +620,57 @@ function useViewportWidth() {
   return width;
 }
 
+function buildCompanionRoute(destinationKey: DesktopRouteKey, detail: string) {
+  const destination = DESKTOP_ROUTE_META[destinationKey];
+  return {
+    label: `Open ${destination.title}`,
+    href: destination.path,
+    detail,
+  };
+}
+
 function getCompanionRoute(routeKey: DesktopRouteKey) {
   switch (routeKey) {
     case "agents":
-      return { label: "Open Spawn", href: "/dashboard/spawn", detail: "Jump to the native assistant creation lane." };
+      return buildCompanionRoute("spawn", "Jump to the native assistant creation lane.");
     case "deployments":
-      return { label: "Open Monitoring", href: "/dashboard/monitoring", detail: "Check rollout health and alert pressure." };
+      return buildCompanionRoute("monitoring", "Check rollout health and alert pressure.");
     case "runs":
-      return { label: "Open Traces", href: "/dashboard/traces", detail: "Pivot from run history into event drilldown." };
+      return buildCompanionRoute("traces", "Pivot from run history into event drilldown.");
     case "monitoring":
-      return { label: "Open Logs", href: "/dashboard/logs", detail: "Move into the machine-local failure surface." };
+      return buildCompanionRoute("logs", "Move into the machine-local failure surface.");
     case "traces":
-      return { label: "Open Runs", href: "/dashboard/runs", detail: "Go back to the parent execution queue." };
+      return buildCompanionRoute("runs", "Go back to the parent execution queue.");
     case "observability":
-      return { label: "Open Monitoring", href: "/dashboard/monitoring", detail: "Compare event flow against live alert posture." };
+      return buildCompanionRoute("monitoring", "Compare event flow against live alert posture.");
     case "sessions":
-      return { label: "Open Channels", href: "/dashboard/channels", detail: "Inspect the assistant communication contract." };
+      return buildCompanionRoute("channels", "Inspect the assistant communication contract.");
     case "apiKeys":
-      return { label: "Open Security", href: "/dashboard/security", detail: "See key posture alongside operator identity." };
+      return buildCompanionRoute("security", "See key posture alongside operator identity.");
     case "budgets":
-      return { label: "Open Analytics", href: "/dashboard/analytics", detail: "Compare spend with run and latency trends." };
+      return buildCompanionRoute("analytics", "Compare spend with run and latency trends.");
     case "webhooks":
-      return { label: "Open Monitoring", href: "/dashboard/monitoring", detail: "Watch for failed deliveries and alert overlap." };
+      return buildCompanionRoute("monitoring", "Watch for failed deliveries and alert overlap.");
     case "security":
-      return { label: "Open API Keys", href: "/dashboard/api-keys", detail: "Operate directly on the current key ledger." };
+      return buildCompanionRoute("apiKeys", "Operate directly on the current key ledger.");
     case "analytics":
-      return { label: "Open Budgets", href: "/dashboard/budgets", detail: "Return to cost posture and usage events." };
+      return buildCompanionRoute("budgets", "Return to cost posture and usage events.");
     case "swarm":
-      return { label: "Open Deployments", href: "/dashboard/deployments", detail: "Move from topology to replica actions." };
+      return buildCompanionRoute("deployments", "Move from topology to replica actions.");
     case "channels":
-      return { label: "Open Sessions", href: "/dashboard/sessions", detail: "Inspect the live session feed for those channels." };
+      return buildCompanionRoute("sessions", "Inspect the live session feed for those channels.");
     case "history":
-      return { label: "Open Monitoring", href: "/dashboard/monitoring", detail: "Use alert and health data as the audit anchor." };
+      return buildCompanionRoute("monitoring", "Use alert and health data as the audit anchor.");
     case "skills":
-      return { label: "Open Workspace", href: "/dashboard", detail: "Return to mission control for workspace maintenance." };
+      return buildCompanionRoute("home", "Return to Overview for workspace maintenance.");
     case "spawn":
-      return { label: "Open Agents", href: "/dashboard/agents", detail: "Review created assistants in the native registry." };
+      return buildCompanionRoute("agents", "Review created assistants in the native registry.");
     case "logs":
-      return { label: "Open Advanced", href: "/dashboard/control", detail: "Go deeper into bridge and runtime diagnostics." };
+      return buildCompanionRoute("control", "Go deeper into bridge and runtime diagnostics.");
     case "orchestration":
-      return { label: "Open Deployments", href: "/dashboard/deployments", detail: "Move to the live runtime surface while orchestration is still thin." };
+      return buildCompanionRoute("deployments", "Move to the live runtime surface while orchestration is still thin.");
     case "memory":
-      return { label: "Open Sessions", href: "/dashboard/sessions", detail: "Use session and workspace state as today’s memory proxy." };
-  }
-}
-
-function getWorkspacePaneForHref(href: string) {
-  switch (href) {
-    case "/dashboard":
-      return "overview";
-    case "/dashboard/agents":
-      return "fleet";
-    case "/dashboard/deployments":
-      return "rollouts";
-    case "/dashboard/runs":
-      return "operations";
-    case "/dashboard/monitoring":
-      return "monitoring";
-    case "/dashboard/api-keys":
-      return "api-keys";
-    case "/dashboard/budgets":
-      return "budgets";
-    case "/dashboard/analytics":
-      return "analytics";
-    case "/dashboard/webhooks":
-      return "webhooks";
-    case "/dashboard/security":
-      return "security";
-    case "/dashboard/orchestration":
-      return "automation";
-    case "/dashboard/memory":
-      return "memory";
-    case "/dashboard/swarm":
-      return "swarm";
-    case "/dashboard/channels":
-      return "channels";
-    case "/dashboard/history":
-      return "history";
-    case "/dashboard/skills":
-      return "skills";
-    case "/dashboard/spawn":
-      return "spawn";
-    case "/dashboard/logs":
-      return "logs";
-    default:
-      return "overview";
+      return buildCompanionRoute("sessions", "Use session and workspace state as today’s memory proxy.");
   }
 }
 
@@ -698,6 +689,7 @@ export function DesktopNativeRoutePage({
 
   const meta = DESKTOP_ROUTE_META[routeKey];
   const { currentWindow, openWindow, openPreferences, updateCurrentWindow } = useDesktopWindow();
+  const navigateCurrentRoute = useDesktopRouteNavigation();
   const { status, refetch } = useDesktopStatus();
   const {
     job,
@@ -840,29 +832,32 @@ export function DesktopNativeRoutePage({
   }
 
   async function openDesktopDestination(href: string, payload: DesktopWindowPayload = {}) {
-    if (href === "/dashboard/control") {
+    const destinationRole = getDesktopWindowRoleForPath(href);
+
+    if (destinationRole === "settings") {
       await openPreferences(payload.pane || "advanced");
       return;
     }
 
-    if (href === "/dashboard/sessions") {
+    if (destinationRole === "sessions") {
       await openWindow("sessions", payload, href);
       return;
     }
 
-    if (href === "/dashboard/traces" || href === "/dashboard/logs") {
+    if (destinationRole === "traces") {
+      const destinationKey = getDesktopRouteKeyForPath(href);
       await openWindow(
         "traces",
         {
           ...payload,
-          tab: href === "/dashboard/logs" ? "logs" : payload.tab || "timeline",
+          tab: destinationKey === "logs" ? "logs" : payload.tab || "timeline",
         },
         href,
       );
       return;
     }
 
-    const pane = getWorkspacePaneForHref(href);
+    const pane = getDesktopWorkspacePaneForPath(href);
     const nextPayload = {
       ...currentWindow.currentWindow.payload,
       ...payload,
@@ -870,10 +865,7 @@ export function DesktopNativeRoutePage({
     };
 
     if (currentWindow.currentRole === "workspace") {
-      await updateCurrentWindow({
-        route: href,
-        payload: nextPayload,
-      });
+      navigateCurrentRoute(href, nextPayload);
       return;
     }
 
@@ -1239,6 +1231,13 @@ export function DesktopNativeRoutePage({
 
       const accessToken = pickString(payload, ["access_token"], "");
       const refreshToken = pickString(payload, ["refresh_token"], "");
+      if (authMode === "register" && payload.requires_email_verification === true) {
+        throw new Error(
+          payload.verification_email_sent === false
+            ? "Account created, but the email provider did not accept the verification message. Retry verification from the web app when delivery is configured."
+            : "Account created. Confirm the verification email before signing in to the desktop app.",
+        );
+      }
       if (!accessToken) {
         throw new Error("Authentication succeeded without an access token.");
       }
@@ -1724,12 +1723,12 @@ export function DesktopNativeRoutePage({
     },
   ] as const;
   const inspectorRail = (
-    <div className="space-y-4">
+    <div className="space-y-4 [&_button]:focus-visible:outline [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-offset-2 [&_button]:focus-visible:outline-[#ff7847] [&_input]:focus-visible:outline [&_input]:focus-visible:outline-2 [&_input]:focus-visible:outline-offset-2 [&_input]:focus-visible:outline-[#ff7847] [&_select]:focus-visible:outline [&_select]:focus-visible:outline-2 [&_select]:focus-visible:outline-offset-2 [&_select]:focus-visible:outline-[#ff7847]">
       <WorkbenchPane title="Route Inspector" meta="machine-aware">
         <div className="space-y-4">
           <div>
-            <p className="text-sm font-semibold text-white">{meta.title}</p>
-            <p className="mt-2 text-sm leading-6 text-slate-400">{meta.description}</p>
+            <p className="text-sm font-semibold text-[#eee9dc]">{meta.title}</p>
+            <p className="mt-2 text-sm leading-6 text-[#999284]">{meta.description}</p>
           </div>
           <InspectorFactGrid items={[...inspectorFacts]} />
         </div>
@@ -1738,9 +1737,9 @@ export function DesktopNativeRoutePage({
       <WorkbenchPane title="Next Move" meta="route-native">
         <div className="space-y-3">
           {companionRoute ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="text-sm font-semibold text-white">{companionRoute.label}</p>
-              <p className="mt-2 text-sm leading-6 text-slate-400">{companionRoute.detail}</p>
+            <div className="rounded-[6px] border border-[#2b2b26] bg-[#11120f] p-4">
+              <p className="text-sm font-semibold text-[#eee9dc]">{companionRoute.label}</p>
+              <p className="mt-2 text-sm leading-6 text-[#999284]">{companionRoute.detail}</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <SectionButton
                   label={companionRoute.label}
@@ -1752,8 +1751,8 @@ export function DesktopNativeRoutePage({
             </div>
           ) : null}
 
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-sm font-semibold text-white">Operator helpers</p>
+          <div className="rounded-[6px] border border-[#2b2b26] bg-[#11120f] p-4">
+            <p className="text-sm font-semibold text-[#eee9dc]">Operator helpers</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <SectionButton
                 label="Copy Workspace"
@@ -1912,7 +1911,7 @@ export function DesktopNativeRoutePage({
                                 ])
                               }
                               footer={
-                                <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+                                <div className="flex items-center justify-between gap-3 text-xs text-[#8d867a]">
                                   <span>Updated {formatRelativeTime(pickString(agent, ["updated_at", "created_at"], ""))}</span>
                                   <span>{pickNumber(agent, ["deployment_count"], selectedAgentKey === id ? selectedAgentDeployments.length : 0)} deploys</span>
                                 </div>
@@ -1928,15 +1927,17 @@ export function DesktopNativeRoutePage({
                     <form className="space-y-4" onSubmit={(event) => void createAgent(event)}>
                       <div className="grid gap-3">
                         <input
+                          aria-label="Agent name"
                           value={agentDraft.name}
                           onChange={(event) => setAgentDraft((current) => ({ ...current, name: event.target.value }))}
                           placeholder="Operator Prime"
-                          className="rounded-[12px] border border-[#2b3238] bg-[#0c1015] px-3 py-2.5 text-sm text-white outline-none transition focus:border-[#5c6876]"
+                          className="rounded-[6px] border border-[#2b3238] bg-[#0c1015] px-3 py-2.5 text-sm text-[#eee9dc] outline-none transition focus:border-[#5c6876]"
                         />
                         <select
+                          aria-label="Agent provider"
                           value={agentDraft.type}
                           onChange={(event) => setAgentDraft((current) => ({ ...current, type: event.target.value }))}
-                          className="rounded-[12px] border border-[#2b3238] bg-[#0c1015] px-3 py-2.5 text-sm text-white outline-none transition focus:border-[#5c6876]"
+                          className="rounded-[6px] border border-[#2b3238] bg-[#0c1015] px-3 py-2.5 text-sm text-[#eee9dc] outline-none transition focus:border-[#5c6876]"
                         >
                           <option value="openai">openai</option>
                           <option value="anthropic">anthropic</option>
@@ -1944,13 +1945,14 @@ export function DesktopNativeRoutePage({
                         </select>
                       </div>
                       <textarea
+                        aria-label="Agent description"
                         value={agentDraft.description}
                         onChange={(event) =>
                           setAgentDraft((current) => ({ ...current, description: event.target.value }))
                         }
                         rows={4}
                         placeholder="Describe the operator or assistant role."
-                        className="w-full rounded-[12px] border border-[#2b3238] bg-[#0c1015] px-3 py-2.5 text-sm text-white outline-none transition focus:border-[#5c6876]"
+                        className="w-full rounded-[6px] border border-[#2b3238] bg-[#0c1015] px-3 py-2.5 text-sm text-[#eee9dc] outline-none transition focus:border-[#5c6876]"
                       />
                       <SectionButton
                         label="Create Agent"
@@ -2001,7 +2003,7 @@ export function DesktopNativeRoutePage({
                           />
                         </div>
                         <div className="grid gap-3 md:grid-cols-2">
-                          <div className="rounded-[14px] border border-[#2b3238] bg-[#0c1015] px-4 py-3">
+                          <div className="rounded-[6px] border border-[#2b3238] bg-[#0c1015] px-4 py-3">
                             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7e8896]">
                               Workspace binding
                             </p>
@@ -2009,7 +2011,7 @@ export function DesktopNativeRoutePage({
                               {status.assistant?.workspace || "No workspace is bound to the operator yet."}
                             </p>
                           </div>
-                          <div className="rounded-[14px] border border-[#2b3238] bg-[#0c1015] px-4 py-3">
+                          <div className="rounded-[6px] border border-[#2b3238] bg-[#0c1015] px-4 py-3">
                             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7e8896]">
                               Local runtime target
                             </p>
@@ -2265,11 +2267,12 @@ export function DesktopNativeRoutePage({
                   <WorkbenchPane title="Launch Deployment" meta="replica action">
                     <form className="space-y-4" onSubmit={(event) => void createDeployment(event)}>
                       <select
+                        aria-label="Deployment agent"
                         value={deploymentDraft.agentId}
                         onChange={(event) =>
                           setDeploymentDraft((current) => ({ ...current, agentId: event.target.value }))
                         }
-                        className="w-full rounded-[12px] border border-[#2b3238] bg-[#0c1015] px-3 py-2.5 text-sm text-white outline-none transition focus:border-[#5c6876]"
+                        className="w-full rounded-[6px] border border-[#2b3238] bg-[#0c1015] px-3 py-2.5 text-sm text-[#eee9dc] outline-none transition focus:border-[#5c6876]"
                       >
                         <option value="">Select an agent</option>
                         {cloudAgents.map((agent) => {
@@ -2282,13 +2285,14 @@ export function DesktopNativeRoutePage({
                         })}
                       </select>
                       <input
+                        aria-label="Deployment replicas"
                         type="number"
                         min="1"
                         value={deploymentDraft.replicas}
                         onChange={(event) =>
                           setDeploymentDraft((current) => ({ ...current, replicas: event.target.value }))
                         }
-                        className="w-full rounded-[12px] border border-[#2b3238] bg-[#0c1015] px-3 py-2.5 text-sm text-white outline-none transition focus:border-[#5c6876]"
+                        className="w-full rounded-[6px] border border-[#2b3238] bg-[#0c1015] px-3 py-2.5 text-sm text-[#eee9dc] outline-none transition focus:border-[#5c6876]"
                       />
                       <SectionButton
                         label="Create Deployment"
@@ -2342,7 +2346,7 @@ export function DesktopNativeRoutePage({
                           ]}
                         />
                         <div className="grid gap-3 md:grid-cols-2">
-                          <div className="rounded-[14px] border border-[#2b3238] bg-[#0c1015] px-4 py-3">
+                          <div className="rounded-[6px] border border-[#2b3238] bg-[#0c1015] px-4 py-3">
                             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7e8896]">
                               Control plane path
                             </p>
@@ -2350,7 +2354,7 @@ export function DesktopNativeRoutePage({
                               {localSnapshot.controlPlane?.path || "Unknown"}
                             </p>
                           </div>
-                          <div className="rounded-[14px] border border-[#2b3238] bg-[#0c1015] px-4 py-3">
+                          <div className="rounded-[6px] border border-[#2b3238] bg-[#0c1015] px-4 py-3">
                             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7e8896]">
                               Runtime target
                             </p>
@@ -2417,10 +2421,10 @@ export function DesktopNativeRoutePage({
                       <div className="space-y-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
-                            <p className="text-base font-semibold text-white">
+                            <p className="text-base font-semibold text-[#eee9dc]">
                               {pickString(selectedDeploymentAgent, ["name"], "Unnamed agent")}
                             </p>
-                            <p className="mt-2 text-sm leading-6 text-slate-400">
+                            <p className="mt-2 text-sm leading-6 text-[#999284]">
                               {pickString(selectedDeploymentAgent, ["description"], "No description provided.")}
                             </p>
                           </div>
@@ -2473,10 +2477,10 @@ export function DesktopNativeRoutePage({
               {selectedTrace ? (
                 <div className="space-y-4">
                   <div>
-                    <p className="text-base font-semibold text-white">
+                    <p className="text-base font-semibold text-[#eee9dc]">
                       {pickString(selectedTrace, ["event_type"], "trace")}
                     </p>
-                    <p className="mt-2 text-sm leading-6 text-slate-400">
+                    <p className="mt-2 text-sm leading-6 text-[#999284]">
                       {pickString(selectedTrace, ["message"], "No trace message.")}
                     </p>
                   </div>
@@ -2620,7 +2624,7 @@ export function DesktopNativeRoutePage({
                               ])
                             }
                             footer={
-                              <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+                              <div className="flex items-center justify-between gap-3 text-xs text-[#8d867a]">
                                 <span>Started {formatRelativeTime(pickString(run, ["started_at"], ""))}</span>
                                 <span>{pickNumber(run, ["trace_count"], 0)} traces</span>
                               </div>
@@ -2710,11 +2714,11 @@ export function DesktopNativeRoutePage({
                   >
                     {selectedRun ? (
                       <div className="space-y-4">
-                        <div className="rounded-[14px] border border-[#2b3238] bg-[#0c1015] p-4">
+                        <div className="rounded-[6px] border border-[#2b3238] bg-[#0c1015] p-4">
                           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7e8896]">
                             Output
                           </p>
-                          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-300">
+                          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#c8c0b0]">
                             {pickString(selectedRun, ["error_message"], "") ||
                               pickString(selectedRun, ["output_text"], "") ||
                               "No run output or error text was captured in the current payload."}
@@ -2819,7 +2823,7 @@ export function DesktopNativeRoutePage({
                           statusLabel={open ? "open" : "resolved"}
                           onClick={() => setSelectedAlertId(id)}
                           footer={
-                            <p className="text-xs text-slate-500">
+                            <p className="text-xs text-[#8d867a]">
                               Raised {formatRelativeTime(pickString(alert, ["created_at", "timestamp"], ""))}
                             </p>
                           }
@@ -2839,10 +2843,10 @@ export function DesktopNativeRoutePage({
                     <div className="space-y-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <p className="text-base font-semibold text-white">
+                          <p className="text-base font-semibold text-[#eee9dc]">
                             {titleCase(pickString(selectedAlert, ["type"], "alert"))}
                           </p>
-                          <p className="mt-2 text-sm leading-6 text-slate-400">
+                          <p className="mt-2 text-sm leading-6 text-[#999284]">
                             {pickString(selectedAlert, ["message"], "No alert message.")}
                           </p>
                         </div>
@@ -2914,10 +2918,10 @@ export function DesktopNativeRoutePage({
               {selectedTrace ? (
                 <div className="space-y-4">
                   <div>
-                    <p className="text-base font-semibold text-white">
+                    <p className="text-base font-semibold text-[#eee9dc]">
                       {pickString(selectedTrace, ["event_type"], "trace")}
                     </p>
-                    <p className="mt-2 text-sm leading-6 text-slate-400">
+                    <p className="mt-2 text-sm leading-6 text-[#999284]">
                       {pickString(selectedTrace, ["message"], "No trace message.")}
                     </p>
                   </div>
@@ -3168,10 +3172,10 @@ export function DesktopNativeRoutePage({
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <p className="text-base font-semibold text-white">
+                        <p className="text-base font-semibold text-[#eee9dc]">
                           {pickString(selectedObservability, ["event_type", "name", "metric"], "Observability event")}
                         </p>
-                        <p className="mt-2 text-sm leading-6 text-slate-400">
+                        <p className="mt-2 text-sm leading-6 text-[#999284]">
                           {pickString(selectedObservability, ["message", "summary"], "No additional event message.")}
                         </p>
                       </div>
@@ -3419,7 +3423,7 @@ export function DesktopNativeRoutePage({
                         ]}
                       />
                       <div className="grid gap-3 md:grid-cols-2">
-                        <div className="rounded-[14px] border border-[#2b3238] bg-[#0c1015] px-4 py-3">
+                        <div className="rounded-[6px] border border-[#2b3238] bg-[#0c1015] px-4 py-3">
                           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7e8896]">
                             Session source
                           </p>
@@ -3427,7 +3431,7 @@ export function DesktopNativeRoutePage({
                             {pickString(selectedCloudSession, ["source"], "gateway") || "gateway"}
                           </p>
                         </div>
-                        <div className="rounded-[14px] border border-[#2b3238] bg-[#0c1015] px-4 py-3">
+                        <div className="rounded-[6px] border border-[#2b3238] bg-[#0c1015] px-4 py-3">
                           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7e8896]">
                             Local age
                           </p>
@@ -3480,10 +3484,11 @@ export function DesktopNativeRoutePage({
             <LivePanel title="Key issuance" meta="create + reveal">
               <form className="space-y-4" onSubmit={(event) => void createApiKey(event)}>
                 <input
+                  aria-label="API key name"
                   value={apiKeyName}
                   onChange={(event) => setApiKeyName(event.target.value)}
                   placeholder="Operator key"
-                  className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-white outline-none"
+                  className="w-full rounded-[6px] border border-[#2b2b26] bg-[#11120f] px-3 py-2.5 text-sm text-[#eee9dc] outline-none"
                 />
                 <SectionButton
                   label="Create API Key"
@@ -3496,9 +3501,9 @@ export function DesktopNativeRoutePage({
               </form>
 
               {revealedKey ? (
-                <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-200">One-time secret</p>
-                  <p className="mt-2 break-all font-mono text-sm text-white">{revealedKey}</p>
+                <div className="mt-4 rounded-[6px] border border-[#285a43] bg-[#0f2018] p-4">
+                  <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#78e3b4]">One-time secret</p>
+                  <p className="mt-2 break-all font-mono text-sm text-[#eee9dc]">{revealedKey}</p>
                 </div>
               ) : null}
             </LivePanel>
@@ -3513,11 +3518,11 @@ export function DesktopNativeRoutePage({
                 const id = pickString(keyRecord, ["id"], "");
                 const statusLabel = pickString(keyRecord, ["status"], pickBoolean(keyRecord, ["is_active"], true) ? "active" : "inactive");
                 return (
-                  <div key={id} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <div key={id} className="rounded-[6px] border border-[#2b2b26] bg-[#11120f] p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm font-semibold text-white">{pickString(keyRecord, ["name"], "API key")}</p>
-                        <p className="mt-1 font-mono text-xs text-slate-500">{maskValue(id)}</p>
+                        <p className="text-sm font-semibold text-[#eee9dc]">{pickString(keyRecord, ["name"], "API key")}</p>
+                        <p className="mt-1 font-mono text-xs text-[#8d867a]">{maskValue(id)}</p>
                       </div>
                       <StatusBadge status={asDashboardStatus(statusLabel)} label={statusLabel} />
                     </div>
@@ -3578,12 +3583,12 @@ export function DesktopNativeRoutePage({
               renderRecord={(event) => (
                 <div
                   key={pickString(event, ["id"], `usage-event-${pickString(event, ["created_at", "timestamp"], "fallback")}`)}
-                  className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+                  className="rounded-[6px] border border-[#2b2b26] bg-[#11120f] p-4"
                 >
-                  <p className="text-sm font-semibold text-white">
+                  <p className="text-sm font-semibold text-[#eee9dc]">
                     {pickString(event, ["event_type", "type"], "usage event")}
                   </p>
-                  <p className="mt-1 text-sm text-slate-400">
+                  <p className="mt-1 text-sm text-[#999284]">
                     {pickString(event, ["message", "description"], jsonPreview(event))}
                   </p>
                 </div>
@@ -3598,20 +3603,22 @@ export function DesktopNativeRoutePage({
             <LivePanel title="Create webhook" meta="native control">
               <form className="space-y-4" onSubmit={(event) => void createWebhook(event)}>
                 <input
+                  aria-label="Webhook endpoint URL"
                   value={webhookDraft.url}
                   onChange={(event) => setWebhookDraft((current) => ({ ...current, url: event.target.value }))}
                   placeholder="https://example.com/webhooks/mutx"
-                  className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-white outline-none"
+                  className="w-full rounded-[6px] border border-[#2b2b26] bg-[#11120f] px-3 py-2.5 text-sm text-[#eee9dc] outline-none"
                 />
                 <input
+                  aria-label="Webhook event names"
                   value={webhookDraft.events}
                   onChange={(event) =>
                     setWebhookDraft((current) => ({ ...current, events: event.target.value }))
                   }
                   placeholder="run.completed, deployment.failed"
-                  className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-white outline-none"
+                  className="w-full rounded-[6px] border border-[#2b2b26] bg-[#11120f] px-3 py-2.5 text-sm text-[#eee9dc] outline-none"
                 />
-                <label className="flex items-center gap-2 text-sm text-slate-300">
+                <label className="flex items-center gap-2 text-sm text-[#c8c0b0]">
                   <input
                     type="checkbox"
                     checked={webhookDraft.isActive}
@@ -3641,11 +3648,11 @@ export function DesktopNativeRoutePage({
               renderRecord={(webhook) => {
                 const id = pickString(webhook, ["id"], "");
                 return (
-                  <div key={id} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <div key={id} className="rounded-[6px] border border-[#2b2b26] bg-[#11120f] p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm font-semibold text-white">{pickString(webhook, ["url"], "unknown url")}</p>
-                        <p className="mt-1 text-sm text-slate-400">
+                        <p className="text-sm font-semibold text-[#eee9dc]">{pickString(webhook, ["url"], "unknown url")}</p>
+                        <p className="mt-1 text-sm text-[#999284]">
                           {pickStringArray(webhook, ["events"]).join(", ") || "No events configured"}
                         </p>
                       </div>
@@ -3700,10 +3707,10 @@ export function DesktopNativeRoutePage({
                   {cloudKeys.slice(0, 6).map((keyRecord, index) => (
                     <div
                       key={pickString(keyRecord, ["id"], `key-record-${index}`)}
-                      className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+                      className="rounded-[6px] border border-[#2b2b26] bg-[#11120f] p-4"
                     >
-                      <p className="text-sm font-semibold text-white">{pickString(keyRecord, ["name"], "API key")}</p>
-                      <p className="mt-1 font-mono text-xs text-slate-500">{maskValue(pickString(keyRecord, ["id"], ""))}</p>
+                      <p className="text-sm font-semibold text-[#eee9dc]">{pickString(keyRecord, ["name"], "API key")}</p>
+                      <p className="mt-1 font-mono text-xs text-[#8d867a]">{maskValue(pickString(keyRecord, ["id"], ""))}</p>
                     </div>
                   ))}
                 </div>
@@ -3751,10 +3758,10 @@ export function DesktopNativeRoutePage({
                 renderRecord={(point) => (
                   <div
                     key={`${pickString(point, ["timestamp"], "")}-${pickNumber(point, ["value"], 0)}`}
-                    className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+                    className="rounded-[6px] border border-[#2b2b26] bg-[#11120f] p-4"
                   >
-                    <p className="text-sm font-semibold text-white">{formatDateTime(pickString(point, ["timestamp"], ""))}</p>
-                    <p className="mt-1 text-sm text-slate-400">{pickNumber(point, ["value"], 0)} runs</p>
+                    <p className="text-sm font-semibold text-[#eee9dc]">{formatDateTime(pickString(point, ["timestamp"], ""))}</p>
+                    <p className="mt-1 text-sm text-[#999284]">{pickNumber(point, ["value"], 0)} runs</p>
                   </div>
                 )}
               />
@@ -3767,10 +3774,10 @@ export function DesktopNativeRoutePage({
                 renderRecord={(point) => (
                   <div
                     key={`${pickString(point, ["timestamp"], "")}-${pickNumber(point, ["value"], 0)}`}
-                    className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+                    className="rounded-[6px] border border-[#2b2b26] bg-[#11120f] p-4"
                   >
-                    <p className="text-sm font-semibold text-white">{formatDateTime(pickString(point, ["timestamp"], ""))}</p>
-                    <p className="mt-1 text-sm text-slate-400">{Math.round(pickNumber(point, ["value"], 0))}ms latency</p>
+                    <p className="text-sm font-semibold text-[#eee9dc]">{formatDateTime(pickString(point, ["timestamp"], ""))}</p>
+                    <p className="mt-1 text-sm text-[#999284]">{Math.round(pickNumber(point, ["value"], 0))}ms latency</p>
                   </div>
                 )}
               />
@@ -3789,10 +3796,10 @@ export function DesktopNativeRoutePage({
             renderRecord={(swarm) => (
               <div
                 key={pickString(swarm, ["id"], `swarm-${pickString(swarm, ["name"], "fallback")}`)}
-                className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+                className="rounded-[6px] border border-[#2b2b26] bg-[#11120f] p-4"
               >
-                <p className="text-sm font-semibold text-white">{pickString(swarm, ["name", "id"], "Swarm")}</p>
-                <p className="mt-1 text-sm text-slate-400">{jsonPreview(swarm)}</p>
+                <p className="text-sm font-semibold text-[#eee9dc]">{pickString(swarm, ["name", "id"], "Swarm")}</p>
+                <p className="mt-1 text-sm text-[#999284]">{jsonPreview(swarm)}</p>
               </div>
             )}
           />
@@ -3824,7 +3831,7 @@ export function DesktopNativeRoutePage({
       case "history":
         return (
           <LivePanel title="Operator history" meta="native audit rail">
-            <div className="space-y-3 text-sm text-slate-300">
+            <div className="space-y-3 text-sm text-[#c8c0b0]">
               <p>Recent activity is anchored in live runs, alerts, budgets, and local session state.</p>
               <p>Use this route as the desktop-native audit trail entrypoint instead of redirecting away from it.</p>
               <p>Last desktop sync: {formatDateTime(status.lastUpdated)}</p>
@@ -3841,9 +3848,9 @@ export function DesktopNativeRoutePage({
                   <LiveEmptyState title="No installed skills" message="Skill inventory will appear here once the workspace reports them." />
                 ) : (
                   localSnapshot.assistantOverview.installed_skills.map((skill) => (
-                    <div key={skill.id} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                      <p className="text-sm font-semibold text-white">{skill.name}</p>
-                      <p className="mt-1 font-mono text-xs text-slate-500">{skill.id}</p>
+                    <div key={skill.id} className="rounded-[6px] border border-[#2b2b26] bg-[#11120f] p-4">
+                      <p className="text-sm font-semibold text-[#eee9dc]">{skill.name}</p>
+                      <p className="mt-1 font-mono text-xs text-[#8d867a]">{skill.id}</p>
                     </div>
                   ))
                 )}
@@ -3857,7 +3864,7 @@ export function DesktopNativeRoutePage({
       case "spawn":
         return (
           <LivePanel title="Spawn new operator asset" meta="native entrypoint">
-            <div className="space-y-4 text-sm text-slate-300">
+            <div className="space-y-4 text-sm text-[#c8c0b0]">
               <p>This route stays native in desktop mode and now points directly at the local agent/deployment bootstrap surface.</p>
               <SectionButton
                 label="Open Agents"
@@ -3886,7 +3893,7 @@ export function DesktopNativeRoutePage({
       case "orchestration":
         return (
           <LivePanel title="Orchestration lane" meta="native admin surface">
-            <div className="space-y-3 text-sm text-slate-300">
+            <div className="space-y-3 text-sm text-[#c8c0b0]">
               <p>This route is now native in desktop mode and reserved for future workflow contracts.</p>
               <p>Until those contracts exist, it stays honest about current runtime, operator, and governance posture.</p>
             </div>
@@ -3896,7 +3903,7 @@ export function DesktopNativeRoutePage({
       case "memory":
         return (
           <LivePanel title="Memory posture" meta="native admin surface">
-            <div className="space-y-3 text-sm text-slate-300">
+            <div className="space-y-3 text-sm text-[#c8c0b0]">
               <p>Memory controls stay hidden until retention and retrieval semantics are backed by real contracts.</p>
               <p>The desktop route remains useful by showing workspace posture and leaving room for the real feature.</p>
             </div>
@@ -3904,9 +3911,15 @@ export function DesktopNativeRoutePage({
         );
     }
   })();
+  const resolvedRouteContent = routeContent ?? (
+    <LiveEmptyState
+      title={`${meta.title} native surface unavailable`}
+      message="This desktop build does not have a native renderer for the canonical route. Use the shared dashboard surface for this route instead."
+    />
+  );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 [&_button]:focus-visible:outline [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-offset-2 [&_button]:focus-visible:outline-[#ff7847] [&_input]:focus-visible:outline [&_input]:focus-visible:outline-2 [&_input]:focus-visible:outline-offset-2 [&_input]:focus-visible:outline-[#ff7847] [&_select]:focus-visible:outline [&_select]:focus-visible:outline-2 [&_select]:focus-visible:outline-offset-2 [&_select]:focus-visible:outline-[#ff7847]">
       <RouteHeader
         title={meta.title}
         description={meta.description}
@@ -4008,7 +4021,7 @@ export function DesktopNativeRoutePage({
             onClick={() => void runGovernanceRestartJob()}
           />
           <SectionButton
-            label="Mission Control"
+            label="Overview"
             icon={ArrowRight}
             onClick={() => void openDesktopDestination("/dashboard")}
           />
@@ -4053,10 +4066,10 @@ export function DesktopNativeRoutePage({
                     type="button"
                     onClick={() => setAuthMode(mode)}
                     className={cn(
-                      "rounded-xl border px-3 py-2 text-sm transition",
+                      "rounded-[6px] border px-3 py-2 text-sm transition",
                       authMode === mode
-                        ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-100"
-                        : "border-white/10 bg-white/[0.03] text-slate-300",
+                        ? "border-[#663619] bg-[#21150f] text-[#ff8355]"
+                        : "border-[#2b2b26] bg-[#11120f] text-[#c8c0b0]",
                     )}
                   >
                     {mode === "local" ? "Local Bootstrap" : mode === "register" ? "Register" : "Login"}
@@ -4065,26 +4078,29 @@ export function DesktopNativeRoutePage({
               </div>
               {authMode !== "login" ? (
                 <input
+                  aria-label="Operator name"
                   value={authName}
                   onChange={(event) => setAuthName(event.target.value)}
                   placeholder="Name"
-                  className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-white outline-none"
+                  className="w-full rounded-[6px] border border-[#2b2b26] bg-[#11120f] px-3 py-2.5 text-sm text-[#eee9dc] outline-none"
                 />
               ) : null}
               {authMode !== "local" ? (
                 <>
                   <input
+                    aria-label="Operator email"
                     value={authEmail}
                     onChange={(event) => setAuthEmail(event.target.value)}
                     placeholder="Email"
-                    className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-white outline-none"
+                    className="w-full rounded-[6px] border border-[#2b2b26] bg-[#11120f] px-3 py-2.5 text-sm text-[#eee9dc] outline-none"
                   />
                   <input
+                    aria-label="Operator password"
                     type="password"
                     value={authPassword}
                     onChange={(event) => setAuthPassword(event.target.value)}
                     placeholder="Password"
-                    className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-white outline-none"
+                    className="w-full rounded-[6px] border border-[#2b2b26] bg-[#11120f] px-3 py-2.5 text-sm text-[#eee9dc] outline-none"
                   />
                 </>
               ) : null}
@@ -4114,18 +4130,19 @@ export function DesktopNativeRoutePage({
         <LivePanel title="Assistant binding required" meta="inline recovery">
           <div className="grid gap-4 xl:grid-cols-[minmax(320px,0.92fr)_minmax(0,1.08fr)]">
             <div className="space-y-4">
-              <p className="text-sm leading-6 text-slate-300">
+              <p className="text-sm leading-6 text-[#c8c0b0]">
                 This route needs an assistant and workspace binding, but the current operator session does not have one yet.
               </p>
               <input
+                aria-label="Assistant name"
                 value={assistantName}
                 onChange={(event) => setAssistantName(event.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-white outline-none"
+                className="w-full rounded-[6px] border border-[#2b2b26] bg-[#11120f] px-3 py-2.5 text-sm text-[#eee9dc] outline-none"
               />
               <div className="flex flex-wrap gap-2">
                 <SectionButton label="Run Real Setup" icon={Play} tone="primary" onClick={() => void runAssistantSetup()} />
                 <SectionButton
-                  label="Mission Control"
+                  label="Overview"
                   icon={ArrowRight}
                   onClick={() => void openDesktopDestination("/dashboard")}
                 />
@@ -4140,9 +4157,9 @@ export function DesktopNativeRoutePage({
                 />
               </div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="text-sm font-semibold text-white">What setup will do</p>
-              <p className="mt-2 text-sm leading-6 text-slate-400">
+            <div className="rounded-[6px] border border-[#2b2b26] bg-[#11120f] p-4">
+              <p className="text-sm font-semibold text-[#eee9dc]">What setup will do</p>
+              <p className="mt-2 text-sm leading-6 text-[#999284]">
                 It drives the real desktop bridge setup flow, binds a workspace, and refreshes the native context without bouncing you into a separate product area.
               </p>
             </div>
@@ -4155,21 +4172,21 @@ export function DesktopNativeRoutePage({
           <LivePanel title={`${meta.title} data`} meta="loading">
             <div className="grid gap-4 xl:grid-cols-2">
               {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="h-28 animate-pulse rounded-2xl border border-white/10 bg-white/[0.03]" />
+                <div key={index} className="h-28 motion-safe:animate-pulse motion-reduce:animate-none rounded-[6px] border border-[#2b2b26] bg-[#11120f]" />
               ))}
             </div>
           </LivePanel>
           <div className="space-y-4">
-            <div className="h-40 animate-pulse rounded-2xl border border-white/10 bg-white/[0.03]" />
-            <div className="h-56 animate-pulse rounded-2xl border border-white/10 bg-white/[0.03]" />
-            <div className="h-64 animate-pulse rounded-2xl border border-white/10 bg-white/[0.03]" />
+            <div className="h-40 motion-safe:animate-pulse motion-reduce:animate-none rounded-[6px] border border-[#2b2b26] bg-[#11120f]" />
+            <div className="h-56 motion-safe:animate-pulse motion-reduce:animate-none rounded-[6px] border border-[#2b2b26] bg-[#11120f]" />
+            <div className="h-64 motion-safe:animate-pulse motion-reduce:animate-none rounded-[6px] border border-[#2b2b26] bg-[#11120f]" />
           </div>
         </div>
       ) : localSnapshot.error && !routeContent ? (
         <LiveErrorState title={`${meta.title} unavailable`} message={localSnapshot.error} />
       ) : supportsRouteInspector ? (
         <>
-          <div className="min-w-0">{routeContent}</div>
+          <div className="min-w-0">{resolvedRouteContent}</div>
           <InspectorDrawer
             open={compactViewport && inspectorDrawerOpen}
             title={`${meta.title} Inspector`}
@@ -4180,7 +4197,7 @@ export function DesktopNativeRoutePage({
         </>
       ) : (
         <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="min-w-0">{routeContent}</div>
+          <div className="min-w-0">{resolvedRouteContent}</div>
           <div className="min-w-0">{inspectorRail}</div>
         </div>
       )}

@@ -12,6 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.models.models import Agent, AgentStatus, User
 
 
+@pytest.fixture(autouse=True)
+def developer_principal(test_user):
+    test_user.roles = ["DEVELOPER"]
+
+
 class TestIngestEndpoints:
     """Tests for ingestion endpoints."""
 
@@ -69,10 +74,10 @@ class TestIngestEndpoints:
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_agent_status_update_forbidden(
+    async def test_agent_status_update_hides_foreign_agent(
         self, client: AsyncClient, db_session: AsyncSession, test_user: User
     ):
-        """Test agent status update returns 403 for unauthorized user."""
+        """Foreign and missing agents both return the opaque not-found response."""
         other_user = User(
             id=uuid.uuid4(),
             email="other@example.com",
@@ -100,7 +105,7 @@ class TestIngestEndpoints:
                 "node_id": "test-node",
             },
         )
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     @pytest.mark.asyncio
     async def test_agent_status_with_error_overrides_to_failed(

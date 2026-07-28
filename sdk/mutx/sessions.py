@@ -60,7 +60,7 @@ class Sessions:
         params: dict[str, Any] = {}
         if agent_id:
             params["agent_id"] = str(agent_id)
-        response = self._client.get("/sessions", params=params)
+        response = self._client.get("sessions", params=params)
         response.raise_for_status()
         return [Session(d) for d in response.json().get("sessions", [])]
 
@@ -73,7 +73,7 @@ class Sessions:
         params: dict[str, Any] = {}
         if agent_id:
             params["agent_id"] = str(agent_id)
-        response = await self._client.get("/sessions", params=params)
+        response = await self._client.get("sessions", params=params)
         response.raise_for_status()
         return [Session(d) for d in response.json().get("sessions", [])]
 
@@ -89,7 +89,7 @@ class Sessions:
                 f"Invalid thinking level. Must be one of: {self.VALID_THINKING_LEVELS}"
             )
         response = self._client.post(
-            "/sessions",
+            "sessions",
             params={"action": "set-thinking"},
             json={"session_key": session_key, "level": level},
         )
@@ -108,7 +108,7 @@ class Sessions:
                 f"Invalid thinking level. Must be one of: {self.VALID_THINKING_LEVELS}"
             )
         response = await self._client.post(
-            "/sessions",
+            "sessions",
             params={"action": "set-thinking"},
             json={"session_key": session_key, "level": level},
         )
@@ -127,7 +127,7 @@ class Sessions:
                 f"Invalid reasoning level. Must be one of: {self.VALID_REASONING_LEVELS}"
             )
         response = self._client.post(
-            "/sessions",
+            "sessions",
             params={"action": "set-reasoning"},
             json={"session_key": session_key, "level": level},
         )
@@ -146,7 +146,7 @@ class Sessions:
                 f"Invalid reasoning level. Must be one of: {self.VALID_REASONING_LEVELS}"
             )
         response = await self._client.post(
-            "/sessions",
+            "sessions",
             params={"action": "set-reasoning"},
             json={"session_key": session_key, "level": level},
         )
@@ -163,7 +163,7 @@ class Sessions:
         if len(label) > 100:
             raise ValueError("Label must be a string up to 100 characters")
         response = self._client.post(
-            "/sessions",
+            "sessions",
             params={"action": "set-label"},
             json={"session_key": session_key, "label": label},
         )
@@ -180,7 +180,7 @@ class Sessions:
         if len(label) > 100:
             raise ValueError("Label must be a string up to 100 characters")
         response = await self._client.post(
-            "/sessions",
+            "sessions",
             params={"action": "set-label"},
             json={"session_key": session_key, "label": label},
         )
@@ -193,7 +193,7 @@ class Sessions:
     ) -> dict[str, Any]:
         """Delete a session."""
         self._require_sync_client()
-        response = self._client.delete("/sessions", json={"session_key": session_key})
+        response = self._client.delete("sessions", json={"session_key": session_key})
         response.raise_for_status()
         return response.json()
 
@@ -203,6 +203,6 @@ class Sessions:
     ) -> dict[str, Any]:
         """Delete a session (async)."""
         self._require_async_client()
-        response = await self._client.delete("/sessions", json={"session_key": session_key})
+        response = await self._client.delete("sessions", json={"session_key": session_key})
         response.raise_for_status()
         return response.json()

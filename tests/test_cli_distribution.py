@@ -1,22 +1,71 @@
 from __future__ import annotations
 
+import json
+import os
+import shutil
 import subprocess
 import sys
-import os
 from pathlib import Path
+import tomllib
+import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_installed_cli_entrypoint_exposes_setup_commands_without_repo_on_sys_path(
+def test_cli_wheel_installs_without_deps_and_excludes_server_runtime(
     tmp_path: Path,
 ) -> None:
+    wheel_override = os.environ.get("MUTX_CLI_WHEEL")
+    if wheel_override:
+        wheels = [Path(wheel_override).resolve()]
+    else:
+        source_dir = tmp_path / "source"
+        source_dir.mkdir()
+        shutil.copytree(ROOT / "cli", source_dir / "cli")
+        shutil.copytree(ROOT / "src", source_dir / "src")
+        for file_name in ("pyproject.toml", "README.md", "LICENSE", "LICENSE-FAQ.md"):
+            source = ROOT / file_name
+            if source.is_file():
+                shutil.copy2(source, source_dir / file_name)
+
+        wheel_dir = tmp_path / "wheelhouse"
+        wheel_dir.mkdir()
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "wheel",
+                "--no-deps",
+                "--no-build-isolation",
+                "--wheel-dir",
+                str(wheel_dir),
+                str(source_dir),
+            ],
+            check=True,
+            cwd=source_dir,
+            capture_output=True,
+            text=True,
+        )
+        wheels = list(wheel_dir.glob("mutx_cli-*.whl"))
+    assert len(wheels) == 1
+    assert wheels[0].is_file()
+
+    with zipfile.ZipFile(wheels[0]) as wheel:
+        members = wheel.namelist()
+    assert any(member.startswith("cli/") for member in members)
+    assert not any(member.startswith("src/") for member in members)
+
+    clean_environment = {
+        key: value for key, value in os.environ.items() if key not in {"PYTHONHOME", "PYTHONPATH"}
+    }
     venv_dir = tmp_path / "venv"
     subprocess.run(
-        [sys.executable, "-m", "venv", "--system-site-packages", str(venv_dir)],
+        [sys.executable, "-m", "venv", str(venv_dir)],
         check=True,
         cwd=ROOT,
+        env=clean_environment,
     )
 
     pip_bin = venv_dir / "bin" / "pip"
@@ -24,56 +73,42 @@ def test_installed_cli_entrypoint_exposes_setup_commands_without_repo_on_sys_pat
     mutx_bin = venv_dir / "bin" / "mutx"
 
     subprocess.run(
-        [str(pip_bin), "install", "setuptools", "wheel"],
+        [str(pip_bin), "install", "--no-deps", str(wheels[0])],
         check=True,
+        cwd=tmp_path,
         capture_output=True,
         text=True,
+        env=clean_environment,
     )
 
-    subprocess.run(
-        [str(pip_bin), "install", "--no-deps", "--no-build-isolation", str(ROOT)],
-        check=True,
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    metadata_name = subprocess.run(
+    metadata_result = subprocess.run(
         [
             str(python_bin),
             "-c",
-            "import importlib.metadata as m; print(m.distribution('mutx-cli').metadata['Name'])",
+            (
+                "import importlib.metadata as m, importlib.util, json; "
+                "d=m.distribution('mutx-cli'); "
+                "print(json.dumps({'name': d.metadata['Name'], 'requires': d.requires, "
+                "'scripts': sorted(e.name for e in d.entry_points "
+                "if e.group == 'console_scripts'), "
+                "'has_src': importlib.util.find_spec('src') is not None}))"
+            ),
         ],
         cwd=tmp_path,
         capture_output=True,
         text=True,
         check=False,
+        env=clean_environment,
     )
 
-    result = subprocess.run(
-        [str(mutx_bin), "setup", "--help"],
-        cwd=tmp_path,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    assert metadata_result.returncode == 0, metadata_result.stderr
+    metadata = json.loads(metadata_result.stdout)
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    assert metadata["name"] == "mutx-cli"
+    assert metadata["scripts"] == ["mutx"]
+    assert metadata["has_src"] is False
+    assert set(project["dependencies"]) <= set(metadata["requires"])
+    assert mutx_bin.is_file()
 
-    assert metadata_name.returncode == 0
-    assert metadata_name.stdout.strip() == "mutx-cli"
-    assert result.returncode == 0
-    assert "Guided assistant-first onboarding." in result.stdout
-
-    worker_result = subprocess.run(
-        [str(venv_dir / "bin" / "mutx-reasoning-worker")],
-        cwd=tmp_path,
-        capture_output=True,
-        text=True,
-        check=False,
-        env={
-            **os.environ,
-            "MUTX_REASONING_ENABLED": "false",
-            "REASONING_ENABLED": "false",
-        },
-    )
-
-    assert worker_result.returncode == 0
+    for worker_name in ("mutx-document-worker", "mutx-reasoning-worker"):
+        assert not (venv_dir / "bin" / worker_name).exists()

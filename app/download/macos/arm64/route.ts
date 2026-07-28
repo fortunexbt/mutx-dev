@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 
-import {
-  MUTX_GITHUB_RELEASES_URL,
-  fetchLatestStableDesktopRelease,
-} from "@/lib/desktopRelease";
+import { fetchLatestStableDesktopRelease } from "@/lib/desktopRelease";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   const release = await fetchLatestStableDesktopRelease();
-  return NextResponse.redirect(release?.assets.arm64Dmg ?? release?.htmlUrl ?? MUTX_GITHUB_RELEASES_URL);
+  const response = NextResponse.redirect(
+    release?.assets.arm64Dmg ?? new URL("/download/macos", request.url),
+  );
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
 }

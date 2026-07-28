@@ -53,6 +53,9 @@ export type AutopilotAlertSummary = {
 
 export type AutopilotApprovalSummary = {
   id: string
+  owner_id: string
+  reviewer_id: string | null
+  can_resolve: boolean
   agent_id: string
   action_type: string
   payload?: { summary?: string; [key: string]: unknown } | null
@@ -61,6 +64,62 @@ export type AutopilotApprovalSummary = {
   approver?: string | null
   created_at: string
   resolved_at?: string | null
+}
+
+export type EligibleApprovalReviewer = {
+  id: string
+  email: string
+  name: string
+  roles: string[]
+}
+
+export const AUTOPILOT_APPROVAL_STATUSES = [
+  'PENDING',
+  'APPROVED',
+  'REJECTED',
+  'EXPIRED',
+] as const
+
+export type AutopilotApprovalStatus = (typeof AUTOPILOT_APPROVAL_STATUSES)[number]
+
+export type AutopilotApprovalPage = {
+  items: AutopilotApprovalSummary[]
+  total: number
+  skip: number
+  limit: number
+  status: AutopilotApprovalStatus | null
+  agent_id: string | null
+}
+
+export type AutopilotRuntimeSnapshot = {
+  provider: string
+  label: string
+  status: string
+  last_seen_at: string | null
+  last_synced_at: string | null
+  stale: boolean
+  stale_after_seconds: number | null
+  binding_count: number | null
+  gateway?: Record<string, unknown>
+  gateway_url?: string | null
+  version?: string | null
+}
+
+export type AutopilotRuntimePresentation = {
+  state: 'fresh' | 'stale' | 'unavailable'
+  label: string
+  detail: string
+  reportedStatus: string | null
+  observedAt: string | null
+  syncedAt: string | null
+  fetchedAt: string
+}
+
+export type ApprovalMutationFailure = {
+  kind: 'unauthorized' | 'forbidden' | 'not_found' | 'conflict' | 'server' | 'request'
+  message: string
+  shouldReload: boolean
+  requiresAuth: boolean
 }
 
 export type AutopilotTimelineItem = {
@@ -78,6 +137,293 @@ function safeDate(value?: string | null) {
   if (!value) return 0
   const timestamp = new Date(value).getTime()
   return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
+function isApprovalStatus(value: unknown): value is AutopilotApprovalStatus {
+  return AUTOPILOT_APPROVAL_STATUSES.includes(value as AutopilotApprovalStatus)
+}
+
+function isApprovalSummary(value: unknown): value is AutopilotApprovalSummary {
+  if (!isRecord(value)) return false
+
+  return (
+    typeof value.id === 'string' &&
+    typeof value.owner_id === 'string' &&
+    (value.reviewer_id === null || typeof value.reviewer_id === 'string') &&
+    typeof value.can_resolve === 'boolean' &&
+    typeof value.agent_id === 'string' &&
+    typeof value.action_type === 'string' &&
+    isApprovalStatus(value.status) &&
+    typeof value.requester === 'string' &&
+    typeof value.created_at === 'string'
+  )
+}
+
+export function parseEligibleApprovalReviewers(
+  payload: unknown,
+): EligibleApprovalReviewer[] | null {
+  if (!Array.isArray(payload)) return null
+  if (!payload.every(isRecord)) return null
+  const reviewers = payload.flatMap((reviewer) => {
+    if (
+      typeof reviewer.id !== 'string' ||
+      typeof reviewer.email !== 'string' ||
+      typeof reviewer.name !== 'string' ||
+      !Array.isArray(reviewer.roles) ||
+      !reviewer.roles.every((role) => typeof role === 'string')
+    ) return []
+    return [{
+      id: reviewer.id,
+      email: reviewer.email,
+      name: reviewer.name,
+      roles: reviewer.roles,
+    }]
+  })
+  return reviewers.length === payload.length ? reviewers : null
+}
+
+function readErrorMessage(payload: unknown): string | null {
+  if (!isRecord(payload)) return null
+  if (typeof payload.detail === 'string' && payload.detail.trim()) return payload.detail.trim()
+  if (typeof payload.message === 'string' && payload.message.trim()) return payload.message.trim()
+  if (typeof payload.error === 'string' && payload.error.trim()) return payload.error.trim()
+
+  if (isRecord(payload.error) && typeof payload.error.message === 'string' && payload.error.message.trim()) {
+    return payload.error.message.trim()
+  }
+
+  return null
+}
+
+function parseIsoTimestamp(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date.toISOString()
+}
+
+export function parseApprovalPage(
+  payload: unknown,
+  expectedStatus?: AutopilotApprovalStatus,
+): AutopilotApprovalPage | null {
+  if (!isRecord(payload) || !Array.isArray(payload.items)) return null
+  if (!isNonNegativeInteger(payload.total) || !isNonNegativeInteger(payload.skip)) return null
+  if (!Number.isInteger(payload.limit) || (payload.limit as number) < 1) return null
+  if (!payload.items.every(isApprovalSummary)) return null
+
+  const status = payload.status === null ? null : isApprovalStatus(payload.status) ? payload.status : null
+  if (payload.status !== null && status === null) return null
+  if (expectedStatus && status !== expectedStatus) return null
+  if (payload.total < payload.items.length) return null
+
+  const agentId = payload.agent_id
+  if (agentId !== null && typeof agentId !== 'string') return null
+
+  return {
+    items: payload.items,
+    total: payload.total,
+    skip: payload.skip,
+    limit: payload.limit as number,
+    status,
+    agent_id: agentId,
+  }
+}
+
+export function hasNextApprovalPage(page: AutopilotApprovalPage) {
+  return page.skip + page.items.length < page.total
+}
+
+export function appendApprovalPage(
+  current: AutopilotApprovalPage,
+  next: AutopilotApprovalPage,
+): AutopilotApprovalPage | null {
+  if (current.status !== next.status || current.agent_id !== next.agent_id) return null
+  if (next.skip !== current.skip + current.items.length) return null
+
+  const itemsById = new Map(current.items.map((item) => [item.id, item]))
+  next.items.forEach((item) => itemsById.set(item.id, item))
+  if (itemsById.size > next.total) return null
+
+  return {
+    ...next,
+    items: Array.from(itemsById.values()),
+    skip: current.skip,
+    total: next.total,
+  }
+}
+
+export function parseRuntimeSnapshot(payload: unknown): AutopilotRuntimeSnapshot | null {
+  if (!isRecord(payload)) return null
+  if (
+    typeof payload.provider !== 'string' ||
+    typeof payload.label !== 'string' ||
+    typeof payload.status !== 'string' ||
+    typeof payload.stale !== 'boolean'
+  ) {
+    return null
+  }
+
+  const staleAfterSeconds = payload.stale_after_seconds
+  if (
+    staleAfterSeconds !== undefined &&
+    staleAfterSeconds !== null &&
+    (!Number.isInteger(staleAfterSeconds) || (staleAfterSeconds as number) < 1)
+  ) {
+    return null
+  }
+
+  const bindingCount = payload.binding_count
+  if (bindingCount !== undefined && bindingCount !== null && !isNonNegativeInteger(bindingCount)) {
+    return null
+  }
+
+  return {
+    provider: payload.provider,
+    label: payload.label,
+    status: payload.status,
+    last_seen_at: parseIsoTimestamp(payload.last_seen_at),
+    last_synced_at: parseIsoTimestamp(payload.last_synced_at),
+    stale: payload.stale,
+    stale_after_seconds:
+      typeof staleAfterSeconds === 'number' ? staleAfterSeconds : null,
+    binding_count: typeof bindingCount === 'number' ? bindingCount : null,
+    gateway: isRecord(payload.gateway) ? payload.gateway : undefined,
+    gateway_url: typeof payload.gateway_url === 'string' ? payload.gateway_url : null,
+    version: typeof payload.version === 'string' ? payload.version : null,
+  }
+}
+
+export function presentRuntimeSnapshot(
+  snapshot: AutopilotRuntimeSnapshot | null,
+  fetchedAt: string,
+  now = new Date(),
+): AutopilotRuntimePresentation {
+  const normalizedFetchedAt = parseIsoTimestamp(fetchedAt) ?? now.toISOString()
+  if (!snapshot) {
+    return {
+      state: 'unavailable',
+      label: 'Runtime unavailable',
+      detail: 'No provider snapshot was returned. No runtime status or safety state is assumed.',
+      reportedStatus: null,
+      observedAt: null,
+      syncedAt: null,
+      fetchedAt: normalizedFetchedAt,
+    }
+  }
+
+  const observedAt = parseIsoTimestamp(snapshot.last_seen_at)
+  const syncedAt = parseIsoTimestamp(snapshot.last_synced_at)
+  const staleAfterSeconds = snapshot.stale_after_seconds
+  const observedTime = observedAt ? new Date(observedAt).getTime() : Number.NaN
+  const nowTime = now.getTime()
+
+  if (
+    !observedAt ||
+    !staleAfterSeconds ||
+    !Number.isFinite(observedTime) ||
+    observedTime > nowTime + 5 * 60 * 1000
+  ) {
+    return {
+      state: 'unavailable',
+      label: 'Runtime freshness unavailable',
+      detail: `The fetched snapshot reported ${snapshot.status}, but it has no trustworthy observation time. Treat the runtime as unavailable.`,
+      reportedStatus: snapshot.status,
+      observedAt,
+      syncedAt,
+      fetchedAt: normalizedFetchedAt,
+    }
+  }
+
+  const clientDetectedStale = nowTime - observedTime > staleAfterSeconds * 1000
+  if (snapshot.stale || clientDetectedStale) {
+    return {
+      state: 'stale',
+      label: 'Stale runtime snapshot',
+      detail: `Last reported ${snapshot.status}. This is historical state, not a current health or safety signal.`,
+      reportedStatus: snapshot.status,
+      observedAt,
+      syncedAt,
+      fetchedAt: normalizedFetchedAt,
+    }
+  }
+
+  return {
+    state: 'fresh',
+    label: 'Fresh runtime snapshot',
+    detail: `Provider reported ${snapshot.status}. Freshness does not prove that an action is safe.`,
+    reportedStatus: snapshot.status,
+    observedAt,
+    syncedAt,
+    fetchedAt: normalizedFetchedAt,
+  }
+}
+
+export function describeApprovalMutationFailure(
+  status: number,
+  payload: unknown,
+  action: 'approve' | 'reject' | 'create',
+): ApprovalMutationFailure {
+  const operation = action === 'create' ? 'create this request' : `${action} this request`
+  const upstreamMessage = readErrorMessage(payload)
+
+  if (status === 401) {
+    return {
+      kind: 'unauthorized',
+      message: `Sign in again before you ${operation}. No approval state was changed.`,
+      shouldReload: false,
+      requiresAuth: true,
+    }
+  }
+
+  if (status === 403) {
+    return {
+      kind: 'forbidden',
+      message: `You do not have permission to ${operation}. Ask the approval owner or an approver.`,
+      shouldReload: false,
+      requiresAuth: false,
+    }
+  }
+
+  if (status === 404) {
+    return {
+      kind: 'not_found',
+      message: 'This approval no longer exists or is no longer visible. The canonical queue was reloaded.',
+      shouldReload: true,
+      requiresAuth: false,
+    }
+  }
+
+  if (status === 409) {
+    return {
+      kind: 'conflict',
+      message: 'This approval was already decided elsewhere. The canonical queue was reloaded.',
+      shouldReload: true,
+      requiresAuth: false,
+    }
+  }
+
+  if (status >= 500) {
+    return {
+      kind: 'server',
+      message: `MUTX could not ${operation} right now. No approval state was assumed.${upstreamMessage ? ` ${upstreamMessage}` : ''}`,
+      shouldReload: false,
+      requiresAuth: false,
+    }
+  }
+
+  return {
+    kind: 'request',
+    message: upstreamMessage ?? `Failed to ${operation}. No approval state was assumed.`,
+    shouldReload: false,
+    requiresAuth: false,
+  }
 }
 
 function chooseRunTime(run: AutopilotRunSummary) {

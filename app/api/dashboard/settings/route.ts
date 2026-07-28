@@ -115,14 +115,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           refreshedTokens = subscriptionResult.refreshedTokens
         }
 
-        return payload
+        return subscriptionResult.response.ok ? payload : null
       } catch {
         return null
       }
     })()
 
-    const subscription = extractPlan(subscriptionPayload) || extractPlan(mePayload) || 'free'
-    const interfaceMode = subscription === 'free' ? 'essential' : 'full'
+    const subscription = extractPlan(subscriptionPayload) || extractPlan(mePayload)
+    const interfaceMode = subscription === 'pro' || subscription === 'enterprise' ? 'full' : 'essential'
     const nextResponse = NextResponse.json({
       interfaceMode,
       orgName: extractOrgName(mePayload),

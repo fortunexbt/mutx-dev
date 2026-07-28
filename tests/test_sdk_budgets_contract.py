@@ -188,10 +188,10 @@ def test_get_returns_budget() -> None:
     raw = _budget_payload()
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/budgets"
+        assert request.url.path == "/v1/budgets"
         return httpx.Response(200, json=raw)
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     budgets = Budgets(client)
 
     result = budgets.get()
@@ -213,7 +213,7 @@ def test_get_parses_all_fields() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=raw)
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     budgets = Budgets(client)
 
     result = budgets.get()
@@ -235,11 +235,11 @@ async def test_aget_returns_budget() -> None:
     raw = _budget_payload(plan="starter")
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/budgets"
+        assert request.url.path == "/v1/budgets"
         return httpx.Response(200, json=raw)
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         budgets = Budgets(client)
         result = await budgets.aget()
@@ -257,10 +257,10 @@ def test_get_usage_returns_usage_breakdown() -> None:
     raw = _usage_breakdown_payload()
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/budgets/usage"
+        assert request.url.path == "/v1/budgets/usage"
         return httpx.Response(200, json=raw)
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     budgets = Budgets(client)
 
     result = budgets.get_usage()
@@ -278,7 +278,7 @@ def test_get_usage_passes_period_params() -> None:
         captured["params"] = dict(request.url.params)
         return httpx.Response(200, json=_usage_breakdown_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     budgets = Budgets(client)
 
     budgets.get_usage(period_start="7d", period_end="24h")
@@ -294,7 +294,7 @@ def test_get_usage_handles_no_params() -> None:
         captured["params"] = dict(request.url.params)
         return httpx.Response(200, json=_usage_breakdown_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     budgets = Budgets(client)
 
     budgets.get_usage()
@@ -316,7 +316,7 @@ async def test_aget_usage_returns_usage_breakdown() -> None:
         return httpx.Response(200, json=raw)
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         budgets = Budgets(client)
         result = await budgets.aget_usage(period_start="30d")
@@ -334,7 +334,7 @@ async def test_aget_usage_passes_period_params() -> None:
         return httpx.Response(200, json=_usage_breakdown_payload())
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         budgets = Budgets(client)
         await budgets.aget_usage(period_start="24h", period_end="now")
@@ -354,7 +354,7 @@ async def test_get_rejects_async_client() -> None:
         return httpx.Response(200, json=_budget_payload())
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         budgets = Budgets(client)
         with pytest.raises(RuntimeError, match="sync"):
@@ -367,7 +367,7 @@ async def test_get_usage_rejects_async_client() -> None:
         return httpx.Response(200, json=_usage_breakdown_payload())
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         budgets = Budgets(client)
         with pytest.raises(RuntimeError, match="sync"):
@@ -384,7 +384,7 @@ async def test_aget_rejects_sync_client() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_budget_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     budgets = Budgets(client)
     with pytest.raises(RuntimeError, match="async"):
         await budgets.aget()
@@ -395,7 +395,7 @@ async def test_aget_usage_rejects_sync_client() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_usage_breakdown_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     budgets = Budgets(client)
     with pytest.raises(RuntimeError, match="async"):
         await budgets.aget_usage()

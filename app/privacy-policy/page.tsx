@@ -37,8 +37,8 @@ const sections = [
   {
     title: "Email and product communications",
     body: [
-      "If you submit your email through contact or product forms, we may use it to send product updates, release notices, technical documentation updates, and other communications directly related to MUTX.",
-      "You can request removal from future communications at any time by contacting us.",
+      "When you submit a contact or support request, we use your email to deliver the request, acknowledge it, and reply about that request. A contact, support, or waitlist submission does not by itself enroll you in product marketing.",
+      "We send occasional product and release updates only when you separately choose the optional product-updates checkbox. Consent is unchecked by default, does not affect delivery of your request, and can be withdrawn at any time by contacting us or using an unsubscribe option when provided.",
     ],
   },
   {
@@ -79,7 +79,7 @@ const sections = [
   {
     title: "Contact",
     body: [
-      "For privacy-related questions or requests, contact the MUTX team through the project website, GitHub repository, or the primary contact methods published at mutx.dev and docs.mutx.dev.",
+      "For privacy-related questions or requests, contact the MUTX team through the project website, GitHub repository, or the primary contact methods published at mutx.dev.",
     ],
   },
   {
@@ -105,14 +105,14 @@ export default function PrivacyPolicyPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
 
-      <main id="main-content" className={styles.main}>
+      <main id="main-content" tabIndex={-1} className={styles.main}>
         <section className={styles.routeDarkSection} data-route-surface="dark">
           <div className={`${styles.shell} ${styles.routeHeroCopy} ${styles.routeHeroNarrow} ${styles.routeHeroNarrowCopy}`}>
             <div className={styles.intro}>
               <p className={`${styles.eyebrow} ${styles.eyebrowOnDark}`}>Legal</p>
               <h1 className={`${styles.displayTitle} ${styles.darkText}`}>Privacy policy</h1>
               <p className={`${styles.bodyText} ${styles.bodyTextOnDark}`}>
-                Effective date: March 13, 2026. How MUTX handles site, download,
+                Effective date: July 28, 2026. How MUTX handles site, download,
                 docs, and support data.
               </p>
             </div>
@@ -144,11 +144,15 @@ export default function PrivacyPolicyPage() {
               <div className={styles.routeMetaList}>
                 <div className={styles.routeMetaItem}>
                   <p className={styles.routeMetaLabel}>Effective date</p>
-                  <p className={styles.routeMetaValue}>March 13, 2026</p>
+                  <p className={styles.routeMetaValue}>July 28, 2026</p>
                 </div>
                 <div className={styles.routeMetaItem}>
                   <p className={styles.routeMetaLabel}>Contact</p>
-                  <p className={styles.routeMetaValue}>hello@mutx.dev</p>
+                  <p className={styles.routeMetaValue}>
+                    <a href="mailto:hello@mutx.dev" className={styles.inlineLink}>
+                      hello@mutx.dev
+                    </a>
+                  </p>
                 </div>
                 <div className={styles.routeMetaItem}>
                   <p className={styles.routeMetaLabel}>Related links</p>
@@ -158,14 +162,9 @@ export default function PrivacyPolicyPage() {
                     </Link>
                   </p>
                   <p className={styles.routeMetaValue}>
-                    <a
-                      href="https://docs.mutx.dev"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={styles.inlineLink}
-                    >
-                      docs.mutx.dev
-                    </a>
+                    <Link href="/docs" className={styles.inlineLink}>
+                      mutx.dev/docs
+                    </Link>
                   </p>
                 </div>
               </div>

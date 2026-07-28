@@ -45,7 +45,7 @@ Use this section when you want the code-accurate view of setup, runtime surfaces
     <tr>
       <td><strong>Autonomous agent team</strong></td>
       <td>See the specialist roles, ownership boundaries, and review-safe autonomous shipping model.</td>
-      <td><a href="../agents/README.md">README.md</a></td>
+      <td><a href="https://github.com/mutx-dev/mutx-dev/blob/main/agents/README.md">agents/README.md</a></td>
       <td><a href="../public/landing/docs-surface.png">docs-surface.png</a></td>
     </tr>
     <tr>
@@ -64,8 +64,8 @@ Use this section when you want the code-accurate view of setup, runtime surfaces
 </table>
 
 - `mutx.dev` = public marketing site and product narrative
-- `mutx.dev/releases` = public release summary and signed desktop artifact handoff
-- `docs.mutx.dev` = canonical documentation and API truth surface
+- `mutx.dev/releases` = public release summary and conditional desktop artifact handoff
+- `mutx.dev/docs` = canonical documentation and API truth surface
 - `app.mutx.dev/dashboard` = operator-facing dashboard surface
 - `app.mutx.dev/control/*` = operator demo surface
 
@@ -75,7 +75,7 @@ Use this section when you want the code-accurate view of setup, runtime surfaces
 - [MUTX Quickstart](./quickstart.md)
 - [Quickstart](./deployment/quickstart.md)
 - [Architecture Overview](./architecture/overview.md)
-- [Autonomous Agent Team](../agents/README.md)
+- [Autonomous Agent Team](https://github.com/mutx-dev/mutx-dev/blob/main/agents/README.md)
 - [AI Agent Cost Management](https://mutx.dev/ai-agent-cost)
 - [AI Agent Approvals](https://mutx.dev/ai-agent-approvals)
 - [v1.4 Release Notes](./releases/v1.4.md)
@@ -132,7 +132,7 @@ Current hosted/documented split:
 
 - `mutx.dev` is the public landing site
 - `mutx.dev/releases` is the public release summary for the current desktop build
-- `docs.mutx.dev` should explain the product and link to the current truth
+- `mutx.dev/docs` should explain the product and link to the current truth
 - `app.mutx.dev/dashboard` is the current operator shell
 - `app.mutx.dev/control/*` is the demo shell
 - `app/api/` contains the browser-facing same-origin proxies and dashboard fetch layer

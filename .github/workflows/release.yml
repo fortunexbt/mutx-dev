@@ -12,26 +12,90 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., v1.0.0)'
+        description: 'Existing desktop release tag (e.g., v1.0.0)'
+        required: true
+        type: string
+      operation:
+        description: 'Publish the tag, or verify and promote an existing immutable release'
+        required: true
+        default: publish
+        type: choice
+        options:
+          - publish
+          - promote_existing
+      confirm_production:
+        description: 'For stable production promotion, enter PROMOTE <release-tag> exactly'
         required: false
+        type: string
+
+concurrency:
+  group: release-${{ github.repository }}-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
+  resolve_target:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      target_tag: ${{ steps.target.outputs.target_tag }}
+      target_commit: ${{ steps.target.outputs.target_commit }}
+      target_version: ${{ steps.target.outputs.target_version }}
+      release_lane: ${{ steps.target.outputs.release_lane }}
+      promote_production: ${{ steps.target.outputs.promote_production }}
+    steps:
+      - name: Checkout release controls
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve exact existing release target
+        id: target
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: bash scripts/resolve-release-target.sh
+
+      - name: Verify signed annotated tag and immutable-release policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.target.outputs.target_tag }}
+          RELEASE_SHA: ${{ steps.target.outputs.target_commit }}
+        run: bash scripts/verify-release-tag-binding.sh
+
+      - name: Require explicit manual production confirmation
+        if: github.event_name == 'workflow_dispatch' && steps.target.outputs.promote_production == 'true'
+        env:
+          CONFIRM_PRODUCTION: ${{ inputs.confirm_production }}
+          RELEASE_TAG: ${{ steps.target.outputs.target_tag }}
+        run: |
+          expected_confirmation="PROMOTE ${RELEASE_TAG}"
+          if [[ "${CONFIRM_PRODUCTION}" != "${expected_confirmation}" ]]; then
+            echo "Stable manual promotion requires confirm_production to equal ${expected_confirmation}." >&2
+            exit 1
+          fi
+
   validate:
-    runs-on: ubuntu-latest
+    needs: resolve_target
+    if: github.event_name == 'push' || inputs.operation == 'publish'
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve_target.outputs.target_commit }}
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.15.0"
           cache: "npm"
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
           cache: pip
@@ -47,7 +111,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Restore Playwright browser cache
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
@@ -62,26 +126,42 @@ jobs:
           MUTX_SKIP_PLAYWRIGHT: "0"
           MUTX_SKIP_COMPOSE_SMOKE: "0"
           MUTX_SKIP_DESKTOP_RELEASE: "1"
+          MUTX_DESKTOP_RELEASE_FIXTURE: unavailable
+          NODE_OPTIONS: --require=${{ github.workspace }}/tests/release-github-fixture.cjs
         run: bash scripts/test.sh
 
+      - name: Validate available desktop release browser state
+        run: bash scripts/test-release-browser-contract.sh available
+
   release-app-desktop:
-    needs: validate
-    runs-on: macos-14
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [resolve_target, validate]
+    runs-on: macos-26
+    if: >-
+      needs.resolve_target.outputs.release_lane == 'desktop' &&
+      (github.event_name == 'push' || inputs.operation == 'publish')
+    environment: release-publishing
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ needs.resolve_target.outputs.target_tag }}
+      RELEASE_VERSION: ${{ needs.resolve_target.outputs.target_version }}
+      RELEASE_SHA: ${{ needs.resolve_target.outputs.target_commit }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.resolve_target.outputs.target_commit }}
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.15.0"
           cache: "npm"
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
           cache: pip
@@ -112,39 +192,117 @@ jobs:
 
       - name: Extract version
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: |
+          package_version="$(node -p "require('./package.json').version")"
+
+          if [[ "${RELEASE_VERSION}" != "${package_version}" ]]; then
+            echo "Tag version ${RELEASE_VERSION} does not match package version ${package_version}." >&2
+            exit 1
+          fi
+
+          echo "VERSION=${RELEASE_VERSION}" >> "${GITHUB_OUTPUT}"
 
       - name: Validate signed desktop release
+        env:
+          MUTX_EXPECTED_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MUTX_REQUIRE_SIGNATURE_IDENTITY: '1'
         run: npm run desktop:release:validate
+
+      - name: Verify primary artifacts use the exact Apple Team ID
+        env:
+          MUTX_EXPECTED_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MUTX_REQUIRE_SIGNATURE_IDENTITY: '1'
+        run: node desktop/scripts/verify-release-artifacts.js
 
       - name: Generate desktop checksums
         run: npm run desktop:checksums
 
-      - name: Create or update GitHub release
+      - name: Require complete local desktop artifact set
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          expected_packages=(
+            "MUTX-${VERSION}-macos-arm64.dmg"
+            "MUTX-${VERSION}-macos-x64.dmg"
+            "MUTX-${VERSION}-macos-arm64.zip"
+            "MUTX-${VERSION}-macos-x64.zip"
+          )
+          checksum_file="MUTX-${VERSION}-SHA256SUMS.txt"
+
+          for artifact in "${expected_packages[@]}" "${checksum_file}"; do
+            if [[ ! -s "dist/desktop/${artifact}" ]]; then
+              echo "Required desktop release artifact is missing or empty: ${artifact}" >&2
+              exit 1
+            fi
+          done
+
+          checksum_count="$(awk 'NF { count += 1 } END { print count + 0 }' "dist/desktop/${checksum_file}")"
+          if [[ "${checksum_count}" != "${#expected_packages[@]}" ]]; then
+            echo "Checksum file must contain exactly ${#expected_packages[@]} desktop packages." >&2
+            exit 1
+          fi
+
+          for artifact in "${expected_packages[@]}"; do
+            checksum_matches="$(awk -v expected="${artifact}" '$2 == expected { count += 1 } END { print count + 0 }' "dist/desktop/${checksum_file}")"
+            if [[ "${checksum_matches}" != "1" ]]; then
+              echo "Checksum file must contain exactly one entry for ${artifact}." >&2
+              exit 1
+            fi
+          done
+
+          cd dist/desktop
+          shasum -a 256 -c "${checksum_file}"
+
+      - name: Require exact versioned release notes
+        id: release_notes
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          release_notes_file="docs/releases/v$(echo "${VERSION}" | cut -d. -f1-2).md"
+          if [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            if [[ ! -s "${release_notes_file}" ]]; then
+              echo "Stable release requires non-empty versioned notes: ${release_notes_file}" >&2
+              exit 1
+            fi
+          elif [[ ! -s "${release_notes_file}" ]]; then
+            release_notes_file="CHANGELOG.md"
+          fi
+          echo "path=${release_notes_file}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create or update draft GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NOTES_FILE: ${{ steps.release_notes.outputs.path }}
           VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
           release_title="Release ${VERSION}"
-          release_notes_file="docs/releases/v$(echo "${VERSION}" | cut -d. -f1-2).md"
-          if [[ ! -f "${release_notes_file}" ]]; then
-            release_notes_file="CHANGELOG.md"
-          fi
-          prerelease_flag=""
-          if [[ "${GITHUB_REF_NAME}" == *alpha* || "${GITHUB_REF_NAME}" == *beta* ]]; then
-            prerelease_flag="--prerelease"
+          prerelease="false"
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            prerelease="true"
           fi
 
-          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-            gh release edit "${GITHUB_REF_NAME}" \
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            is_draft="$(gh release view "${RELEASE_TAG}" --json isDraft --jq '.isDraft')"
+            if [[ "${is_draft}" != "true" ]]; then
+              echo "Refusing to move an already-published release back to draft: ${RELEASE_TAG}" >&2
+              exit 1
+            fi
+            gh release edit "${RELEASE_TAG}" \
               --title "${release_title}" \
-              --notes-file "${release_notes_file}" \
-              ${prerelease_flag}
+              --notes-file "${RELEASE_NOTES_FILE}" \
+              --prerelease="${prerelease}"
           else
-            gh release create "${GITHUB_REF_NAME}" \
-              --title "${release_title}" \
-              --notes-file "${release_notes_file}" \
-              ${prerelease_flag}
+            create_args=(
+              "${RELEASE_TAG}"
+              --verify-tag
+              --title "${release_title}"
+              --notes-file "${RELEASE_NOTES_FILE}"
+              --draft
+            )
+            if [[ "${prerelease}" == "true" ]]; then
+              create_args+=(--prerelease)
+            fi
+            gh release create "${create_args[@]}"
           fi
 
       - name: Upload signed desktop assets
@@ -152,7 +310,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
-          gh release upload "${GITHUB_REF_NAME}" \
+          gh release upload "${RELEASE_TAG}" \
             "dist/desktop/MUTX-${VERSION}-macos-arm64.dmg" \
             "dist/desktop/MUTX-${VERSION}-macos-x64.dmg" \
             "dist/desktop/MUTX-${VERSION}-macos-arm64.zip" \
@@ -160,26 +318,391 @@ jobs:
             "dist/desktop/MUTX-${VERSION}-SHA256SUMS.txt" \
             --clobber
 
-  promote-production:
-    needs: release-app-desktop
-    if: startsWith(github.ref, 'refs/tags/v') && needs.release-app-desktop.result == 'success'
-    uses: ./.github/workflows/railway-production-promotion.yml
-    with:
-      release_tag: ${{ github.ref_name }}
-    secrets: inherit
+      - name: Verify uploaded desktop artifact set
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          expected_assets=(
+            "MUTX-${VERSION}-macos-arm64.dmg"
+            "MUTX-${VERSION}-macos-x64.dmg"
+            "MUTX-${VERSION}-macos-arm64.zip"
+            "MUTX-${VERSION}-macos-x64.zip"
+            "MUTX-${VERSION}-SHA256SUMS.txt"
+          )
+          expected_asset_names="$(printf '%s\n' "${expected_assets[@]}" | LC_ALL=C sort)"
+          remote_asset_names="$(
+            gh release view "${RELEASE_TAG}" --json assets --jq '.assets[].name' |
+              LC_ALL=C sort
+          )"
 
-  release-cli:
-    needs: validate
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/cli-v')
+          if [[ "${remote_asset_names}" != "${expected_asset_names}" ]]; then
+            echo "Draft release asset names do not exactly match the verified local set." >&2
+            echo "Expected:" >&2
+            printf '%s\n' "${expected_asset_names}" >&2
+            echo "Remote:" >&2
+            printf '%s\n' "${remote_asset_names:-<none>}" >&2
+            exit 1
+          fi
+
+          empty_assets="$(
+            gh release view "${RELEASE_TAG}" --json assets \
+              --jq '.assets[] | select(.size <= 0) | .name'
+          )"
+          if [[ -n "${empty_assets}" ]]; then
+            echo "Draft release contains empty assets:" >&2
+            printf '%s\n' "${empty_assets}" >&2
+            exit 1
+          fi
+
+          release_is_draft="$(gh release view "${RELEASE_TAG}" --json isDraft --jq '.isDraft')"
+          if [[ "${release_is_draft}" != "true" ]]; then
+            echo "Refusing to verify assets on a release that is no longer a draft: ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+
+          remote_dir="$(mktemp -d)"
+          trap 'rm -rf "${remote_dir}"' EXIT
+          gh release download "${RELEASE_TAG}" --dir "${remote_dir}"
+
+          checksum_file="MUTX-${VERSION}-SHA256SUMS.txt"
+          if ! cmp -s "dist/desktop/${checksum_file}" "${remote_dir}/${checksum_file}"; then
+            echo "Uploaded checksum manifest does not match the verified local manifest." >&2
+            exit 1
+          fi
+
+          (
+            cd "${remote_dir}"
+            shasum -a 256 -c "${checksum_file}"
+          )
+
+  desktop-launch-smoke:
+    needs: [resolve_target, release-app-desktop, verify-published-desktop-recovery]
+    if: >-
+      always() &&
+      needs.resolve_target.result == 'success' &&
+      ((needs.release-app-desktop.result == 'success' &&
+      (github.event_name == 'push' || inputs.operation == 'publish')) ||
+      (needs.verify-published-desktop-recovery.result == 'success' &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.operation == 'promote_existing'))
+    name: Launch gated ${{ matrix.arch }} desktop artifact
+    runs-on: ${{ matrix.runner }}
+    environment: release-publishing
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-26
+            app_dir: mac-arm64
+          - arch: x64
+            runner: macos-26-intel
+            app_dir: mac
+    env:
+      RELEASE_TAG: ${{ needs.resolve_target.outputs.target_tag }}
+      RELEASE_VERSION: ${{ needs.resolve_target.outputs.target_version }}
+    steps:
+      - name: Checkout exact release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve_target.outputs.target_commit }}
+          persist-credentials: false
+
+      - name: Download exact staged or immutable architecture artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARCH: ${{ matrix.arch }}
+          RELEASE_OPERATION: ${{ inputs.operation }}
+        run: |
+          mkdir -p dist/desktop
+          artifacts=(
+            "MUTX-${RELEASE_VERSION}-macos-${ARCH}.dmg"
+            "MUTX-${RELEASE_VERSION}-macos-${ARCH}.zip"
+            "MUTX-${RELEASE_VERSION}-SHA256SUMS.txt"
+          )
+          release_state="$(
+            gh release view "${RELEASE_TAG}" \
+              --json tagName,isDraft,isPrerelease \
+              --jq '[.tagName, .isDraft, .isPrerelease] | @tsv'
+          )"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${RELEASE_OPERATION}" == "promote_existing" ]]; then
+            expected_release_state="$(printf '%s\tfalse\tfalse' "${RELEASE_TAG}")"
+            gh release verify "${RELEASE_TAG}"
+          else
+            prerelease="false"
+            if [[ "${RELEASE_VERSION}" == *-* ]]; then
+              prerelease="true"
+            fi
+            expected_release_state="$(printf '%s\ttrue\t%s' "${RELEASE_TAG}" "${prerelease}")"
+          fi
+          if [[ "${release_state}" != "${expected_release_state}" ]]; then
+            echo "Release state changed before the native ${ARCH} launch gate." >&2
+            exit 1
+          fi
+
+          for artifact in "${artifacts[@]}"; do
+            gh release download "${RELEASE_TAG}" \
+              --pattern "${artifact}" \
+              --dir dist/desktop
+            if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${RELEASE_OPERATION}" == "promote_existing" ]]; then
+              gh release verify-asset \
+                "${RELEASE_TAG}" \
+                "dist/desktop/${artifact}"
+            fi
+          done
+
+      - name: Verify downloaded checksum, signatures, and notarization
+        env:
+          ARCH: ${{ matrix.arch }}
+          MUTX_EXPECTED_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MUTX_RELEASE_ARCH: ${{ matrix.arch }}
+          MUTX_RELEASE_ARTIFACT_MODE: downloaded
+          MUTX_REQUIRE_SIGNATURE_IDENTITY: '1'
+        run: |
+          node desktop/scripts/verify-checksum-manifest.js \
+            --dir dist/desktop \
+            --version "${RELEASE_VERSION}" \
+            --arch "${ARCH}"
+          node desktop/scripts/verify-release-artifacts.js
+          node desktop/scripts/check-notarization.js
+
+      - name: Launch exact downloaded app
+        env:
+          ARCH: ${{ matrix.arch }}
+          APP_DIR: ${{ matrix.app_dir }}
+        run: |
+          mkdir -p "dist/desktop/${APP_DIR}"
+          ditto -x -k \
+            "dist/desktop/MUTX-${RELEASE_VERSION}-macos-${ARCH}.zip" \
+            "dist/desktop/${APP_DIR}"
+
+          expected_machine="x86_64"
+          if [[ "${ARCH}" == "arm64" ]]; then
+            expected_machine="arm64"
+          fi
+          if [[ "$(uname -m)" != "${expected_machine}" ]]; then
+            echo "Runner architecture does not match ${ARCH}: $(uname -m)" >&2
+            exit 1
+          fi
+
+          executable="dist/desktop/${APP_DIR}/MUTX.app/Contents/MacOS/MUTX"
+          if [[ ! -x "${executable}" || "$(lipo -archs "${executable}")" != "${expected_machine}" ]]; then
+            echo "Downloaded ${ARCH} app does not contain the exact ${expected_machine} executable." >&2
+            exit 1
+          fi
+          node desktop/scripts/launch-built-app.js
+
+  verify-published-desktop-recovery:
+    needs: resolve_target
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.operation == 'promote_existing' &&
+      needs.resolve_target.outputs.release_lane == 'desktop' &&
+      needs.resolve_target.outputs.promote_production == 'true'
+    runs-on: macos-26
+    environment: release-publishing
+    permissions:
+      contents: read
+    env:
+      RELEASE_TAG: ${{ needs.resolve_target.outputs.target_tag }}
+      RELEASE_VERSION: ${{ needs.resolve_target.outputs.target_version }}
+    steps:
+      - name: Checkout exact release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ needs.resolve_target.outputs.target_commit }}
+
+      - name: Require exact immutable release identity and assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_state="$(
+            gh release view "${RELEASE_TAG}" \
+              --json tagName,isDraft,isPrerelease \
+              --jq '[.tagName, .isDraft, .isPrerelease] | @tsv'
+          )"
+          expected_release_state="$(printf '%s\tfalse\tfalse' "${RELEASE_TAG}")"
+          if [[ "${release_state}" != "${expected_release_state}" ]]; then
+            echo "Recovery requires the exact published stable release ${RELEASE_TAG}." >&2
+            exit 1
+          fi
+          gh release verify "${RELEASE_TAG}"
+
+          expected_assets=(
+            "MUTX-${RELEASE_VERSION}-macos-arm64.dmg"
+            "MUTX-${RELEASE_VERSION}-macos-x64.dmg"
+            "MUTX-${RELEASE_VERSION}-macos-arm64.zip"
+            "MUTX-${RELEASE_VERSION}-macos-x64.zip"
+            "MUTX-${RELEASE_VERSION}-SHA256SUMS.txt"
+          )
+          expected_asset_names="$(printf '%s\n' "${expected_assets[@]}" | LC_ALL=C sort)"
+          remote_asset_names="$(
+            gh release view "${RELEASE_TAG}" --json assets --jq '.assets[].name' |
+              LC_ALL=C sort
+          )"
+          if [[ "${remote_asset_names}" != "${expected_asset_names}" ]]; then
+            echo "Recovery release assets do not exactly match the five-file contract." >&2
+            exit 1
+          fi
+
+          mkdir -p dist/desktop
+          gh release download "${RELEASE_TAG}" --dir dist/desktop
+          for artifact in "${expected_assets[@]}"; do
+            gh release verify-asset "${RELEASE_TAG}" "dist/desktop/${artifact}"
+          done
+
+      - name: Verify recovery checksums, signatures, notarization, and signer identity
+        env:
+          MUTX_EXPECTED_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MUTX_RELEASE_ARTIFACT_MODE: downloaded
+          MUTX_REQUIRE_SIGNATURE_IDENTITY: '1'
+        run: |
+          release_notes_file="docs/releases/v$(echo "${RELEASE_VERSION}" | cut -d. -f1-2).md"
+          test -s "${release_notes_file}"
+          node desktop/scripts/verify-checksum-manifest.js \
+            --dir dist/desktop \
+            --version "${RELEASE_VERSION}"
+          node desktop/scripts/verify-release-artifacts.js
+          node desktop/scripts/check-notarization.js
+
+  publish-desktop-release:
+    needs: [resolve_target, release-app-desktop, desktop-launch-smoke]
+    if: >-
+      needs.release-app-desktop.result == 'success' &&
+      needs.desktop-launch-smoke.result == 'success' &&
+      (github.event_name == 'push' || inputs.operation == 'publish')
+    runs-on: ubuntu-24.04
+    environment: release-publishing
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ needs.resolve_target.outputs.target_tag }}
+      RELEASE_VERSION: ${{ needs.resolve_target.outputs.target_version }}
+      RELEASE_SHA: ${{ needs.resolve_target.outputs.target_commit }}
+    steps:
+      - name: Checkout exact originally resolved release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ needs.resolve_target.outputs.target_commit }}
+
+      - name: Re-resolve tag binding and publish the native-gated draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          prerelease="false"
+          if [[ "${RELEASE_VERSION}" == *-* ]]; then
+            prerelease="true"
+          fi
+          release_state="$(
+            gh release view "${RELEASE_TAG}" \
+              --json tagName,isDraft,isPrerelease \
+              --jq '[.tagName, .isDraft, .isPrerelease] | @tsv'
+          )"
+          expected_release_state="$(printf '%s\ttrue\t%s' "${RELEASE_TAG}" "${prerelease}")"
+          if [[ "${release_state}" != "${expected_release_state}" ]]; then
+            echo "Native launch gates passed, but the release is no longer the expected draft." >&2
+            exit 1
+          fi
+
+          expected_assets=(
+            "MUTX-${RELEASE_VERSION}-macos-arm64.dmg"
+            "MUTX-${RELEASE_VERSION}-macos-x64.dmg"
+            "MUTX-${RELEASE_VERSION}-macos-arm64.zip"
+            "MUTX-${RELEASE_VERSION}-macos-x64.zip"
+            "MUTX-${RELEASE_VERSION}-SHA256SUMS.txt"
+          )
+          expected_asset_names="$(printf '%s\n' "${expected_assets[@]}" | LC_ALL=C sort)"
+          remote_asset_names="$(
+            gh release view "${RELEASE_TAG}" --json assets --jq '.assets[].name' |
+              LC_ALL=C sort
+          )"
+          if [[ "${remote_asset_names}" != "${expected_asset_names}" ]]; then
+            echo "Draft asset set changed after native launch validation." >&2
+            exit 1
+          fi
+          empty_assets="$(
+            gh release view "${RELEASE_TAG}" --json assets \
+              --jq '.assets[] | select(.size <= 0) | .name'
+          )"
+          if [[ -n "${empty_assets}" ]]; then
+            echo "Draft contains empty assets after native launch validation." >&2
+            exit 1
+          fi
+
+          bash scripts/verify-release-tag-binding.sh
+          gh release edit "${RELEASE_TAG}" \
+            --draft=false \
+            --prerelease="${prerelease}"
+
+      - name: Reconfirm original tag binding and require immutable attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bash scripts/verify-release-tag-binding.sh
+          for _ in $(seq 1 12); do
+            if gh release verify "${RELEASE_TAG}" >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 5
+          done
+          gh release verify "${RELEASE_TAG}"
+
+  promote-production:
+    needs: [resolve_target, publish-desktop-release]
+    if: >-
+      needs.resolve_target.outputs.promote_production == 'true' &&
+      needs.publish-desktop-release.result == 'success' &&
+      (github.event_name == 'push' ||
+      inputs.confirm_production == format('PROMOTE {0}', needs.resolve_target.outputs.target_tag))
+    uses: ./.github/workflows/railway-production-promotion.yml
+    secrets: inherit
+    with:
+      release_tag: ${{ needs.resolve_target.outputs.target_tag }}
+      target_commit: ${{ needs.resolve_target.outputs.target_commit }}
+
+  promote-production-recovery:
+    needs: [resolve_target, desktop-launch-smoke]
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.operation == 'promote_existing' &&
+      needs.desktop-launch-smoke.result == 'success' &&
+      inputs.confirm_production == format('PROMOTE {0}', needs.resolve_target.outputs.target_tag)
+    uses: ./.github/workflows/railway-production-promotion.yml
+    secrets: inherit
+    with:
+      release_tag: ${{ needs.resolve_target.outputs.target_tag }}
+      target_commit: ${{ needs.resolve_target.outputs.target_commit }}
+
+  release-cli:
+    needs: [resolve_target, validate]
+    runs-on: ubuntu-24.04
+    if: needs.resolve_target.outputs.release_lane == 'cli'
+    environment: release-publishing
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ needs.resolve_target.outputs.target_tag }}
+      RELEASE_VERSION: ${{ needs.resolve_target.outputs.target_version }}
+      RELEASE_SHA: ${{ needs.resolve_target.outputs.target_commit }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.resolve_target.outputs.target_commit }}
+          persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
           cache: pip
@@ -187,24 +710,44 @@ jobs:
             requirements.txt
             pyproject.toml
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
+      - name: Install pinned uv
+        run: python -m pip install --disable-pip-version-check 'uv==0.11.33'
 
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync --frozen --all-extras
 
       - name: Build package
         run: python -m build
 
+      - name: Verify clean CLI wheel contract
+        run: |
+          wheel_path="$(find dist -maxdepth 1 -name 'mutx_cli-*.whl' -print -quit)"
+          test -n "${wheel_path}"
+          MUTX_CLI_WHEEL="${wheel_path}" uv run python -m pytest tests/test_cli_distribution.py -q
+
       - name: Extract version
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/cli-v}" >> $GITHUB_OUTPUT
+        run: |
+          package_version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+
+          if [[ "${RELEASE_VERSION}" != "${package_version}" ]]; then
+            echo "Tag version ${RELEASE_VERSION} does not match CLI package version ${package_version}." >&2
+            exit 1
+          fi
+
+          echo "VERSION=${RELEASE_VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Re-resolve tag binding immediately before CLI publication
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/verify-release-tag-binding.sh
 
       - name: Publish to PyPI
         if: github.event_name == 'push'
         env:
           PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-        run: uv run --with twine twine upload dist/*
+        run: uv run --isolated --no-project --with 'twine==6.2.0' twine upload dist/*
 
       - name: Require Homebrew tap publish token
         if: github.event_name == 'push'
@@ -218,7 +761,7 @@ jobs:
 
       - name: Checkout Homebrew tap
         if: github.event_name == 'push'
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: mutx-dev/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
@@ -229,7 +772,7 @@ jobs:
         run: |
           python scripts/generate_homebrew_formula.py \
             --repo-root . \
-            --tag "${GITHUB_REF_NAME}" \
+            --tag "${RELEASE_TAG}" \
             --output "published-homebrew-tap/Formula/mutx.rb"
           ruby -c "published-homebrew-tap/Formula/mutx.rb"
 
@@ -249,6 +792,11 @@ jobs:
           git commit -m "Update mutx formula to ${VERSION}"
           git push origin HEAD:main
 
+      - name: Re-resolve tag binding before CLI GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/verify-release-tag-binding.sh
+
       - name: Create or update CLI GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -256,37 +804,46 @@ jobs:
         run: |
           release_title="CLI Release ${VERSION}"
           prerelease_flag=""
-          if [[ "${GITHUB_REF_NAME}" == *alpha* || "${GITHUB_REF_NAME}" == *beta* ]]; then
+          if [[ "${RELEASE_TAG}" == *alpha* || "${RELEASE_TAG}" == *beta* ]]; then
             prerelease_flag="--prerelease"
           fi
 
-          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-            gh release edit "${GITHUB_REF_NAME}" \
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release edit "${RELEASE_TAG}" \
               --title "${release_title}" \
               --notes-file CHANGELOG.md \
               ${prerelease_flag}
           else
-            gh release create "${GITHUB_REF_NAME}" \
+            gh release create "${RELEASE_TAG}" \
               --title "${release_title}" \
               --notes-file CHANGELOG.md \
               ${prerelease_flag}
           fi
 
   release-sdk:
-    needs: validate
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/sdk-v')
+    needs: [resolve_target, validate]
+    runs-on: ubuntu-24.04
+    if: needs.resolve_target.outputs.release_lane == 'sdk'
+    environment: release-publishing
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ needs.resolve_target.outputs.target_tag }}
+      RELEASE_VERSION: ${{ needs.resolve_target.outputs.target_version }}
+      RELEASE_SHA: ${{ needs.resolve_target.outputs.target_commit }}
     defaults:
       run:
         working-directory: sdk
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.resolve_target.outputs.target_commit }}
+          persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
           cache: pip
@@ -294,24 +851,40 @@ jobs:
             requirements.txt
             pyproject.toml
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Install build tool
-        run: python -m pip install --upgrade pip build
+      - name: Install pinned release tools
+        run: python -m pip install --disable-pip-version-check 'build==1.5.0' 'uv==0.11.33'
 
       - name: Build package
         run: python -m build
 
       - name: Extract version
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/sdk-v}" >> $GITHUB_OUTPUT
+        run: |
+          package_version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+
+          if [[ "${RELEASE_VERSION}" != "${package_version}" ]]; then
+            echo "Tag version ${RELEASE_VERSION} does not match SDK package version ${package_version}." >&2
+            exit 1
+          fi
+
+          echo "VERSION=${RELEASE_VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Re-resolve tag binding immediately before SDK publication
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ../scripts/verify-release-tag-binding.sh
 
       - name: Publish to PyPI
         if: github.event_name == 'push'
         env:
           PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-        run: uv run --with twine twine upload dist/*
+        run: uv run --isolated --no-project --with 'twine==6.2.0' twine upload dist/*
+
+      - name: Re-resolve tag binding before SDK GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ../scripts/verify-release-tag-binding.sh
 
       - name: Create or update SDK GitHub release
         env:
@@ -320,17 +893,17 @@ jobs:
         run: |
           release_title="SDK Release ${VERSION}"
           prerelease_flag=""
-          if [[ "${GITHUB_REF_NAME}" == *alpha* || "${GITHUB_REF_NAME}" == *beta* ]]; then
+          if [[ "${RELEASE_TAG}" == *alpha* || "${RELEASE_TAG}" == *beta* ]]; then
             prerelease_flag="--prerelease"
           fi
 
-          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-            gh release edit "${GITHUB_REF_NAME}" \
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release edit "${RELEASE_TAG}" \
               --title "${release_title}" \
               --notes-file README.md \
               ${prerelease_flag}
           else
-            gh release create "${GITHUB_REF_NAME}" \
+            gh release create "${RELEASE_TAG}" \
               --title "${release_title}" \
               --notes-file README.md \
               ${prerelease_flag}

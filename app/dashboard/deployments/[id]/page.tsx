@@ -10,6 +10,7 @@ import {
   Check,
   Copy,
   Loader2,
+  Power,
   RefreshCcw,
   Server,
   ShieldAlert,
@@ -18,6 +19,11 @@ import {
 
 import { ApiRequestError, readJson, writeJson } from "@/components/app/http";
 import { DeploymentHistory } from "@/components/app/DeploymentHistory";
+import {
+  deploymentAllowsAction,
+  deploymentErrorMessage,
+  type DeploymentWithActions,
+} from "@/components/app/DeploymentsPageClient";
 import { DashboardDialog } from "@/components/dashboard/DashboardDialog";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { RouteHeader } from "@/components/dashboard/RouteHeader";
@@ -25,6 +31,7 @@ import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import {
   LiveAuthRequired,
   LiveErrorState,
+  LiveForbidden,
   LiveLoading,
   LiveMiniStat,
   LiveMiniStatGrid,
@@ -34,11 +41,11 @@ import {
   formatRelativeTime,
 } from "@/components/dashboard/livePrimitives";
 import { dashboardTokens } from "@/components/dashboard/tokens";
-import { type components } from "@/app/types/api";
 
-type Deployment = components["schemas"]["DeploymentResponse"];
+type Deployment = DeploymentWithActions;
 type DeploymentEvent = NonNullable<Deployment["events"]>[number];
-type BusyAction = "refresh" | "restart" | "delete" | null;
+type BusyAction = "refresh" | "start" | "stop" | "restart" | "scale" | "terminate" | null;
+type LoadFailureKind = "forbidden" | "not-found" | "server" | "other" | null;
 
 function shortId(value: string) {
   return value.length <= 16 ? value : `${value.slice(0, 8)}...${value.slice(-4)}`;
@@ -77,7 +84,7 @@ function ActionButton({
       disabled={disabled || busy}
       className={`inline-flex items-center gap-2 rounded-[12px] border px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${actionToneClass(tone)}`}
     >
-      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Icon className="h-4 w-4" />}
+      {busy ? <Loader2 className="h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" /> : <Icon className="h-4 w-4" />}
       {label}
     </button>
   );
@@ -91,10 +98,13 @@ export default function DeploymentDetailPage() {
   const [deployment, setDeployment] = useState<Deployment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadFailureKind, setLoadFailureKind] = useState<LoadFailureKind>(null);
   const [authRequired, setAuthRequired] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [scaleDialogOpen, setScaleDialogOpen] = useState(false);
+  const [scaleReplicas, setScaleReplicas] = useState(1);
+  const [terminateDialogOpen, setTerminateDialogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
   async function loadDeployment(options?: { preserveLoading?: boolean }) {
@@ -109,13 +119,28 @@ export default function DeploymentDetailPage() {
       setDeployment(payload);
       setAuthRequired(false);
       setError(null);
+      setLoadFailureKind(null);
     } catch (loadError) {
       if (loadError instanceof ApiRequestError && loadError.status === 401) {
         setAuthRequired(true);
         setDeployment(null);
         setError(null);
+        setLoadFailureKind(null);
+      } else if (loadError instanceof ApiRequestError && loadError.status === 404) {
+        setAuthRequired(false);
+        setDeployment(null);
+        setError(null);
+        setLoadFailureKind("not-found");
       } else {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load deployment");
+        setAuthRequired(false);
+        setError(deploymentErrorMessage(loadError, "Failed to load deployment."));
+        setLoadFailureKind(
+          loadError instanceof ApiRequestError && loadError.status === 403
+            ? "forbidden"
+            : loadError instanceof ApiRequestError && loadError.status >= 500
+              ? "server"
+              : "other",
+        );
       }
     } finally {
       if (!preserveLoading) {
@@ -136,7 +161,21 @@ export default function DeploymentDetailPage() {
     try {
       await runner();
     } catch (actionFailure) {
-      setActionError(actionFailure instanceof Error ? actionFailure.message : "Deployment action failed");
+      if (actionFailure instanceof ApiRequestError && actionFailure.status === 401) {
+        setAuthRequired(true);
+        setDeployment(null);
+      } else if (actionFailure instanceof ApiRequestError && actionFailure.status === 403) {
+        setDeployment(null);
+        setError(deploymentErrorMessage(actionFailure, "Deployment action denied."));
+        setLoadFailureKind("forbidden");
+        setScaleDialogOpen(false);
+        setTerminateDialogOpen(false);
+      } else if (actionFailure instanceof ApiRequestError && actionFailure.status === 404) {
+        setDeployment(null);
+        setLoadFailureKind("not-found");
+      } else {
+        setActionError(deploymentErrorMessage(actionFailure, "Deployment action failed."));
+      }
     } finally {
       setBusyAction(null);
     }
@@ -147,19 +186,65 @@ export default function DeploymentDetailPage() {
       await loadDeployment({ preserveLoading: true });
     });
 
-  const handleRestart = () =>
-    handleAction("restart", async () => {
-      const payload = await writeJson<Deployment>(`/api/dashboard/deployments/${encodeURIComponent(deploymentId)}?action=restart`, {
-        method: "POST",
-      });
-      setDeployment(payload);
+  const handleStart = () =>
+    handleAction("start", async () => {
+      await writeJson<unknown>(
+        `/api/dashboard/deployments/${encodeURIComponent(deploymentId)}?action=scale`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ replicas: Math.max(deployment?.replicas ?? 1, 1) }),
+        },
+      );
+      await loadDeployment({ preserveLoading: true });
     });
 
-  const handleDelete = () =>
-    handleAction("delete", async () => {
+  const handleStop = () =>
+    handleAction("stop", async () => {
+      await writeJson<unknown>(
+        `/api/dashboard/deployments/${encodeURIComponent(deploymentId)}?action=scale`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ replicas: 0 }),
+        },
+      );
+      await loadDeployment({ preserveLoading: true });
+    });
+
+  const handleRestart = () =>
+    handleAction("restart", async () => {
+      await writeJson<unknown>(`/api/dashboard/deployments/${encodeURIComponent(deploymentId)}?action=restart`, {
+        method: "POST",
+      });
+      await loadDeployment({ preserveLoading: true });
+    });
+
+  const handleScale = () =>
+    handleAction("scale", async () => {
+      await writeJson<unknown>(
+        `/api/dashboard/deployments/${encodeURIComponent(deploymentId)}?action=scale`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ replicas: scaleReplicas }),
+        },
+      );
+      setScaleDialogOpen(false);
+      await loadDeployment({ preserveLoading: true });
+    });
+
+  const handleTerminate = () =>
+    handleAction("terminate", async () => {
       await writeJson(`/api/dashboard/deployments/${encodeURIComponent(deploymentId)}`, { method: "DELETE" });
       router.push("/dashboard/deployments");
     });
+
+  const openScaleDialog = () => {
+    if (!deployment) return;
+    setScaleReplicas(Math.max(deployment.replicas, 1));
+    setScaleDialogOpen(true);
+  };
 
   const handleCopyId = async () => {
     if (!deployment) return;
@@ -204,11 +289,43 @@ export default function DeploymentDetailPage() {
     );
   }
 
+  if (loadFailureKind === "not-found") {
+    return (
+      <div className="space-y-4">
+        {routeHeader}
+        <EmptyState
+          title="Deployment not found"
+          message="This deployment no longer exists or was removed from the current tenant."
+          icon={<Server className="h-7 w-7" />}
+        />
+      </div>
+    );
+  }
+
+  if (loadFailureKind === "forbidden") {
+    return (
+      <div className="space-y-4">
+        {routeHeader}
+        <LiveForbidden
+          title="Deployment permission required"
+          message={error || "Your account cannot inspect or operate this deployment. Rollout controls are unavailable."}
+        />
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div className="space-y-4">
         {routeHeader}
-        <LiveErrorState title="Deployment detail unavailable" message={error} />
+        <LiveErrorState
+          title={
+            loadFailureKind === "server"
+                ? "Deployment control plane unavailable"
+                : "Deployment detail unavailable"
+          }
+          message={error}
+        />
       </div>
     );
   }
@@ -231,16 +348,56 @@ export default function DeploymentDetailPage() {
       {routeHeader}
 
       {actionError ? (
-        <div className="rounded-[16px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+        <div role="alert" className="rounded-[16px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
           {actionError}
         </div>
       ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
         <ActionButton label="Back to Deployments" icon={ArrowLeft} onClick={() => router.push("/dashboard/deployments")} />
-        <ActionButton label="Refresh" icon={RefreshCcw} busy={busyAction === "refresh"} onClick={handleRefresh} />
-        {deployment.status === "running" ? (
-          <ActionButton label="Restart Deployment" icon={RefreshCcw} tone="primary" busy={busyAction === "restart"} onClick={handleRestart} />
+        <ActionButton
+          label="Refresh"
+          icon={RefreshCcw}
+          busy={busyAction === "refresh"}
+          disabled={busyAction !== null}
+          onClick={handleRefresh}
+        />
+        {deploymentAllowsAction(deployment, "start") ? (
+          <ActionButton
+            label="Start Deployment"
+            icon={Power}
+            tone="primary"
+            busy={busyAction === "start"}
+            disabled={busyAction !== null}
+            onClick={handleStart}
+          />
+        ) : null}
+        {deploymentAllowsAction(deployment, "stop") ? (
+          <ActionButton
+            label="Stop Deployment"
+            icon={Power}
+            busy={busyAction === "stop"}
+            disabled={busyAction !== null}
+            onClick={handleStop}
+          />
+        ) : null}
+        {deploymentAllowsAction(deployment, "restart") ? (
+          <ActionButton
+            label="Restart Deployment"
+            icon={RefreshCcw}
+            tone="primary"
+            busy={busyAction === "restart"}
+            disabled={busyAction !== null}
+            onClick={handleRestart}
+          />
+        ) : null}
+        {deploymentAllowsAction(deployment, "scale") ? (
+          <ActionButton
+            label="Scale Deployment"
+            icon={Server}
+            disabled={busyAction !== null}
+            onClick={openScaleDialog}
+          />
         ) : null}
         <Link
           href={`/dashboard/logs?deploymentId=${encodeURIComponent(deployment.id)}`}
@@ -249,7 +406,15 @@ export default function DeploymentDetailPage() {
           <Activity className="h-4 w-4" />
           View Logs
         </Link>
-        <ActionButton label="Delete Deployment" icon={Trash2} tone="danger" disabled={busyAction !== null} onClick={() => setDeleteDialogOpen(true)} />
+        {deploymentAllowsAction(deployment, "terminate") ? (
+          <ActionButton
+            label="Terminate Deployment"
+            icon={Trash2}
+            tone="danger"
+            disabled={busyAction !== null}
+            onClick={() => setTerminateDialogOpen(true)}
+          />
+        ) : null}
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
@@ -374,15 +539,59 @@ export default function DeploymentDetailPage() {
       </LivePanel>
 
       <DashboardDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        title="Delete Deployment"
-        description="This removes the deployment record from the registry. This action cannot be undone."
+        open={scaleDialogOpen}
+        onOpenChange={setScaleDialogOpen}
+        title="Scale Deployment"
+        description="Set the desired runtime capacity for this active deployment."
         footer={
           <>
             <button
               type="button"
-              onClick={() => setDeleteDialogOpen(false)}
+              onClick={() => setScaleDialogOpen(false)}
+              disabled={busyAction === "scale"}
+              className="rounded-[12px] border border-[#2e3946] bg-[#0d131a] px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-sky-300/24 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleScale()}
+              disabled={busyAction !== null || scaleReplicas === deployment.replicas}
+              className="rounded-[12px] bg-sky-400 px-4 py-2 text-sm font-medium text-[#071018] transition hover:bg-sky-300 disabled:opacity-50"
+            >
+              {busyAction === "scale" ? "Scaling..." : "Apply Scale"}
+            </button>
+          </>
+        }
+      >
+        <label className="block text-sm font-medium text-slate-200" htmlFor="deployment-replicas">
+          Desired replicas
+        </label>
+        <input
+          id="deployment-replicas"
+          type="number"
+          min={1}
+          max={10}
+          value={scaleReplicas}
+          onChange={(event) => {
+            const nextReplicas = Number.parseInt(event.target.value, 10);
+            setScaleReplicas(Number.isFinite(nextReplicas) ? Math.min(10, Math.max(1, nextReplicas)) : 1);
+          }}
+          className="mt-2 w-full rounded-[14px] border border-[#2e3946] bg-[#0b1017] px-4 py-3 text-sm text-white focus:border-sky-300/30 focus:outline-none"
+        />
+        <p className="mt-2 text-xs leading-5 text-slate-500">Active deployments support between 1 and 10 replicas.</p>
+      </DashboardDialog>
+
+      <DashboardDialog
+        open={terminateDialogOpen}
+        onOpenChange={setTerminateDialogOpen}
+        title="Terminate Deployment"
+        description="This stops the deployment permanently while retaining its lifecycle history."
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setTerminateDialogOpen(false)}
               className="rounded-[12px] border border-[#2e3946] bg-[#0d131a] px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-sky-300/24"
             >
               Cancel
@@ -390,18 +599,18 @@ export default function DeploymentDetailPage() {
             <button
               type="button"
               onClick={() => {
-                setDeleteDialogOpen(false);
-                void handleDelete();
+                setTerminateDialogOpen(false);
+                void handleTerminate();
               }}
               className="rounded-[12px] bg-rose-500/90 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-500"
             >
-              Delete Deployment
+              Terminate Deployment
             </button>
           </>
         }
       >
         <p className="text-sm leading-6 text-slate-300">
-          Deployment <span className="font-semibold text-white">{shortId(deployment.id)}</span> will be removed from the runtime registry.
+          Deployment <span className="font-semibold text-white">{shortId(deployment.id)}</span> will move to the terminal killed state and cannot be restarted.
         </p>
       </DashboardDialog>
     </div>

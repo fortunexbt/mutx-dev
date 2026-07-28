@@ -9,15 +9,21 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.auth.dependencies import get_current_user
+from src.api.auth.dependencies import require_roles
+from src.api.database import get_db
 from src.api.models import User
 from src.api.services.policy_store import (
     Policy,
+    PolicyConflictError,
     PolicyEvaluationContext,
     PolicyEvaluationResult,
+    PolicyIdentityMismatchError,
+    PolicyNotFoundError,
     PolicyStore,
-    get_policy_store,
+    PolicyUpdate,
+    PolicyVersionConflictError,
 )
 
 router = APIRouter(prefix="/policies", tags=["policies"])
@@ -29,8 +35,18 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------
 
 
-async def _require_store() -> PolicyStore:
-    return await get_policy_store()
+async def _read_store(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_roles("VIEWER", "DEVELOPER"))],
+) -> PolicyStore:
+    return PolicyStore(db, user.id)
+
+
+async def _developer_store(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_roles("DEVELOPER"))],
+) -> PolicyStore:
+    return PolicyStore(db, user.id)
 
 
 # ------------------------------------------------------------------
@@ -40,44 +56,40 @@ async def _require_store() -> PolicyStore:
 
 @router.get("", response_model=list[Policy])
 async def list_policies(
-    store: Annotated[PolicyStore, Depends(_require_store)],
-    _user: Annotated[User, Depends(get_current_user)],
+    store: Annotated[PolicyStore, Depends(_read_store)],
 ):
-    """List all stored policies."""
+    """List policies owned by the authenticated user."""
     return await store.list_policies()
 
 
 @router.post("", response_model=Policy, status_code=status.HTTP_201_CREATED)
 async def create_policy(
     policy: Policy,
-    store: Annotated[PolicyStore, Depends(_require_store)],
-    _user: Annotated[User, Depends(get_current_user)],
+    store: Annotated[PolicyStore, Depends(_developer_store)],
 ):
     """Create a new policy."""
-    existing = await store.get_policy(policy.name)
-    if existing is not None:
+    try:
+        return await store.create_policy(policy)
+    except PolicyConflictError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Policy '{policy.name}' already exists",
-        )
-    return await store.upsert_policy(policy)
+        ) from exc
 
 
 @router.post("/evaluate", response_model=PolicyEvaluationResult)
 async def evaluate_policies(
     context: PolicyEvaluationContext,
-    store: Annotated[PolicyStore, Depends(_require_store)],
-    _user: Annotated[User, Depends(get_current_user)],
+    store: Annotated[PolicyStore, Depends(_developer_store)],
 ):
-    """Evaluate enabled stored policies against a pending action context."""
+    """Evaluate this tenant's enabled policies against a pending action context."""
     return await store.evaluate(context)
 
 
 @router.get("/{name}", response_model=Policy)
 async def get_policy(
     name: str,
-    store: Annotated[PolicyStore, Depends(_require_store)],
-    _user: Annotated[User, Depends(get_current_user)],
+    store: Annotated[PolicyStore, Depends(_read_store)],
 ):
     """Fetch a single policy by name."""
     policy = await store.get_policy(name)
@@ -86,11 +98,41 @@ async def get_policy(
     return policy
 
 
+@router.put("/{name}", response_model=Policy)
+async def update_policy(
+    name: str,
+    policy: PolicyUpdate,
+    store: Annotated[PolicyStore, Depends(_developer_store)],
+):
+    """Completely replace a policy when its owner, identity, and version match."""
+    try:
+        return await store.update_policy(name, policy)
+    except PolicyNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Policy not found",
+        ) from exc
+    except PolicyIdentityMismatchError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except PolicyVersionConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except PolicyConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+
 @router.delete("/{name}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_policy(
     name: str,
-    store: Annotated[PolicyStore, Depends(_require_store)],
-    _user: Annotated[User, Depends(get_current_user)],
+    store: Annotated[PolicyStore, Depends(_developer_store)],
 ):
     """Delete a policy by name."""
     deleted = await store.delete_policy(name)
@@ -103,18 +145,10 @@ async def delete_policy(
 # ------------------------------------------------------------------
 
 
-class _SSEClient:
-    """Async send-capable stand-in for EventSourceResponse (used for tracking)."""
-
-    async def send(self, payload: str) -> None:
-        pass
-
-
 async def _sse_reload_generator(
     store: PolicyStore,
     policy_name: str,
     initial_version: int,
-    sse_client: _SSEClient,
 ):
     """
     Yield SSE events as long as the policy version has not changed.
@@ -137,15 +171,12 @@ async def _sse_reload_generator(
     except asyncio.CancelledError:
         # Client disconnected gracefully
         pass
-    finally:
-        store.unregister_reload_client(sse_client)
 
 
 @router.post("/{name}/reload")
 async def reload_policy(
     name: str,
-    store: Annotated[PolicyStore, Depends(_require_store)],
-    _user: Annotated[User, Depends(get_current_user)],
+    store: Annotated[PolicyStore, Depends(_read_store)],
 ):
     """
     SSE endpoint that pushes a 'reload' event when the named policy is
@@ -161,13 +192,8 @@ async def reload_policy(
     initial_version = policy.version
 
     async def event_generator():
-        client = _SSEClient()
-        store.register_reload_client(client)
-        try:
-            async for chunk in _sse_reload_generator(store, name, initial_version, client):
-                yield chunk
-        finally:
-            store.unregister_reload_client(client)
+        async for chunk in _sse_reload_generator(store, name, initial_version):
+            yield chunk
 
     return StreamingResponse(
         event_generator(),

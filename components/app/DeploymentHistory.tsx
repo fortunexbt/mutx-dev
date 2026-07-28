@@ -2,7 +2,7 @@
 
 import { History, RotateCcw, Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { Card } from "@/components/ui/Card";
+import { Surface as Card } from "@/components/dashboard/livePrimitives";
 import { extractApiErrorMessage, normalizeCollection } from "@/components/app/http";
 import { type components } from "@/app/types/api";
 
@@ -179,7 +179,7 @@ export function DeploymentHistory({
             </p>
             {loading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
+                <Loader2 className="h-5 w-5 text-slate-500 motion-safe:animate-spin motion-reduce:animate-none" />
               </div>
             ) : error ? (
               <p className="text-sm text-rose-400">{error}</p>
@@ -198,7 +198,7 @@ export function DeploymentHistory({
             )}
             {rollingBack && (
               <p className="mt-4 text-center text-sm text-emerald-400 flex items-center justify-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" />
                 Rolling back...
               </p>
             )}

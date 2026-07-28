@@ -84,9 +84,9 @@ Refresh the pack when:
 ## Current product notes worth knowing
 
 - Hermes now has official Termux docs, a local dashboard, an OpenAI-compatible API server, and six terminal backends.
-- OpenClaw now recommends Node 24, uses stricter config validation, and has clearer auth-profile and Tailscale dashboard flows.
-- NanoClaw now uses OneCLI Agent Vault, keeps `/setup` inside Claude Code, and treats skills as git branches.
-- PicoClaw now has config schema v2, `.security.yml`, Android APK install, a mature launcher/TUI split, and official Docker Compose flows.
+- OpenClaw now recommends Node 24.15+, uses stricter config validation, and has clearer auth-profile and Tailscale dashboard flows.
+- NanoClaw v2 now uses the shell-driven `nanoclaw.sh` bootstrap with OneCLI, Docker, and Claude Code.
+- PicoClaw now has config schema v2, `.security.yml`, a separate Android APK distribution, two audited desktop binaries, no release TUI binary, and official Docker Compose flows.
 
 ## Recommended validation before publishing
 
@@ -95,7 +95,7 @@ Test at least these:
 - a beginner asks for the “best” stack with no details
 - an advanced user asks for direct Hermes VPS commands
 - a user posts a broken OpenClaw dashboard or channel login
-- a user hits NanoClaw OneCLI or `/setup` confusion
+- a user hits NanoClaw OneCLI, container, or v1-to-v2 migration confusion
 - a user wants PicoClaw on low-cost hardware or Android
 - a user wants private remote access via Tailscale instead of opening ports
 

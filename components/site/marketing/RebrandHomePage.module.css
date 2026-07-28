@@ -324,7 +324,7 @@
   position: absolute;
   top: 2rem;
   bottom: 2rem;
-  left: 1.72rem;
+  inset-inline-start: 1.72rem;
   width: 1px;
   content: "";
 }
@@ -347,8 +347,9 @@
   gap: 1.15rem;
   min-height: 5.15rem;
   align-items: center;
-  margin-left: 3.45rem;
-  padding: 0.75rem 1.35rem 0.75rem 0;
+  margin-inline-start: 3.45rem;
+  padding-block: 0.75rem;
+  padding-inline: 0 1.35rem;
   border-bottom: 1px solid #262824;
 }
 
@@ -360,7 +361,7 @@
   position: absolute;
   z-index: 2;
   top: 50%;
-  left: -2.1rem;
+  inset-inline-start: -2.1rem;
   width: 0.78rem;
   height: 0.78rem;
   border: 2px solid var(--carbon);
@@ -418,14 +419,14 @@
 }
 
 .eventRail .gatedEvent {
-  margin-left: 3.45rem;
-  padding-left: 1rem;
+  margin-inline-start: 3.45rem;
+  padding-inline-start: 1rem;
   border: 1px solid #65301b;
   background: rgba(255, 77, 0, 0.1);
 }
 
 .gatedEvent .eventNode {
-  left: -2.15rem;
+  inset-inline-start: -2.15rem;
   background: var(--signal);
   box-shadow: 0 0 0 1px var(--signal);
 }
@@ -1503,25 +1504,26 @@
     grid-template-columns: 1fr;
     gap: 0.55rem;
     min-height: 6.25rem;
-    margin-left: 3rem;
-    padding: 0.85rem 0.8rem 0.85rem 0;
+    margin-inline-start: 3rem;
+    padding-block: 0.85rem;
+    padding-inline: 0 0.8rem;
   }
 
   .eventRail .gatedEvent {
-    padding-left: 0.8rem;
+    padding-inline-start: 0.8rem;
   }
 
   .eventRail::before,
   .eventRail::after {
-    left: 1.45rem;
+    inset-inline-start: 1.45rem;
   }
 
   .eventNode {
-    left: -1.94rem;
+    inset-inline-start: -1.94rem;
   }
 
   .gatedEvent .eventNode {
-    left: -1.98rem;
+    inset-inline-start: -1.98rem;
   }
 
   .eventMeta {

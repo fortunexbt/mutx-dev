@@ -62,7 +62,7 @@ describe('pico package route', () => {
     expect(authenticatedFetch).not.toHaveBeenCalled()
   })
 
-  it('passes the package payload through and preserves upstream download headers', async () => {
+  it('forwards the exact session and sanitizes upstream download headers', async () => {
     hasAuthSession.mockReturnValue(true)
     const zipBytes = Uint8Array.from([80, 75, 3, 4])
     authenticatedFetch.mockResolvedValue({
@@ -70,7 +70,7 @@ describe('pico package route', () => {
         status: 200,
         headers: {
           'content-type': 'application/octet-stream',
-          'content-disposition': 'attachment; filename="starter-agent.zip"',
+          'content-disposition': 'attachment; filename="../../starter agent.zip"',
         },
       }),
       tokenRefreshed: false,
@@ -87,50 +87,73 @@ describe('pico package route', () => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: 'sess_123', include_readme: true }),
+        body: JSON.stringify({ session_id: 'sess_123' }),
         cache: 'no-store',
       },
     )
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toBe('application/octet-stream')
     expect(response.headers.get('content-disposition')).toBe('attachment; filename="starter-agent.zip"')
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff')
     expect(Array.from(new Uint8Array(await response.arrayBuffer()))).toEqual(Array.from(zipBytes))
     expect(applyAuthCookies).not.toHaveBeenCalled()
   })
 
-  it('falls back to an empty payload and zip defaults when request JSON or upstream headers are missing', async () => {
+  it('rejects invalid JSON before calling the package service', async () => {
     hasAuthSession.mockReturnValue(true)
-    const refreshedTokens = {
-      access_token: 'new-access-token',
-      refresh_token: 'new-refresh-token',
-      expires_in: 1800,
-    }
-    authenticatedFetch.mockResolvedValue({
-      response: new Response(Uint8Array.from([1, 2, 3]), {
-        status: 202,
-      }),
-      tokenRefreshed: true,
-      refreshedTokens,
-    })
 
     const { POST } = await import('../../app/api/pico/package/route')
     const request = mockRequest({ jsonError: new SyntaxError('Unexpected end of JSON input') })
 
     const response = await POST(request)
 
-    expect(authenticatedFetch).toHaveBeenCalledWith(
-      request,
-      'http://localhost:8000/v1/pico/generate-package',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-        cache: 'no-store',
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        message: 'Invalid JSON in request body',
       },
-    )
-    expect(response.status).toBe(202)
-    expect(response.headers.get('content-type')).toBe('application/zip')
-    expect(response.headers.get('content-disposition')).toBe('attachment; filename="agent-config.zip"')
-    expect(applyAuthCookies).toHaveBeenCalledWith(expect.anything(), request, refreshedTokens)
+    })
+    expect(authenticatedFetch).not.toHaveBeenCalled()
+  })
+
+  it('preserves upstream JSON failures instead of turning them into downloads', async () => {
+    hasAuthSession.mockReturnValue(true)
+    authenticatedFetch.mockResolvedValue({
+      response: Response.json(
+        { detail: 'This onboarding session has expired. Start a new session to continue.' },
+        { status: 410 },
+      ),
+      tokenRefreshed: false,
+    })
+
+    const { POST } = await import('../../app/api/pico/package/route')
+    const response = await POST(mockRequest({ body: { session_id: 'sess_123' } }))
+
+    expect(response.status).toBe(410)
+    expect(response.headers.get('content-disposition')).toBeNull()
+    await expect(response.json()).resolves.toEqual({
+      detail: 'This onboarding session has expired. Start a new session to continue.',
+    })
+  })
+
+  it('rejects a successful response whose body is not a ZIP archive', async () => {
+    hasAuthSession.mockReturnValue(true)
+    authenticatedFetch.mockResolvedValue({
+      response: new Response(Uint8Array.from([1, 2, 3]), {
+        status: 200,
+        headers: { 'content-type': 'application/zip' },
+      }),
+      tokenRefreshed: false,
+    })
+
+    const { POST } = await import('../../app/api/pico/package/route')
+    const response = await POST(mockRequest({ body: { session_id: 'sess_123' } }))
+
+    expect(response.status).toBe(502)
+    expect(response.headers.get('content-disposition')).toBeNull()
+    await expect(response.json()).resolves.toEqual({
+      detail: 'Package service returned an invalid ZIP archive',
+    })
   })
 })

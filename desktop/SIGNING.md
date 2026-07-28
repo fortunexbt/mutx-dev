@@ -22,7 +22,7 @@ export APPLE_TEAM_ID="TEAMID1234"
 
 ## GitHub Actions release secrets
 
-The `v1.3.0` desktop release lane expects these GitHub Actions secrets:
+The versioned desktop release lane expects these GitHub Actions secrets:
 
 ```text
 APPLE_DEVELOPER_ID_APP_CERT_B64
@@ -106,9 +106,10 @@ By default that command now notarizes the newest built `.app` and the newest bui
 Or target specific artifacts:
 
 ```bash
+VERSION="$(node -p "require('./package.json').version")"
 node desktop/scripts/notarize-existing.js --app dist/desktop/mac-arm64/MUTX.app
-node desktop/scripts/notarize-existing.js --dmg dist/desktop/MUTX-1.3.0-macos-arm64.dmg
-node desktop/scripts/notarize-existing.js --app dist/desktop/mac-arm64/MUTX.app --dmg dist/desktop/MUTX-1.3.0-macos-arm64.dmg
+node desktop/scripts/notarize-existing.js --dmg "dist/desktop/MUTX-${VERSION}-macos-arm64.dmg"
+node desktop/scripts/notarize-existing.js --app dist/desktop/mac-arm64/MUTX.app --dmg "dist/desktop/MUTX-${VERSION}-macos-arm64.dmg"
 ```
 
 ## Release artifact contract
@@ -116,22 +117,28 @@ node desktop/scripts/notarize-existing.js --app dist/desktop/mac-arm64/MUTX.app 
 The desktop release lane now standardizes these artifact names:
 
 ```text
-MUTX-1.3.0-macos-arm64.dmg
-MUTX-1.3.0-macos-x64.dmg
-MUTX-1.3.0-macos-arm64.zip
-MUTX-1.3.0-macos-x64.zip
-MUTX-1.3.0-SHA256SUMS.txt
+MUTX-<version>-macos-arm64.dmg
+MUTX-<version>-macos-x64.dmg
+MUTX-<version>-macos-arm64.zip
+MUTX-<version>-macos-x64.zip
+MUTX-<version>-SHA256SUMS.txt
 ```
 
-The website download routes resolve against those names, so changing them requires updating both the website resolver and the release workflow.
+The website download routes resolve against those names only after GitHub reports all five files as
+uploaded and non-empty and the checksum file parses as the exact four-package manifest. Changing the
+contract requires updating the website resolver, checksum verifier, and release workflow together.
 
 ## Release packaging contract
 
 `npm run desktop:package:release` now runs the release packaging lane in this order:
 
-1. `electron-builder` builds signed `.app` bundles plus `arm64` and `x64` ZIPs
-2. the release verifier extracts each ZIP and recursively verifies the contained app
-3. the release packager creates simple drag-to-Applications DMGs from the verified signed apps
-4. the release verifier mounts each DMG and recursively verifies the embedded app before notarization
+1. the standalone packager ensures the locked native runtime dependencies for each requested
+   architecture are present before `electron-builder` runs
+2. `electron-builder` builds signed `.app` bundles plus `arm64` and `x64` ZIPs
+3. the release verifier extracts each ZIP, recursively verifies the contained app, and requires the
+   exact `arm64` or `x86_64` Mach-O executable declared by its public artifact name
+4. the release packager creates simple drag-to-Applications DMGs from the verified signed apps
+5. the release verifier mounts each DMG and repeats signature and exact-architecture verification
+   before notarization
 
 If the mounted app inside a DMG fails recursive codesign verification, the release stops before any notary submission.

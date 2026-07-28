@@ -271,7 +271,9 @@ export function ActivityFeed({
               <h3 className="text-sm font-semibold text-white">Activity Feed</h3>
               <div className={cn(
                 'w-2 h-2 rounded-full',
-                autoRefreshOn ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'
+                autoRefreshOn
+                  ? 'bg-emerald-400 motion-safe:animate-pulse motion-reduce:animate-none'
+                  : 'bg-slate-600'
               )} />
             </div>
             <button

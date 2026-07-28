@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "verified_at": "2026-07-15",
+  "verified_at": "2026-07-22",
   "projects": [
     {
       "id": "agent-run",
@@ -100,25 +100,37 @@
       "repository": "https://github.com/builderz-labs/mission-control",
       "license": "MIT",
       "copyright": "Copyright (c) 2026 Builderz Labs",
-      "current_ref": "b4ebc5418bea4fa9288a5c17fbddb9ba99740964",
-      "current_version": "v2.1.0",
-      "release_url": "https://github.com/builderz-labs/mission-control/commit/b4ebc5418bea4fa9288a5c17fbddb9ba99740964",
-      "license_url": "https://github.com/builderz-labs/mission-control/blob/b4ebc5418bea4fa9288a5c17fbddb9ba99740964/LICENSE",
+      "verified_at": "2026-07-22",
+      "current_ref": "0552b00b3b743ed12949e6deb19597655b02bbcc",
+      "current_version": "v2.2.0",
+      "release_url": "https://github.com/builderz-labs/mission-control/commit/0552b00b3b743ed12949e6deb19597655b02bbcc",
+      "license_url": "https://github.com/builderz-labs/mission-control/blob/0552b00b3b743ed12949e6deb19597655b02bbcc/LICENSE",
+      "comparison_baseline_version": "v2.1.0",
+      "comparison_baseline_ref": "b4ebc5418bea4fa9288a5c17fbddb9ba99740964",
       "provenance_ref": "eb7c35e950b83f73d6fd61e89f7d4b377db2ad50",
       "source_urls": [
         "https://github.com/builderz-labs/mission-control/blob/eb7c35e950b83f73d6fd61e89f7d4b377db2ad50/src/components/dashboard/widgets/briefing-bar-widget.tsx",
         "https://github.com/builderz-labs/mission-control/blob/eb7c35e950b83f73d6fd61e89f7d4b377db2ad50/src/components/dashboard/widget-primitives.tsx"
       ],
       "local_port_commit": "972ab49b0af83d15042b2301679246103cbdbab6",
+      "reviewed_contract_source_urls": [
+        "https://github.com/builderz-labs/mission-control/blob/0552b00b3b743ed12949e6deb19597655b02bbcc/src/lib/task-dispatch.ts",
+        "https://github.com/builderz-labs/mission-control/blob/0552b00b3b743ed12949e6deb19597655b02bbcc/src/lib/__tests__/task-dispatch-sandbox.test.ts"
+      ],
       "local_paths": [
         "components/dashboard/DashboardOverviewPageClient.tsx",
-        "components/dashboard/livePrimitives.tsx"
+        "components/dashboard/livePrimitives.tsx",
+        "scripts/autonomy/work_order_sandbox.py",
+        "scripts/autonomy/run_codex_lane.py",
+        "scripts/autonomy/run_opencode_lane.py",
+        "scripts/autonomy/run_main_lane.py",
+        "tests/test_autonomy_work_order_sandbox.py"
       ]
     },
     {
       "id": "orchestra-research",
       "name": "Orchestra Research AI-Research-SKILLs",
-      "status": "integrated-behind-upstream",
+      "status": "integrated-current",
       "repository": "https://github.com/Orchestra-Research/AI-Research-SKILLs",
       "license": "MIT",
       "copyright": "Copyright (c) 2025 Claude AI Research Skills Contributors",
@@ -126,8 +138,10 @@
       "current_version": "v1.7.2",
       "release_url": "https://github.com/Orchestra-Research/AI-Research-SKILLs/commit/773a52944ba4747a18bd4ae9ade53fff041adcbc",
       "license_url": "https://github.com/Orchestra-Research/AI-Research-SKILLs/blob/773a52944ba4747a18bd4ae9ade53fff041adcbc/LICENSE",
-      "integration_ref": "05f1958727bfc2bc22240f41d060504473c4f236",
+      "integration_ref": "773a52944ba4747a18bd4ae9ade53fff041adcbc",
+      "integration_version": "v1.7.2",
       "local_paths": [
+        "scripts/build_orchestra_research_catalog.py",
         "scripts/sync_orchestra_research_skills.py",
         "src/api/data/orchestra_research_catalog.json",
         "docs/orchestra-research.md"
@@ -136,14 +150,17 @@
     {
       "id": "predict-rlm",
       "name": "predict-rlm",
-      "status": "adapted-behind-upstream",
+      "status": "adapted-compatible",
       "repository": "https://github.com/Trampoline-AI/predict-rlm",
       "license": "MIT",
       "copyright": "Copyright (c) 2026 Trampoline AI",
-      "current_ref": "4ff334dea79a2f27e96b7a50a358b0427050899e",
-      "current_version": "v0.7.2",
-      "release_url": "https://github.com/Trampoline-AI/predict-rlm/commit/4ff334dea79a2f27e96b7a50a358b0427050899e",
-      "license_url": "https://github.com/Trampoline-AI/predict-rlm/blob/4ff334dea79a2f27e96b7a50a358b0427050899e/LICENSE",
+      "current_ref": "e7f1e5df7d0188861b39142094b4b738f456972f",
+      "current_version": "v0.7.3",
+      "verified_at": "2026-07-22",
+      "release_url": "https://github.com/Trampoline-AI/predict-rlm/commit/e7f1e5df7d0188861b39142094b4b738f456972f",
+      "license_url": "https://github.com/Trampoline-AI/predict-rlm/blob/e7f1e5df7d0188861b39142094b4b738f456972f/LICENSE",
+      "pypi_wheel_sha256": "7a3ee04c83e1716da98b5d44248eff5ddf992864e1b296960cb237b9ffac036b",
+      "pypi_sdist_sha256": "3284fde60e10678c3887560975f6a7ff44fef8a66d9f39df698b0c7cca52c987",
       "integration_ref": "5c7387afa1980b62b21a34ad0261256a95d8caa1",
       "local_paths": [
         "src/api/services/document_engine.py",

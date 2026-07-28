@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 from mutx.ingest import Ingest
+from tests.sdk_contract_utils import assert_v1_request
 
 
 def _agent_status_response(**overrides):
@@ -59,12 +60,12 @@ def test_report_agent_status_hits_contract_route():
 
     with patch("mutx.ingest.httpx.Client") as mock_client:
         mock_instance = mock_client.return_value.__enter__.return_value
-        mock_instance.post = mock_post
+        mock_instance.post.side_effect = mock_post
 
         client = Ingest(mock_instance)
         result = client.report_agent_status(agent_id=agent_id, status="running")
 
-    assert captured["path"] == "/ingest/agent-status"
+    assert_v1_request(mock_instance.post, "POST", "/v1/ingest/agent-status")
     assert captured["json"]["agent_id"] == agent_id
     assert captured["json"]["status"] == "running"
     assert isinstance(result, dict)
@@ -84,7 +85,7 @@ def test_report_agent_status_with_optional_fields():
 
     with patch("mutx.ingest.httpx.Client") as mock_client:
         mock_instance = mock_client.return_value.__enter__.return_value
-        mock_instance.post = mock_post
+        mock_instance.post.side_effect = mock_post
 
         client = Ingest(mock_instance)
         result = client.report_agent_status(
@@ -125,12 +126,12 @@ def test_report_deployment_event_hits_contract_route():
 
     with patch("mutx.ingest.httpx.Client") as mock_client:
         mock_instance = mock_client.return_value.__enter__.return_value
-        mock_instance.post = mock_post
+        mock_instance.post.side_effect = mock_post
 
         client = Ingest(mock_instance)
         result = client.report_deployment_event(deployment_id=deployment_id, event="healthy")
 
-    assert captured["path"] == "/ingest/deployment"
+    assert_v1_request(mock_instance.post, "POST", "/v1/ingest/deployment")
     assert captured["json"]["deployment_id"] == deployment_id
     assert captured["json"]["event"] == "healthy"
     assert isinstance(result, dict)
@@ -150,7 +151,7 @@ def test_report_deployment_event_with_optional_fields():
 
     with patch("mutx.ingest.httpx.Client") as mock_client:
         mock_instance = mock_client.return_value.__enter__.return_value
-        mock_instance.post = mock_post
+        mock_instance.post.side_effect = mock_post
 
         client = Ingest(mock_instance)
         result = client.report_deployment_event(
@@ -193,12 +194,12 @@ def test_report_metrics_hits_contract_route():
 
     with patch("mutx.ingest.httpx.Client") as mock_client:
         mock_instance = mock_client.return_value.__enter__.return_value
-        mock_instance.post = mock_post
+        mock_instance.post.side_effect = mock_post
 
         client = Ingest(mock_instance)
         result = client.report_metrics(agent_id=agent_id, cpu_usage=50.0, memory_usage=1024.0)
 
-    assert captured["path"] == "/ingest/metrics"
+    assert_v1_request(mock_instance.post, "POST", "/v1/ingest/metrics")
     assert captured["json"]["agent_id"] == agent_id
     assert captured["json"]["cpu_usage"] == 50.0
     assert captured["json"]["memory_usage"] == 1024.0
@@ -216,7 +217,7 @@ def test_report_metrics_optional_fields():
 
     with patch("mutx.ingest.httpx.Client") as mock_client:
         mock_instance = mock_client.return_value.__enter__.return_value
-        mock_instance.post = mock_post
+        mock_instance.post.side_effect = mock_post
 
         client = Ingest(mock_instance)
         # Only agent_id, no metrics
@@ -251,12 +252,12 @@ async def test_areport_agent_status_hits_contract_route():
         return httpx.Response(200, json=_agent_status_response(agent_id=agent_id))
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         ingest = Ingest(client)
         result = await ingest.areport_agent_status(agent_id=agent_id, status="running")
 
-    assert captured["path"] == "/ingest/agent-status"
+    assert captured["path"] == "/v1/ingest/agent-status"
     assert captured["json"]["agent_id"] == agent_id
     assert captured["json"]["status"] == "running"
     assert isinstance(result, dict)
@@ -273,7 +274,7 @@ async def test_areport_agent_status_with_optional_fields():
         return httpx.Response(200, json=_agent_status_response(agent_id=agent_id))
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         ingest = Ingest(client)
         result = await ingest.areport_agent_status(
@@ -313,12 +314,12 @@ async def test_areport_deployment_event_hits_contract_route():
         return httpx.Response(200, json=_deployment_response(deployment_id=deployment_id))
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         ingest = Ingest(client)
         result = await ingest.areport_deployment_event(deployment_id=deployment_id, event="healthy")
 
-    assert captured["path"] == "/ingest/deployment"
+    assert captured["path"] == "/v1/ingest/deployment"
     assert captured["json"]["deployment_id"] == deployment_id
     assert captured["json"]["event"] == "healthy"
     assert isinstance(result, dict)
@@ -349,12 +350,12 @@ async def test_areport_metrics_hits_contract_route():
         return httpx.Response(200, json=_metrics_response(agent_id=agent_id))
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         ingest = Ingest(client)
         result = await ingest.areport_metrics(agent_id=agent_id, cpu_usage=25.0, memory_usage=512.0)
 
-    assert captured["path"] == "/ingest/metrics"
+    assert captured["path"] == "/v1/ingest/metrics"
     assert captured["json"]["agent_id"] == agent_id
     assert captured["json"]["cpu_usage"] == 25.0
     assert captured["json"]["memory_usage"] == 512.0

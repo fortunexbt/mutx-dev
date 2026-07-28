@@ -119,8 +119,7 @@
 
 .rail::before {
   position: absolute;
-  right: clamp(2rem, 6vw, 5rem);
-  left: clamp(2rem, 6vw, 5rem);
+  inset-inline: clamp(2rem, 6vw, 5rem);
   height: 1px;
   background: #a9a49b;
   content: '';
@@ -149,7 +148,7 @@
   grid-row: 1;
   align-content: end;
   gap: .75rem;
-  border-left: 1px solid #0b0c0b;
+  border-inline-start: 1px solid #0b0c0b;
   padding: clamp(2rem, 4vw, 3.5rem);
 }
 
@@ -177,7 +176,7 @@
   .frame { border-inline: 0; }
   .body { grid-template-columns: 1fr; min-height: calc(100svh - 3.5rem); }
   .copy { align-self: center; padding: 3rem 1.25rem; }
-  .receipt { grid-column: 1; grid-row: 3; border-top: 1px solid #0b0c0b; border-left: 0; padding: 1.5rem 1.25rem; }
+  .receipt { grid-column: 1; grid-row: 3; border-top: 1px solid #0b0c0b; border-inline-start: 0; padding: 1.5rem 1.25rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

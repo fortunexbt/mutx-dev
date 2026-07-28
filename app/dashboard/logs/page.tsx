@@ -12,12 +12,12 @@ export default function DashboardLogsPage() {
         <div className="space-y-4">
           <RouteHeader
             title="Logs"
-            description="Real-time step timeline and execution log for agent runs. Click any run to inspect its step sequence."
+            description="Inspect the trace events, messages, and payloads recorded for recent control-plane runs."
             icon={TerminalSquare}
             iconTone="text-slate-200 bg-white/10"
-            badge="execution trace"
+            badge="run traces"
             stats={[
-              { label: "Source", value: "Observability API" },
+              { label: "Source", value: "Runs API" },
               { label: "Data", value: "Live", tone: "success" },
             ]}
           />

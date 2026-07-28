@@ -6,6 +6,11 @@ import pytest
 from src.api.models.models import Agent, AgentStatus
 
 
+@pytest.fixture(autouse=True)
+def developer_principal(test_user):
+    test_user.roles = ["DEVELOPER"]
+
+
 @pytest.mark.asyncio
 async def test_create_run_persists_trace_data_and_returns_details(client, test_agent):
     response = await client.post(
@@ -116,8 +121,8 @@ async def test_runs_are_scoped_by_authenticated_user(client, other_user_client, 
     run_id = create_response.json()["id"]
 
     forbidden_response = await other_user_client.get(f"/v1/runs/{run_id}")
-    assert forbidden_response.status_code == 403
-    assert forbidden_response.json()["detail"] == "Not authorized to access this run"
+    assert forbidden_response.status_code == 404
+    assert forbidden_response.json()["detail"] == "Run not found"
 
 
 @pytest.mark.asyncio
@@ -146,8 +151,8 @@ async def test_create_run_rejects_agent_not_owned_by_requesting_user(
         },
     )
 
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Not authorized to access this agent"
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Agent not found"
 
 
 @pytest.mark.asyncio
@@ -302,8 +307,15 @@ async def test_add_traces_continues_sequence(client, test_agent):
 
 
 @pytest.mark.asyncio
-async def test_add_traces_requires_authorization(client, test_agent, other_user_client):
+async def test_add_traces_requires_authorization(
+    client,
+    test_agent,
+    other_user,
+    other_user_client,
+):
     """Test that adding traces requires proper authorization."""
+    other_user.roles = ["DEVELOPER"]
+
     # Create a run as test_agent user
     create_response = await client.post(
         "/v1/runs",
@@ -326,4 +338,4 @@ async def test_add_traces_requires_authorization(client, test_agent, other_user_
             },
         ],
     )
-    assert forbidden_response.status_code == 403
+    assert forbidden_response.status_code == 404

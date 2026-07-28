@@ -3,15 +3,14 @@
 Lead capture is intentionally split between:
 
 - a public create path for landing pages and onboarding
-- authenticated internal follow-up routes for verified internal users
+- authenticated administrator follow-up routes
 
 The same handlers are mounted on both `/v1/leads` and `/v1/leads/contacts`.
 
 ## Access Rules
 
 - `POST /v1/leads` and `POST /v1/leads/contacts` are public
-- `GET`, `PATCH`, and `DELETE` routes require an authenticated user
-- internal follow-up access is further restricted to verified users whose email domain is in the configured internal allowlist
+- `GET`, `PATCH`, and `DELETE` routes require persisted `ADMIN`
 
 ## Routes
 
@@ -54,7 +53,19 @@ Example response:
   "company": "Example Co",
   "message": "Interested in migration support.",
   "source": "homepage",
-  "created_at": "2026-03-22T12:00:00Z"
+  "tier": null,
+  "interest": null,
+  "locale": null,
+  "product_updates_consent": false,
+  "notification_scheduled_at": null,
+  "created_at": "2026-03-22T12:00:00Z",
+  "success": true,
+  "status": "accepted",
+  "persisted": true,
+  "replayed": false,
+  "notification_scheduled": false,
+  "follow_up": "unavailable",
+  "message_to_submitter": "Your request was saved. Automated confirmation and team notification are best-effort and are not guaranteed."
 }
 ```
 
@@ -94,5 +105,9 @@ curl -X DELETE "$BASE_URL/v1/leads/YOUR_LEAD_ID" \
 - `company`
 - `message`
 - `source`
+- `tier`
+- `interest`
+- `locale`
+- `product_updates_consent`
 
 An empty patch returns `400`.

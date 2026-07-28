@@ -5,17 +5,23 @@ icon: shield-halved
 
 # Security
 
-> Note: parts of this document describe the intended security posture, not only the currently wired implementation. For example, current Terraform and Ansible still expose some ports and do not yet match every target-state claim below.
+> Status convention: sections labeled **target state** are design goals, not
+> claims about a deployed MUTX environment. Sections describing the current API
+> are grounded in the checked-in source. Infrastructure templates still require
+> operator configuration and do not prove that a control is active in a given
+> deployment.
 
-This document describes the security architecture of mutx.dev, including zero-trust principles, BYOK model, EvalView guardrails, and network isolation.
+This document separates MUTX's implemented authentication and authorization
+controls from its zero-trust, BYOK, guardrail, and network-isolation target
+architecture.
 
 ***
 
 ## Security Philosophy
 
-mutx.dev operates on a **zero-trust** security model with the following principles:
+MUTX's **zero-trust target state** follows these principles:
 
-1. **Never trust, always verify** — Every request is authenticated and authorized
+1. **Never trust, always verify** — Authenticate and authorize every protected request; keep intentionally public routes explicit
 2. **Assume breach** — Design for lateral movement prevention
 3. **Least privilege** — Minimum necessary access at all layers
 4. **Explicit verification** — Validate at every step
@@ -23,11 +29,12 @@ mutx.dev operates on a **zero-trust** security model with the following principl
 
 ***
 
-## Zero-Trust Model
+## Zero-Trust Model (Target State)
 
 ### Zero-Trust Network Architecture (ZTNA)
 
-Traditional perimeter security is insufficient. mutx.dev implementsZTNA using Tailscale:
+Traditional perimeter security is insufficient. The target network design uses
+Tailscale as an optional private overlay:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -60,9 +67,9 @@ Traditional perimeter security is insufficient. mutx.dev implementsZTNA using Ta
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Tailscale Implementation
+### Tailscale Provisioning Template
 
-From `infrastructure/ansible/playbooks/provision.yml:116`:
+From `infrastructure/ansible/playbooks/provision.yml`:
 
 ```yaml
 - name: Install and configure Tailscale
@@ -82,7 +89,11 @@ From `infrastructure/ansible/playbooks/provision.yml:116`:
         state: started
 ```
 
-### ZTNA Features
+The Ansible task is conditional on `TAILSCALE_AUTH_KEY`. Its presence in the
+repository does not establish that a deployment has joined a tailnet or that
+service-to-service mTLS and per-tenant VPC isolation are active.
+
+### Target ZTNA Features
 
 | Feature                    | Implementation               | Benefit                     |
 | -------------------------- | ---------------------------- | --------------------------- |
@@ -94,11 +105,15 @@ From `infrastructure/ansible/playbooks/provision.yml:116`:
 
 ***
 
-## Bring Your Own Key (BYOK)
+## Bring Your Own Key (BYOK Target State)
 
 ### BYOK Architecture
 
-mutx.dev implements a true BYOK model where customers retain control of their AI API keys:
+The target design lets customers retain control of AI-provider credentials. The
+current credential broker can connect to configured backends including
+HashiCorp Vault, AWS Secrets Manager, Google Secret Manager, Azure Key Vault,
+1Password, and Infisical. The Terraform Vault module remains a stub, so the
+diagram below is architectural direction rather than a default deployment.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -146,31 +161,34 @@ mutx.dev implements a true BYOK model where customers retain control of their AI
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### BYOK Benefits
+### BYOK Objectives
 
 | Benefit                | Description                          |
 | ---------------------- | ------------------------------------ |
-| **Zero Markup**        | Pay only provider rates, no markup   |
-| **Key Control**        | Keys stored in tenant's Vault        |
-| **Audit Trail**        | All API calls logged                 |
-| **Provider Diversity** | Use any LLM provider                 |
-| **Compliance**         | Keys never touch mutx infrastructure |
+| **Direct billing** | Allow tenants to use provider credentials they control |
+| **Key control** | Resolve credentials from the tenant's configured backend |
+| **Auditability** | Preserve backend and application events where configured |
+| **Provider diversity** | Avoid coupling the broker to a single LLM provider |
+| **Minimized exposure** | Avoid returning secret values from governance metadata routes |
 
-### Vault Configuration
+### Intended Vault Configuration
 
-Keys are stored in HashiCorp Vault with:
+For a tenant that selects and configures HashiCorp Vault, the intended controls
+are:
 
 * **Encryption**: AES-256 at rest
 * **Access Control**: Tenant-specific policies
 * **Audit Logging**: All secret access recorded
-* **Token TTL**: Short-lived tokens (15 min)
-* **No Root Access**: Mutx cannot access tenant keys
+* **Token TTL**: Short-lived backend credentials selected by the operator
+* **Least privilege**: MUTX receives only the Vault access its broker needs
 
 ***
 
-## EvalView Guardrails
+## EvalView Guardrails (Proposed)
 
-EvalView is mutx.dev's hypervisor-level security layer that acts as a local LLM judge to validate all inputs and outputs.
+EvalView is a proposed local-judge guardrail design. There is no current
+`EvalView` runtime implementation in `src/api`, so the checks, thresholds, and
+response objects in this section are illustrative rather than an API contract.
 
 ### Guardrail Architecture
 
@@ -220,7 +238,7 @@ EvalView is mutx.dev's hypervisor-level security layer that acts as a local LLM 
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Security Layers
+### Proposed Security Layers
 
 #### 1. Input Validation
 
@@ -250,7 +268,7 @@ EvalView is mutx.dev's hypervisor-level security layer that acts as a local LLM 
 | **Error Rate**       | > 50% errors            | Pause agent     |
 | **Behavioral Drift** | Intent mismatch         | Alert + log     |
 
-### Guardrail Response
+### Illustrative Guardrail Response
 
 ```python
 # EvalView response structure
@@ -292,7 +310,11 @@ If any check fails:
 
 ***
 
-## Network Isolation
+## Network Isolation (Target State)
+
+The diagram describes the intended tenant-isolation model. Current Ansible
+templates configure host firewall and optional Tailscale tasks, but they do not
+by themselves create the per-tenant VPC topology shown here.
 
 ### Isolation Layers
 
@@ -331,7 +353,7 @@ If any check fails:
 
 ### Firewall Configuration
 
-From `infrastructure/ansible/playbooks/provision.yml:145`:
+From `infrastructure/ansible/playbooks/provision.yml`:
 
 ```yaml
 - name: Configure UFW firewall
@@ -421,17 +443,29 @@ fail2ban is configured to protect against brute force:
 
 ### Token Management
 
-| Token Type        | Lifetime     | Storage           |
-| ----------------- | ------------ | ----------------- |
-| **Access Token**  | 15 min       | JWT (stateless)   |
-| **Refresh Token** | 7 days       | HttpOnly cookie   |
-| **API Key**       | User-defined | Vault (encrypted) |
+| Token type | Lifetime | Server-side representation |
+| --- | --- | --- |
+| **Access token** | `ACCESS_TOKEN_EXPIRE_MINUTES` (30 minutes by default) | Signed JWT; no access-token record |
+| **Refresh token** | `REFRESH_TOKEN_EXPIRE_DAYS` (7 days by default) | Signed JWT plus PostgreSQL session/JTI state for rotation and revocation |
+| **Managed API key** | No expiry, or 1–365 days selected at creation | Prefix and password hash in PostgreSQL; plaintext returned once |
+
+The auth API returns access and refresh tokens in its JSON response. A browser
+or API client is responsible for storing them appropriately; the backend
+contract does not promise that the refresh token is delivered as an HttpOnly
+cookie.
 
 ### Authorization Model
 
-* **Role-Based Access Control (RBAC)**
-* **API Key scopes**: `read`, `write`, `admin`
-* **Resource-level permissions**: Tenant → Agent → Tool
+Authorization combines several source-backed checks:
+
+* persisted user roles (`ADMIN`, `AUDIT_ADMIN`, `DEVELOPER`, and `VIEWER`);
+* ownership and visibility checks on resources such as agents and approvals;
+* plan entitlement checks for paid capabilities; and
+* verified-email/internal-domain checks on sensitive governance operations.
+
+Managed API keys resolve their owning user and therefore inherit that user's
+persisted roles. They do not have an independent `read`/`write`/`admin` scope
+model.
 
 ***
 
@@ -443,10 +477,10 @@ MUTX v1.4.0 enforces role-based access control (RBAC) across protected API route
 
 | Role | Description | Scope |
 | --- | --- | --- |
-| `ADMIN` | Full access to all resources and operations | All endpoints; implicitly satisfies every role check |
-| `AUDIT_ADMIN` | Read-only access to audit logs and traces | `/v1/audit/*` endpoints |
-| `DEVELOPER` | Read/write access to agents and approval workflows | `/v1/agents/*`, `/v1/approvals/*` |
-| `VIEWER` | Read-only access to owned resources | Agent listing, config reads |
+| `ADMIN` | Super-role for persisted-role checks | Implicitly satisfies every role check; separate plan, verification, internal-domain, or resource-state prerequisites may still apply |
+| `AUDIT_ADMIN` | Access to the global audit event and trace store | `/v1/audit/*` endpoints |
+| `DEVELOPER` | Mutating access where a route explicitly allows developers | Agent, deployment, approval, and other control-plane mutations |
+| `VIEWER` | Read access where a route explicitly allows viewers | Owned/visible resources and safe configuration reads |
 
 The `ADMIN` role is a super-role: `check_role` returns `True` for any required role when the user holds `ADMIN`.
 
@@ -455,10 +489,10 @@ The `ADMIN` role is a super-role: `check_role` returns `True` for any required r
 RBAC is enforced via FastAPI dependencies:
 
 ```python
-from src.api.auth.dependencies import require_role
+from src.api.auth.dependencies import require_roles
 
 # Example: restrict an endpoint to ADMIN and DEVELOPER
-@router.get("/admin", dependencies=[Depends(require_role(["ADMIN", "DEVELOPER"]))])
+@router.get("/admin", dependencies=[Depends(require_roles("ADMIN", "DEVELOPER"))])
 async def admin_endpoint():
     ...
 ```
@@ -467,16 +501,22 @@ Key protected routes:
 
 | Route Pattern | Required Roles | Notes |
 | --- | --- | --- |
-| `GET /v1/audit/events` | Any authenticated user (SSOTokenUser) | Results scoped to user |
-| `GET /v1/audit/traces/{id}` | Any authenticated user (SSOTokenUser) | Results scoped to user |
-| `POST /v1/approvals/*/approve` | `DEVELOPER` or `ADMIN` | `APPROVER_ROLES` check |
-| `POST /v1/approvals/*/reject` | `DEVELOPER` or `ADMIN` | `APPROVER_ROLES` check |
+| `GET /v1/audit/events` | `ADMIN` or `AUDIT_ADMIN` | Reads the global audit store |
+| `GET /v1/audit/traces/{trace_id}` | `ADMIN` or `AUDIT_ADMIN` | Reads the global audit store |
+| `POST /v1/approvals/{request_id}/approve` | `DEVELOPER` or `ADMIN` | Requires authenticated assignment/eligibility; no reviewer-plan check |
+| `POST /v1/approvals/{request_id}/reject` | `DEVELOPER` or `ADMIN` | Requires authenticated assignment/eligibility; no reviewer-plan check |
+
+Paid entitlement applies when the owner creates an approval. Resolution is an
+authorization decision based on the persisted reviewer assignment and role, so
+an assigned eligible reviewer can act regardless of their subscription plan.
+Approval responses expose `owner_id`, `reviewer_id`, and the caller-specific
+`can_resolve` capability.
 
 ***
 
 ## OIDC / OAuth2 Provider Integration
 
-MUTX v1.4.0 supports OIDC token validation for SSO integrations with the following providers:
+Mounted SSO callbacks validate identities from the following providers:
 
 | Provider | OIDC Discovery | JWKS Endpoint |
 | --- | --- | --- |
@@ -487,7 +527,7 @@ MUTX v1.4.0 supports OIDC token validation for SSO integrations with the followi
 
 ### Configuration
 
-Set these environment variables to enable OIDC:
+The generic, library-level validator accepts:
 
 ```
 OIDC_ISSUER=https://your-org.okta.com
@@ -495,23 +535,26 @@ OIDC_CLIENT_ID=your-client-id
 OIDC_JWKS_URI=https://your-org.okta.com/oauth2/v1/keys
 ```
 
-The OIDC module (`src/api/auth/oidc.py`) resolves these settings, fetches JWKS,
-verifies signatures and claims, and normalizes role-bearing token claims. Routes
-consume the resulting SSO principal through `src/api/auth/dependencies.py`. See
+`validate_oidc_token(...)` resolves these settings, fetches JWKS, and verifies
+signature/issuer/audience/expiry. No mounted route invokes that generic validator
+automatically. Mounted SSO uses provider-specific domain/client credentials,
+binds the verified identity to a local user, and issues the standard dashboard
+token. Routes authorize persisted `users.roles`; provider role claims do not
+grant access. See
 [Authentication docs](../api/authentication.md#oidc-token-validation) for full details.
 
 ***
 
 ## v1.4.0 Hardening Findings
 
-| Area | Finding | Status |
+| Area | Finding | Source state |
 | --- | --- | --- |
-| RBAC | Role enforcement now active on approval and audit routes | Deployed |
-| OIDC | Token validation with JWKS verification and userinfo fallback | Deployed |
-| Auth middleware | Bearer token resolution now tries JWT first, then API key | Deployed |
-| Token roles | Role claims extracted from `roles`, `groups`, `realm_access.roles`, `resource_access.roles` | Deployed |
-| Secrets | `SECRET_ENCRYPTION_KEY` added for encrypting stored API keys | Deployed |
-| Rate limiting | Separate auth rate limit (`AUTH_RATE_LIMIT_REQUESTS`, `AUTH_RATE_LIMIT_WINDOW_SECONDS`) | Deployed |
+| RBAC | Role enforcement now active on approval and audit routes | Implemented |
+| OIDC | Token validation with JWKS verification and userinfo fallback | Implemented |
+| Auth middleware | Bearer token resolution now tries JWT first, then API key | Implemented |
+| Token roles | Provider roles may be normalized for compatibility but do not override persisted user roles | Implemented |
+| Secrets | `SECRET_ENCRYPTION_KEY` encrypts stored webhook and credential secrets; managed API keys are one-way hashed | Implemented |
+| Rate limiting | Separate auth rate limit (`AUTH_RATE_LIMIT_REQUESTS`, `AUTH_RATE_LIMIT_WINDOW_SECONDS`) | Implemented |
 
 ***
 
@@ -519,35 +562,40 @@ consume the resulting SSO principal through `src/api/auth/dependencies.py`. See
 
 ### Audit Logging
 
-All security-relevant events are logged:
+The audit event store currently records free-form `agent_id` values but has no
+tenant or user foreign key. It cannot reliably enforce per-tenant filtering, so
+`ADMIN` and `AUDIT_ADMIN` are global audit privileges. Adding tenant-scoped
+audit access requires a durable tenant/user identifier on every audit event.
 
-| Event                 | Logged To       | Retention |
-| --------------------- | --------------- | --------- |
-| Login attempts        | Auditd + Vault  | 1 year    |
-| API key access        | Vault audit     | 1 year    |
-| Agent creation        | PostgreSQL      | 90 days   |
-| Agent execution       | PostgreSQL      | 90 days   |
-| Configuration changes | Terraform state | 7 years   |
-| Network access        | Tailscale logs  | 30 days   |
+Audit and observability coverage is route- and deployment-specific. The API
+provides the protected `/v1/audit/events` and `/v1/audit/traces/{trace_id}`
+surfaces, structured application logging, Prometheus metrics, and optional
+OpenTelemetry export. The source tree does not establish universal capture or
+fixed retention periods for login, API-key, network, or infrastructure events.
+Operators must set those policies in the deployed log, trace, and metrics
+backends.
 
 ### Security Monitoring
 
-* **Real-time alerts**: Critical events trigger PagerDuty
-* **SIEM integration**: Exportable logs (JSON)
-* **Compliance reports**: SOC2-ready evidence
+* **Metrics and traces**: Prometheus-compatible metrics and optional OTLP export
+* **Structured logs**: JSON-capable application logging for external collection
+* **Alerting and retention**: configured by the operator's monitoring backends
+
+Infrastructure examples in this repository are deployment assets, not evidence
+that a particular PagerDuty, SIEM, retention, or compliance program is active.
 
 ***
 
 ## Summary
 
-| Layer        | Technology           | Protection            |
-| ------------ | -------------------- | --------------------- |
-| **Network**  | VPC, Tailscale ZTNA  | Isolation, encryption |
-| **Firewall** | UFW, security groups | Port filtering        |
-| **Auth**     | JWT, OAuth2/OIDC     | Identity verification |
-| **Secrets**  | HashiCorp Vault      | Key protection        |
-| **Runtime**  | EvalView Guardrails  | I/O validation        |
-| **Monitor**  | fail2ban, auditd     | Intrusion detection   |
+| Layer | Implemented protection |
+| --- | --- |
+| **HTTP boundary** | Trusted-host, CORS, security-header, rate-limit, authentication, and tracing middleware |
+| **Identity** | Local JWTs, managed API keys, and optional OIDC validation |
+| **Authorization** | Persisted roles plus route-specific ownership, plan, verification, and internal-user checks |
+| **Secrets** | One-way API-key hashes and application encryption for stored webhook/credential secrets |
+| **Policy** | Policy evaluation and approval workflow enforcement |
+| **Observability** | Structured logs, Prometheus metrics, and optional OpenTelemetry export |
 
 ***
 

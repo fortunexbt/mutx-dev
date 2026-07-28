@@ -7,7 +7,7 @@
         "dockerfilePath": "infrastructure/docker/Dockerfile.backend"
       },
       "deploy": {
-        "startCommand": "sh -c 'pip install psycopg2-binary -q 2>/dev/null && alembic upgrade head && uvicorn src.api.main:app --host 0.0.0.0 --port ${PORT:-8000}'"
+        "startCommand": "sh -c 'pip install psycopg2-binary -q 2>/dev/null && alembic upgrade head && uvicorn src.api.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips=\"${FORWARDED_ALLOW_IPS:?FORWARDED_ALLOW_IPS must be set}\"'"
       }
     },
     "frontend": {

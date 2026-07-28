@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field
 import uuid
 
 from src.api.models.models import AgentStatus, AgentType
+from src.api.models.numeric import (
+    DegradedNumericResponseModel,
+    FiniteFloat,
+    FiniteJsonDict,
+    NonNegativeFiniteFloat,
+    PercentageFloat,
+)
 
 
 class AgentConfigBase(BaseModel):
@@ -20,19 +27,19 @@ class AgentConfigBase(BaseModel):
 
 class OpenAIAgentConfig(AgentConfigBase):
     model: str = Field(default="gpt-4o", min_length=1, max_length=255)
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    temperature: FiniteFloat = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(default=None, gt=0)
 
 
 class AnthropicAgentConfig(AgentConfigBase):
     model: str = Field(default="claude-3-5-sonnet-20240620", min_length=1, max_length=255)
-    temperature: float = Field(default=0.7, ge=0.0, le=1.0)
+    temperature: FiniteFloat = Field(default=0.7, ge=0.0, le=1.0)
     max_tokens: int = Field(default=4096, gt=0)
 
 
 class LangChainAgentConfig(AgentConfigBase):
     chain_id: str
-    parameters: dict[str, Any] = Field(default_factory=dict)
+    parameters: FiniteJsonDict = Field(default_factory=dict)
 
 
 class CustomAgentConfig(AgentConfigBase):
@@ -77,7 +84,7 @@ class OpenClawAgentConfig(AgentConfigBase):
     channels: dict[str, OpenClawChannelConfig] = Field(default_factory=dict)
     skills: list[str] = Field(default_factory=list)
     wakeups: list[OpenClawWakeupConfig] = Field(default_factory=list)
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: FiniteJsonDict = Field(default_factory=dict)
     gateway: OpenClawGatewayConfig = Field(default_factory=OpenClawGatewayConfig)
 
 
@@ -94,12 +101,12 @@ class AgentCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
     type: AgentType = Field(default=AgentType.OPENAI)
-    config: Optional[dict[str, Any] | str] = None
+    config: Optional[FiniteJsonDict | str] = None
     # user_id is set from current_user in the route, not from request body
 
 
 class AgentConfigUpdateRequest(BaseModel):
-    config: dict[str, Any] | str = Field(
+    config: FiniteJsonDict | str = Field(
         ...,
         description="Updated agent configuration payload. Can be a JSON object or JSON string.",
     )
@@ -140,6 +147,21 @@ class DeploymentEventHistoryResponse(BaseModel):
     status: Optional[str] = None
 
 
+DeploymentAction = Literal["start", "stop", "restart", "scale", "terminate"]
+
+
+def deployment_allowed_actions(status: str) -> list[DeploymentAction]:
+    if status in {"running", "ready"}:
+        return ["stop", "restart", "scale", "terminate"]
+    if status in {"pending", "deploying"}:
+        return ["stop", "terminate"]
+    if status == "stopped":
+        return ["start", "terminate"]
+    if status == "failed":
+        return ["restart", "terminate"]
+    return []
+
+
 class DeploymentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -154,6 +176,11 @@ class DeploymentResponse(BaseModel):
     error_message: Optional[str]
     events: list[DeploymentEventResponse] = Field(default_factory=list)
 
+    @computed_field(description="Lifecycle actions currently accepted for this deployment state.")
+    @property
+    def allowed_actions(self) -> list[DeploymentAction]:
+        return deployment_allowed_actions(self.status)
+
 
 class DeploymentListResponse(BaseModel):
     items: list[DeploymentResponse] = Field(default_factory=list)
@@ -164,7 +191,15 @@ class DeploymentListResponse(BaseModel):
 
 
 class DeploymentScale(BaseModel):
-    replicas: int
+    replicas: int = Field(
+        ...,
+        ge=0,
+        le=10,
+        description=(
+            "Desired replicas (1-10). Zero stops an active deployment while preserving its "
+            "last non-zero desired replica count."
+        ),
+    )
 
 
 class DeploymentLogsResponse(BaseModel):
@@ -180,7 +215,7 @@ class DeploymentLogsResponse(BaseModel):
     timestamp: datetime
 
 
-class DeploymentMetricsResponse(BaseModel):
+class DeploymentMetricsResponse(DegradedNumericResponseModel):
     """Response model for deployment metrics"""
 
     model_config = ConfigDict(from_attributes=True)
@@ -273,7 +308,7 @@ class AgentRollbackRequest(BaseModel):
     version: int = Field(..., gt=0, description="Version number to rollback to")
 
 
-class AgentResponse(BaseModel):
+class AgentResponse(DegradedNumericResponseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -302,7 +337,7 @@ class AgentDetailResponse(AgentResponse):
     deployments: list[DeploymentResponse] = Field(default_factory=list)
 
 
-class AgentConfigResponse(BaseModel):
+class AgentConfigResponse(DegradedNumericResponseModel):
     agent_id: uuid.UUID
     type: AgentType
     config: AgentConfigSchema | dict[str, Any]
@@ -321,7 +356,7 @@ class AgentLogResponse(BaseModel):
     timestamp: datetime
 
 
-class AgentMetricResponse(BaseModel):
+class AgentMetricResponse(DegradedNumericResponseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -349,7 +384,7 @@ class AgentMetricHistoryResponse(BaseModel):
     has_more: bool
 
 
-class AgentResourceUsageResponse(BaseModel):
+class AgentResourceUsageResponse(DegradedNumericResponseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -360,7 +395,7 @@ class AgentResourceUsageResponse(BaseModel):
     api_calls: int = 0
     cost_usd: Optional[float] = 0.0
     model: Optional[str] = None
-    extra_metadata: Optional[dict] = None
+    extra_metadata: Optional[dict[str, Any]] = None
     period_start: datetime
     period_end: Optional[datetime] = None
     created_at: datetime
@@ -383,9 +418,9 @@ class AgentResourceUsageCreate(BaseModel):
     completion_tokens: Optional[int] = Field(default=0, ge=0)
     total_tokens: Optional[int] = Field(default=0, ge=0)
     api_calls: int = Field(default=0, ge=0)
-    cost_usd: Optional[float] = Field(default=0.0, ge=0.0)
+    cost_usd: Optional[NonNegativeFiniteFloat] = 0.0
     model: Optional[str] = Field(default=None, max_length=100)
-    extra_metadata: Optional[dict[str, Any]] = Field(default_factory=dict)
+    extra_metadata: Optional[FiniteJsonDict] = Field(default_factory=dict)
     period_start: datetime
     period_end: Optional[datetime] = None
 
@@ -393,7 +428,7 @@ class AgentResourceUsageCreate(BaseModel):
 class RunTraceCreate(BaseModel):
     event_type: str = Field(..., min_length=1, max_length=100)
     message: Optional[str] = Field(None, max_length=5000)
-    payload: dict[str, Any] = Field(default_factory=dict)
+    payload: FiniteJsonDict = Field(default_factory=dict)
     timestamp: Optional[datetime] = None
 
 
@@ -403,7 +438,7 @@ class RunCreate(BaseModel):
     input_text: Optional[str] = None
     output_text: Optional[str] = None
     error_message: Optional[str] = None
-    metadata: dict = Field(default_factory=dict)
+    metadata: FiniteJsonDict = Field(default_factory=dict)
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     traces: list[RunTraceCreate] = Field(default_factory=list)
@@ -487,6 +522,7 @@ class DocumentTemplateResponse(BaseModel):
     description: str
     supports_managed: bool = True
     supports_local: bool = True
+    max_upload_bytes: int
     inputs: list[DocumentTemplateFieldResponse] = Field(default_factory=list)
     outputs: list[DocumentTemplateOutputResponse] = Field(default_factory=list)
 
@@ -729,10 +765,8 @@ class MetricsReportRequest(BaseModel):
     """Request model for reporting agent metrics"""
 
     agent_id: uuid.UUID
-    cpu_usage: float = Field(..., ge=0.0, le=100.0, description="CPU usage percentage (0-100)")
-    memory_usage: float = Field(
-        ..., ge=0.0, le=100.0, description="Memory usage percentage (0-100)"
-    )
+    cpu_usage: PercentageFloat = Field(..., description="CPU usage percentage (0-100)")
+    memory_usage: PercentageFloat = Field(..., description="Memory usage percentage (0-100)")
 
 
 class IngestEvent(BaseModel):
@@ -748,7 +782,7 @@ class IngestEvent(BaseModel):
     )
     timestamp: Optional[str] = Field(None, description="ISO 8601 timestamp from the adapter")
     agent_id: Optional[uuid.UUID] = Field(None, description="Agent UUID if available")
-    payload: Dict[str, Any] = Field(default_factory=dict, description="Adapter-specific event data")
+    payload: FiniteJsonDict = Field(default_factory=dict, description="Adapter-specific event data")
 
 
 class HealthResponse(BaseModel):
@@ -841,7 +875,16 @@ class AssistantSkillResponse(BaseModel):
     category: str
     source: str
     is_official: bool = False
+    # ``installed`` is retained for compatibility and now means runtime activation is proven.
     installed: bool = False
+    configured: bool = False
+    runtime_ready: bool = False
+    status: Literal["available", "configured", "runtime_ready", "unavailable", "failed"] = (
+        "available"
+    )
+    reconciliation_required: bool = False
+    status_detail: str = "Available to configure; runtime activation has not been requested."
+    reconciliation_error: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
     path: Optional[str] = None
     canonical_name: Optional[str] = None
@@ -869,12 +912,12 @@ class AssistantWakeupResponse(BaseModel):
 
 class AssistantHealthResponse(BaseModel):
     status: str
-    cli_available: bool
-    gateway_configured: bool
-    gateway_reachable: bool
+    cli_available: Optional[bool] = None
+    gateway_configured: Optional[bool] = None
+    gateway_reachable: Optional[bool] = None
     gateway_port: Optional[int] = None
     gateway_url: Optional[str] = None
-    credential_detected: bool = False
+    credential_detected: Optional[bool] = None
     config_path: Optional[str] = None
     state_dir: Optional[str] = None
     doctor_summary: str
@@ -1149,19 +1192,27 @@ class WaitlistCountResponse(BaseModel):
 
 # Lead Schemas
 class LeadCreate(BaseModel):
-    email: EmailStr
-    name: Optional[str] = Field(None, max_length=255)
-    company: Optional[str] = Field(None, max_length=255)
-    message: Optional[str] = Field(None, max_length=5000)
+    email: EmailStr = Field(..., max_length=255)
+    name: Optional[str] = Field(None, max_length=100)
+    company: Optional[str] = Field(None, max_length=200)
+    message: Optional[str] = Field(None, max_length=2000)
     source: Optional[str] = Field(None, max_length=120)
+    tier: Optional[str] = Field(None, max_length=50)
+    interest: Optional[str] = Field(None, max_length=80)
+    locale: Optional[str] = Field(None, max_length=16, pattern=r"^[a-zA-Z]{2}(?:-[a-zA-Z]{2})?$")
+    product_updates_consent: bool = False
 
 
 class LeadUpdate(BaseModel):
-    email: Optional[EmailStr] = None
-    name: Optional[str] = Field(None, max_length=255)
-    company: Optional[str] = Field(None, max_length=255)
-    message: Optional[str] = Field(None, max_length=5000)
+    email: Optional[EmailStr] = Field(None, max_length=255)
+    name: Optional[str] = Field(None, max_length=100)
+    company: Optional[str] = Field(None, max_length=200)
+    message: Optional[str] = Field(None, max_length=2000)
     source: Optional[str] = Field(None, max_length=120)
+    tier: Optional[str] = Field(None, max_length=50)
+    interest: Optional[str] = Field(None, max_length=80)
+    locale: Optional[str] = Field(None, max_length=16, pattern=r"^[a-zA-Z]{2}(?:-[a-zA-Z]{2})?$")
+    product_updates_consent: Optional[bool] = None
 
 
 class LeadResponse(BaseModel):
@@ -1173,7 +1224,22 @@ class LeadResponse(BaseModel):
     company: Optional[str]
     message: Optional[str]
     source: Optional[str]
+    tier: Optional[str]
+    interest: Optional[str]
+    locale: Optional[str]
+    product_updates_consent: bool
+    notification_scheduled_at: Optional[datetime]
     created_at: datetime
+
+
+class LeadCaptureResponse(LeadResponse):
+    success: bool = True
+    status: Literal["accepted"] = "accepted"
+    persisted: bool = True
+    replayed: bool = False
+    notification_scheduled: bool
+    follow_up: Literal["best-effort", "unavailable"]
+    message_to_submitter: str
 
 
 class LeadListResponse(BaseModel):
@@ -1212,13 +1278,13 @@ class UsageEventCreate(BaseModel):
         description="Type of resource that was used",
     )
     resource_id: Optional[str] = Field(None, max_length=255, description="Resource that was used")
-    credits_used: float = Field(1.0, ge=0.0, description="Credits consumed by this event")
-    metadata: Optional[dict[str, Any]] = Field(
+    credits_used: NonNegativeFiniteFloat = Field(1.0, description="Credits consumed by this event")
+    metadata: Optional[FiniteJsonDict] = Field(
         default_factory=dict, description="Additional event metadata"
     )
 
 
-class UsageEventResponse(BaseModel):
+class UsageEventResponse(DegradedNumericResponseModel):
     """Response model for usage events"""
 
     model_config = ConfigDict(from_attributes=True)
@@ -1228,7 +1294,7 @@ class UsageEventResponse(BaseModel):
     user_id: uuid.UUID
     resource_type: Optional[str]
     resource_id: Optional[str]
-    credits_used: float
+    credits_used: Optional[float]
     event_metadata: Optional[str] = None  # JSON string from DB
     created_at: datetime
 
@@ -1256,9 +1322,10 @@ class AnalyticsSummaryResponse(BaseModel):
     successful_runs: int
     failed_runs: int
     total_api_calls: int
-    avg_latency_ms: float
+    avg_latency_ms: Optional[float]
     period_start: datetime
     period_end: datetime
+    incomplete: bool = False
 
 
 class AgentMetricsSummary(BaseModel):
@@ -1273,11 +1340,12 @@ class AgentMetricsSummary(BaseModel):
     avg_latency_ms: Optional[float]
     period_start: datetime
     period_end: datetime
+    incomplete: bool = False
 
 
 class AnalyticsTimeSeries(BaseModel):
     timestamp: datetime
-    value: float
+    value: Optional[float]
     label: Optional[str] = None
 
 
@@ -1287,6 +1355,7 @@ class AnalyticsTimeSeriesResponse(BaseModel):
     data: list[AnalyticsTimeSeries]
     period_start: datetime
     period_end: datetime
+    incomplete: bool = False
 
 
 class CostSummaryResponse(BaseModel):

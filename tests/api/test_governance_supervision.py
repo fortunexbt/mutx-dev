@@ -11,6 +11,11 @@ from httpx import AsyncClient
 from src.api.services.faramesh_supervisor import SupervisionValidationError
 
 
+@pytest.fixture(autouse=True)
+def administrator_principal(test_user):
+    test_user.roles = ["ADMIN"]
+
+
 class _MockPreparedLaunch:
     def __init__(self, agent_id: str):
         self.agent_id = agent_id
@@ -128,9 +133,7 @@ async def test_list_supervised_agents_forbidden_for_non_internal_user(
 
 
 @pytest.mark.asyncio
-async def test_list_supervised_agents_requires_auth(
-    client_no_auth: AsyncClient, monkeypatch
-):
+async def test_list_supervised_agents_requires_auth(client_no_auth: AsyncClient, monkeypatch):
     _patch_supervisor(monkeypatch, _MockSupervisor())
 
     response = await client_no_auth.get("/v1/runtime/governance/supervised/")
@@ -144,9 +147,7 @@ async def test_list_supervised_agents_requires_auth(
 
 
 @pytest.mark.asyncio
-async def test_list_launch_profiles_returns_profiles(
-    client: AsyncClient, monkeypatch
-):
+async def test_list_launch_profiles_returns_profiles(client: AsyncClient, monkeypatch):
     _patch_supervisor(monkeypatch, _MockSupervisor())
 
     response = await client.get("/v1/runtime/governance/supervised/profiles")
@@ -164,9 +165,7 @@ async def test_list_launch_profiles_forbidden_for_non_internal_user(
 ):
     _patch_supervisor(monkeypatch, _MockSupervisor())
 
-    response = await other_user_client.get(
-        "/v1/runtime/governance/supervised/profiles"
-    )
+    response = await other_user_client.get("/v1/runtime/governance/supervised/profiles")
 
     assert response.status_code == 403
 
@@ -177,9 +176,7 @@ async def test_list_launch_profiles_forbidden_for_non_internal_user(
 
 
 @pytest.mark.asyncio
-async def test_get_supervised_agent_returns_status(
-    client: AsyncClient, monkeypatch
-):
+async def test_get_supervised_agent_returns_status(client: AsyncClient, monkeypatch):
     _patch_supervisor(monkeypatch, _MockSupervisor())
 
     response = await client.get("/v1/runtime/governance/supervised/agent-1")
@@ -190,14 +187,10 @@ async def test_get_supervised_agent_returns_status(
 
 
 @pytest.mark.asyncio
-async def test_get_supervised_agent_returns_404_for_unknown(
-    client: AsyncClient, monkeypatch
-):
+async def test_get_supervised_agent_returns_404_for_unknown(client: AsyncClient, monkeypatch):
     _patch_supervisor(monkeypatch, _MockSupervisor())
 
-    response = await client.get(
-        "/v1/runtime/governance/supervised/missing-agent"
-    )
+    response = await client.get("/v1/runtime/governance/supervised/missing-agent")
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Agent 'missing-agent' not found"}
@@ -209,9 +202,7 @@ async def test_get_supervised_agent_forbidden_for_non_internal_user(
 ):
     _patch_supervisor(monkeypatch, _MockSupervisor())
 
-    response = await other_user_client.get(
-        "/v1/runtime/governance/supervised/agent-1"
-    )
+    response = await other_user_client.get("/v1/runtime/governance/supervised/agent-1")
 
     assert response.status_code == 403
 
@@ -320,9 +311,7 @@ async def test_stop_supervised_agent_success(client: AsyncClient, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_stop_supervised_agent_uses_default_timeout(
-    client: AsyncClient, monkeypatch
-):
+async def test_stop_supervised_agent_uses_default_timeout(client: AsyncClient, monkeypatch):
     supervisor = _MockSupervisor()
     _patch_supervisor(monkeypatch, supervisor)
 
@@ -371,15 +360,11 @@ async def test_stop_supervised_agent_forbidden_for_non_internal_user(
 
 
 @pytest.mark.asyncio
-async def test_restart_supervised_agent_success(
-    client: AsyncClient, monkeypatch
-):
+async def test_restart_supervised_agent_success(client: AsyncClient, monkeypatch):
     supervisor = _MockSupervisor()
     _patch_supervisor(monkeypatch, supervisor)
 
-    response = await client.post(
-        "/v1/runtime/governance/supervised/agent-1/restart"
-    )
+    response = await client.post("/v1/runtime/governance/supervised/agent-1/restart")
 
     assert response.status_code == 200
     assert response.json()["agent_id"] == "agent-1"
@@ -392,9 +377,7 @@ async def test_restart_supervised_agent_returns_500_when_supervisor_fails(
 ):
     _patch_supervisor(monkeypatch, _MockSupervisor(restart_success=False))
 
-    response = await client.post(
-        "/v1/runtime/governance/supervised/agent-1/restart"
-    )
+    response = await client.post("/v1/runtime/governance/supervised/agent-1/restart")
 
     assert response.status_code == 500
     assert response.json() == {"detail": "Failed to restart agent"}
@@ -406,8 +389,6 @@ async def test_restart_supervised_agent_forbidden_for_non_internal_user(
 ):
     _patch_supervisor(monkeypatch, _MockSupervisor())
 
-    response = await other_user_client.post(
-        "/v1/runtime/governance/supervised/agent-1/restart"
-    )
+    response = await other_user_client.post("/v1/runtime/governance/supervised/agent-1/restart")
 
     assert response.status_code == 403

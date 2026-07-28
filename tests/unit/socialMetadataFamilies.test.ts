@@ -31,7 +31,7 @@ import { buildPicoPageMetadata } from '../../lib/pico/metadata'
 
 describe('surface-specific metadata families', () => {
   it('keeps dashboard metadata on the app host with explicit image objects', () => {
-    expect(dashboardMetadata.alternates?.canonical).toBe('https://app.mutx.dev')
+    expect(dashboardMetadata.alternates?.canonical).toBe('https://app.mutx.dev/dashboard')
     expect(dashboardMetadata.openGraph?.siteName).toBe('MUTX App')
     expect(dashboardMetadata.openGraph?.images).toEqual([
       expect.objectContaining({

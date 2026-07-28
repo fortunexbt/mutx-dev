@@ -13,6 +13,9 @@ import {
 
 import { LiveEmptyState, LivePanel, formatDateTime } from "@/components/dashboard/livePrimitives";
 import { DesktopJobNotice } from "@/components/desktop/DesktopJobNotice";
+import {
+  DESKTOP_ACTION_CLASS,
+} from "@/components/desktop/desktopVisualContract";
 import type {
   GovernanceStatus,
   RuntimeInfo,
@@ -41,13 +44,13 @@ function PreferencesButton({
       type="button"
       onClick={onClick}
       disabled={disabled || busy}
-      className={`inline-flex items-center gap-2 rounded-[11px] border px-3 py-1.5 text-[12px] transition disabled:cursor-not-allowed disabled:opacity-50 ${
+      className={`inline-flex items-center gap-2 px-3 ${DESKTOP_ACTION_CLASS} ${
         tone === "danger"
-          ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-          : "border-[#d8dde5] bg-white text-[#5d6672] hover:bg-[#f8f9fb]"
+          ? "border-[#66302e] bg-[#241312] text-[#ff9b96] hover:border-[#ff6d66]"
+          : "border-[#48463e] bg-[#151612] text-[#c8c0b0] hover:border-[#777268] hover:text-[#eee9dc]"
       }`}
     >
-      <Icon className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
+      <Icon className={`h-4 w-4 ${busy ? "motion-safe:animate-spin motion-reduce:animate-none" : ""}`} aria-hidden="true" />
       {label}
     </button>
   );
@@ -139,24 +142,24 @@ export function DesktopSettingsWindow() {
         <>
           <LivePanel title="Operator Account" meta="identity + binding" action={sharedActions}>
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-[14px] border border-[#dde2e9] bg-white px-4 py-4">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8690a0]">
+              <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] px-4 py-4">
+                <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">
                   Signed-in operator
                 </p>
-                <p className="mt-2 text-lg font-semibold text-[#15181d]">
+                <p className="mt-2 font-[family:var(--font-site-display)] text-lg font-medium text-[#eee9dc]">
                   {status.user?.name || "No operator session"}
                 </p>
-                <p className="mt-1 text-sm text-[#6e7784]">{status.user?.email || "Sign in required"}</p>
-                <p className="mt-4 text-sm text-[#6e7784]">Plan: {status.user?.plan || "n/a"}</p>
+                <p className="mt-1 text-sm text-[#999284]">{status.user?.email || "Sign in required"}</p>
+                <p className="mt-4 text-sm text-[#999284]">Plan: {status.user?.plan || "n/a"}</p>
               </div>
-              <div className="rounded-[14px] border border-[#dde2e9] bg-white px-4 py-4">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8690a0]">
+              <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] px-4 py-4">
+                <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">
                   Workspace binding
                 </p>
-                <p className="mt-2 text-sm text-[#15181d]">
+                <p className="mt-2 break-all text-sm text-[#eee9dc]">
                   {status.assistant?.workspace || "No workspace bound to the desktop operator yet."}
                 </p>
-                <p className="mt-4 text-sm text-[#6e7784]">
+                <p className="mt-4 text-sm text-[#999284]">
                   Assistant: {status.assistant?.name || "Not configured"}
                 </p>
               </div>
@@ -182,30 +185,30 @@ export function DesktopSettingsWindow() {
         <>
           <LivePanel title="Runtime Control" meta="local machine runtime" action={sharedActions}>
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-[14px] border border-[#dde2e9] bg-white px-4 py-4">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8690a0]">
+              <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] px-4 py-4">
+                <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">
                   Control plane
                 </p>
-                <p className="mt-2 text-lg font-semibold text-[#15181d]">
+                <p className="mt-2 font-[family:var(--font-site-display)] text-lg font-medium text-[#eee9dc]">
                   {status.localControlPlane?.state === "ready"
                     ? "Online"
                     : status.localControlPlane?.state || "Unknown"}
                 </p>
-                <p className="mt-1 text-sm text-[#6e7784]">
+                <p className="mt-1 break-all text-sm text-[#999284]">
                   {status.localControlPlane?.path || "No local control plane path available."}
                 </p>
                 {status.localControlPlane?.lastError ? (
-                  <p className="mt-3 text-sm text-amber-700">{status.localControlPlane.lastError}</p>
+                  <p className="mt-3 text-sm text-[#f4cc82]">{status.localControlPlane.lastError}</p>
                 ) : null}
               </div>
-              <div className="rounded-[14px] border border-[#dde2e9] bg-white px-4 py-4">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8690a0]">
+              <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] px-4 py-4">
+                <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">
                   Runtime target
                 </p>
-                <p className="mt-2 text-lg font-semibold text-[#15181d]">{status.mode || "unknown"}</p>
-                <p className="mt-1 text-sm text-[#6e7784]">{status.apiUrl || "No API target configured."}</p>
+                <p className="mt-2 font-[family:var(--font-site-display)] text-lg font-medium text-[#eee9dc]">{status.mode || "unknown"}</p>
+                <p className="mt-1 break-all text-sm text-[#999284]">{status.apiUrl || "No API target configured."}</p>
                 {status.runtime?.lastError ? (
-                  <p className="mt-3 text-sm text-amber-700">{status.runtime.lastError}</p>
+                  <p className="mt-3 text-sm text-[#f4cc82]">{status.runtime.lastError}</p>
                 ) : null}
               </div>
             </div>
@@ -235,19 +238,19 @@ export function DesktopSettingsWindow() {
       {pane === "gateway" ? (
         <LivePanel title="Gateway" meta="openclaw posture" action={sharedActions}>
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-[14px] border border-[#dde2e9] bg-white px-4 py-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8690a0]">Gateway health</p>
-              <p className="mt-2 text-lg font-semibold text-[#15181d]">{status.openclaw?.health || "unknown"}</p>
-              <p className="mt-1 text-sm text-[#6e7784]">{status.openclaw?.gatewayUrl || "Gateway URL unavailable."}</p>
+            <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] px-4 py-4">
+              <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">Gateway health</p>
+              <p className="mt-2 font-[family:var(--font-site-display)] text-lg font-medium text-[#eee9dc]">{status.openclaw?.health || "unknown"}</p>
+              <p className="mt-1 break-all text-sm text-[#999284]">{status.openclaw?.gatewayUrl || "Gateway URL unavailable."}</p>
             </div>
-            <div className="rounded-[14px] border border-[#dde2e9] bg-white px-4 py-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8690a0]">Gateway config</p>
-              <p className="mt-2 text-sm text-[#15181d]">
+            <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] px-4 py-4">
+              <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">Gateway config</p>
+              <p className="mt-2 break-all text-sm text-[#eee9dc]">
                 {typeof runtimeInfo?.openclaw?.config_path === "string"
                   ? runtimeInfo.openclaw.config_path
                   : "No config path reported."}
               </p>
-              <p className="mt-3 text-sm text-[#6e7784]">
+              <p className="mt-3 text-sm text-[#999284]">
                 {typeof runtimeInfo?.openclaw?.gateway === "object" &&
                 runtimeInfo?.openclaw?.gateway &&
                 "doctor_summary" in runtimeInfo.openclaw.gateway &&
@@ -263,19 +266,19 @@ export function DesktopSettingsWindow() {
       {pane === "governance" ? (
         <LivePanel title="Governance" meta="faramesh" action={sharedActions}>
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-[14px] border border-[#dde2e9] bg-white px-4 py-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8690a0]">Daemon status</p>
-              <p className="mt-2 text-lg font-semibold text-[#15181d]">
+            <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] px-4 py-4">
+              <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">Daemon status</p>
+              <p className="mt-2 font-[family:var(--font-site-display)] text-lg font-medium text-[#eee9dc]">
                 {status.faramesh?.available ? status.faramesh.health || "active" : "idle"}
               </p>
-              <p className="mt-1 text-sm text-[#6e7784]">
+              <p className="mt-1 break-all text-sm text-[#999284]">
                 {status.faramesh?.socketPath || "No local governance socket available."}
               </p>
             </div>
-            <div className="rounded-[14px] border border-[#dde2e9] bg-white px-4 py-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8690a0]">Approval backlog</p>
-              <p className="mt-2 text-lg font-semibold text-[#15181d]">{governance?.pending_approvals ?? 0}</p>
-              <p className="mt-1 text-sm text-[#6e7784]">
+            <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] px-4 py-4">
+              <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">Approval backlog</p>
+              <p className="mt-2 font-[family:var(--font-mono)] text-lg font-medium text-[#eee9dc]">{governance?.pending_approvals ?? 0}</p>
+              <p className="mt-1 text-sm text-[#999284]">
                 Last decision {formatDateTime(governance?.last_decision_at || null)}
               </p>
             </div>
@@ -294,27 +297,27 @@ export function DesktopSettingsWindow() {
       {pane === "advanced" ? (
         <LivePanel title="Advanced Desktop State" meta="bridge + internals" action={sharedActions}>
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-[14px] border border-[#dde2e9] bg-white px-4 py-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8690a0]">Bridge</p>
-              <p className="mt-2 text-sm text-[#15181d]">{status.bridge.pythonCommand || "unknown"}</p>
-              <p className="mt-1 text-sm text-[#6e7784]">{status.bridge.scriptPath || "No bridge script path"}</p>
-              <p className="mt-3 text-sm text-[#6e7784]">
+            <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] px-4 py-4">
+              <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">Bridge</p>
+              <p className="mt-2 break-all font-[family:var(--font-mono)] text-xs text-[#eee9dc]">{status.bridge.pythonCommand || "unknown"}</p>
+              <p className="mt-1 break-all font-[family:var(--font-mono)] text-xs text-[#999284]">{status.bridge.scriptPath || "No bridge script path"}</p>
+              <p className="mt-3 text-sm text-[#999284]">
                 State {status.bridge.state || "unknown"}
                 {status.bridge.lastError ? ` · ${status.bridge.lastError}` : ""}
               </p>
             </div>
-            <div className="rounded-[14px] border border-[#dde2e9] bg-white px-4 py-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8690a0]">Desktop UI server</p>
-              <p className="mt-2 text-sm text-[#15181d]">{status.uiServer?.url || "No local UI server URL"}</p>
-              <p className="mt-1 text-sm text-[#6e7784]">
+            <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] px-4 py-4">
+              <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">Desktop UI server</p>
+              <p className="mt-2 break-all font-[family:var(--font-mono)] text-xs text-[#eee9dc]">{status.uiServer?.url || "No local UI server URL"}</p>
+              <p className="mt-1 text-sm text-[#999284]">
                 State {status.uiServer?.state || "unknown"}
                 {status.uiServer?.lastError ? ` · ${status.uiServer.lastError}` : ""}
               </p>
             </div>
-            <div className="rounded-[14px] border border-[#dde2e9] bg-white px-4 py-4 md:col-span-2">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8690a0]">User data path</p>
-              <p className="mt-2 text-sm text-[#15181d]">{userDataPath || "Unknown"}</p>
-              <p className="mt-1 text-sm text-[#6e7784]">
+            <div className="rounded-[6px] border border-[#2b2b26] bg-[#0c0d0b] px-4 py-4 md:col-span-2">
+              <p className="font-[family:var(--font-mono)] text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8d867a]">User data path</p>
+              <p className="mt-2 break-all font-[family:var(--font-mono)] text-xs text-[#eee9dc]">{userDataPath || "Unknown"}</p>
+              <p className="mt-1 text-sm text-[#999284]">
                 MUTX version {status.mutxVersion || "unknown"} · runtime state {status.runtime?.state || "unknown"}
               </p>
             </div>

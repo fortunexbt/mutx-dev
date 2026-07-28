@@ -59,8 +59,12 @@ def _managed_storage_uri(job_id: uuid.UUID, artifact_id: uuid.UUID, filename: st
     return f"managed://documents/{job_id}/{artifact_id}/{_safe_filename(filename)}"
 
 
-def _assert_upload_size_within_limit(size_bytes: int) -> None:
-    max_size_bytes = get_settings().document_max_upload_mb * 1024 * 1024
+def get_document_max_upload_bytes() -> int:
+    return get_settings().document_max_upload_mb * 1024 * 1024
+
+
+def assert_upload_size_within_limit(size_bytes: int) -> None:
+    max_size_bytes = get_document_max_upload_bytes()
     if size_bytes > max_size_bytes:
         raise HTTPException(
             status_code=413,
@@ -111,15 +115,41 @@ async def store_uploaded_artifact(
     metadata: dict[str, Any] | None = None,
 ) -> StoredArtifactResult:
     content = await upload.read()
-    _assert_upload_size_within_limit(len(content))
+    assert_upload_size_within_limit(len(content))
+
+    return await store_prepared_artifact(
+        db,
+        job=job,
+        content=content,
+        role=role,
+        kind=kind,
+        filename=upload.filename or f"{role}.bin",
+        content_type=upload.content_type,
+        metadata=metadata,
+    )
+
+
+async def store_prepared_artifact(
+    db: AsyncSession,
+    *,
+    job: DocumentJob,
+    content: bytes,
+    role: str,
+    kind: str,
+    filename: str,
+    content_type: str | None,
+    metadata: dict[str, Any] | None = None,
+) -> StoredArtifactResult:
+    """Persist content that has already passed submission-level validation."""
+    assert_upload_size_within_limit(len(content))
 
     artifact = DocumentArtifact(
         job_id=job.id,
         role=role,
         kind=kind,
         storage_backend="managed",
-        filename=_safe_filename(upload.filename or f"{role}.bin"),
-        content_type=upload.content_type,
+        filename=_safe_filename(filename),
+        content_type=content_type,
         size_bytes=len(content),
         sha256=compute_sha256_bytes(content),
         extra_metadata=metadata or {},

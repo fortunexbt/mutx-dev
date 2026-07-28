@@ -1,12 +1,16 @@
+import { cookies, headers } from 'next/headers'
 import { getRequestConfig } from 'next-intl/server'
+
 import { routing } from './routing'
-import { cookies } from 'next/headers'
+import { loadPicoMessages } from '@/lib/pico/messages'
 
 export default getRequestConfig(async ({ requestLocale }) => {
   let locale = await requestLocale
 
-  // Fall back to NEXT_LOCALE cookie when requestLocale is empty
-  // This handles cookie-driven locale switching on paths without locale segments (e.g. /)
+  if (!locale) {
+    locale = (await headers()).get('x-mutx-locale') ?? undefined
+  }
+
   if (!locale) {
     const cookieStore = await cookies()
     const cookieLocale = cookieStore.get('NEXT_LOCALE')?.value
@@ -19,8 +23,10 @@ export default getRequestConfig(async ({ requestLocale }) => {
     locale = routing.defaultLocale
   }
 
+  const loaded = await loadPicoMessages(locale)
+
   return {
-    locale,
-    messages: (await import(`../messages/${locale}.json`)).default,
+    locale: loaded.locale,
+    messages: loaded.messages,
   }
 })

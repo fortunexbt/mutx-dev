@@ -172,7 +172,7 @@ When behavior is unclear, inspect:
 - `cli/commands/`
 - `sdk/mutx/`
 - `docker-compose.yml`
-- `docker-compose.production.yml`
+- `infrastructure/docker/docker-compose.prod.yml`
 - `infrastructure/helm/mutx/` (Kubernetes/Helm chart and K8s manifests)
 
 ## Questions And Support

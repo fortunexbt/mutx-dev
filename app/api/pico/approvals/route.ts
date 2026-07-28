@@ -9,11 +9,18 @@ import { approvalCreateSchema } from '@/app/api/pico/approvals/_validation'
 
 export const dynamic = 'force-dynamic'
 
+const APPROVAL_QUERY_PARAMETERS = ['status', 'agent_id', 'skip', 'limit'] as const
+
 export async function GET(request: NextRequest) {
   return withErrorHandling(async () => {
+    if (!hasAuthSession(request)) {
+      return unauthorized()
+    }
+
     const targetUrl = new URL(`${getApiBaseUrl()}/v1/approvals`)
-    request.nextUrl.searchParams.forEach((value, key) => {
-      targetUrl.searchParams.set(key, value)
+    APPROVAL_QUERY_PARAMETERS.forEach((parameter) => {
+      const value = request.nextUrl.searchParams.get(parameter)
+      if (value !== null) targetUrl.searchParams.set(parameter, value)
     })
 
     return proxyJson(request, targetUrl.toString(), {

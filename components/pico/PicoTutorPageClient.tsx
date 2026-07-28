@@ -1,10 +1,14 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 import { usePathname, useSearchParams } from 'next/navigation'
 
-import { PicoSessionBanner } from '@/components/pico/PicoSessionBanner'
+import {
+  classifyPicoSessionRuntime,
+  PicoSessionBanner,
+} from '@/components/pico/PicoSessionBanner'
 import { PicoShell } from '@/components/pico/PicoShell'
 import { PicoSurfaceCompass } from '@/components/pico/PicoSurfaceCompass'
 import {
@@ -20,14 +24,20 @@ import { usePicoProgress } from '@/components/pico/usePicoProgress'
 import { usePicoSession } from '@/components/pico/usePicoSession'
 import { usePicoSetupState } from '@/components/pico/usePicoSetupState'
 import { PICO_LESSONS } from '@/lib/pico/academy'
-import { PICO_GENERATED_CONTENT } from '@/lib/pico/generatedContent'
+import { localizePicoLesson } from '@/lib/pico/content'
 import { usePicoHref } from '@/lib/pico/navigation'
-import { normalizeTutorReplyPayload, type PicoTutorReply } from '@/lib/pico/tutor'
+import {
+  classifyTutorFailure,
+  getPicoTutorAcademyGuidance,
+  getPicoTutorPlanCapabilities,
+  LatestTutorRequest,
+  normalizeTutorConnectionPayload,
+  normalizeTutorReplyPayload,
+  type PicoTutorConnection,
+  type PicoTutorFailure,
+  type PicoTutorReply,
+} from '@/lib/pico/tutor'
 import { cn } from '@/lib/utils'
-
-const examplePrompts = PICO_GENERATED_CONTENT.tutor.examplePrompts
-
-const questionProtocol = PICO_GENERATED_CONTENT.tutor.questionProtocol
 
 const RECENT_QUESTIONS_KEY = 'pico.tutor.recent.v1'
 const TUTOR_QUESTION_ID = 'pico-tutor-question'
@@ -36,29 +46,6 @@ const TUTOR_QUESTION_ERROR_ID = 'pico-tutor-question-error'
 const OPENAI_KEY_ID = 'pico-tutor-openai-key'
 const OPENAI_CONNECTION_ERROR_ID = 'pico-tutor-openai-error'
 
-type TutorApiResponse = Partial<PicoTutorReply> & {
-  detail?: string
-  reply?: PicoTutorReply
-}
-
-type TutorOpenAIConnection = {
-  provider: string
-  status: 'connected' | 'platform' | 'disconnected' | 'error'
-  source: 'user' | 'platform' | 'none'
-  connected: boolean
-  model: string
-  maskedKey?: string | null
-  connectedAt?: string | null
-  validatedAt?: string | null
-  message: string
-}
-
-type TutorOpenAIConnectionApiResponse = Partial<TutorOpenAIConnection> & {
-  detail?: string
-  error?: {
-    message?: string
-  }
-}
 function resolveTutorHref(toHref: ReturnType<typeof usePicoHref>, href: string) {
   if (
     href.startsWith('/pico') ||
@@ -105,32 +92,15 @@ function writeRecentQuestions(nextQuestions: string[]) {
   )
 }
 
-function readApiErrorMessage(payload: TutorApiResponse | TutorOpenAIConnectionApiResponse | null | undefined) {
-  if (typeof payload?.detail === 'string' && payload.detail) {
-    return payload.detail
-  }
-
-  const errorValue = (payload as { error?: string | { message?: string } | null } | null | undefined)?.error
-  if (typeof errorValue === 'string' && errorValue) {
-    return errorValue
-  }
-
-  if (
-    errorValue &&
-    typeof errorValue === 'object' &&
-    typeof errorValue.message === 'string' &&
-    errorValue.message
-  ) {
-    return errorValue.message
-  }
-
-  return null
-}
 export function PicoTutorPageClient() {
   const pathname = usePathname()
+  const t = useTranslations('pico.tutorPage')
+  const contentT = useTranslations('pico.content')
   const session = usePicoSession()
   const setup = usePicoSetupState(session.status === 'authenticated')
-  const { progress, derived, actions } = usePicoProgress(session.status === 'authenticated')
+  const { progress, derived, actions, syncState } = usePicoProgress(
+    session.status === 'authenticated',
+  )
   const toHref = usePicoHref()
   const searchParams = useSearchParams()
   const lessonFromQuery = searchParams.get('lesson')
@@ -144,19 +114,41 @@ export function PicoTutorPageClient() {
   const [question, setQuestion] = useState('')
   const [lessonSlug, setLessonSlug] = useState(defaultLessonSlug)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<PicoTutorFailure | null>(null)
   const [reply, setReply] = useState<PicoTutorReply | null>(null)
   const [recentQuestions, setRecentQuestions] = useState<string[]>([])
   const [formReady, setFormReady] = useState(false)
-  const [openAIConnection, setOpenAIConnection] = useState<TutorOpenAIConnection | null>(null)
+  const [openAIConnection, setOpenAIConnection] = useState<PicoTutorConnection | null>(null)
   const [openAIConnectionLoading, setOpenAIConnectionLoading] = useState(false)
   const [openAIConnectionSaving, setOpenAIConnectionSaving] = useState(false)
   const [openAIConnectionError, setOpenAIConnectionError] = useState<string | null>(null)
   const [openAIApiKey, setOpenAIApiKey] = useState('')
-  const availableLessons = useMemo(() => PICO_LESSONS, [])
+  const runtimeBannerLabel = setup.runtime?.status ?? t('form.packet.notSynced')
+  const runtimeBannerState = classifyPicoSessionRuntime({
+    loading: setup.loading,
+    error: setup.error,
+    status: setup.runtime?.status,
+    stale: setup.runtime?.stale,
+  })
+  const chatRequests = useRef(new LatestTutorRequest())
+  const connectionReads = useRef(new LatestTutorRequest())
+  const connectionMutations = useRef(new LatestTutorRequest())
+  const sessionPlan = session.status === 'authenticated' ? session.user.plan : null
+  const sessionCapabilities = useMemo(
+    () => getPicoTutorPlanCapabilities(sessionPlan),
+    [sessionPlan],
+  )
+  const availableLessons = useMemo(
+    () => PICO_LESSONS.map((lesson) => localizePicoLesson(lesson, contentT)),
+    [contentT],
+  )
   const selectedLesson = useMemo(
     () => availableLessons.find((lesson) => lesson.slug === lessonSlug) ?? null,
     [availableLessons, lessonSlug],
+  )
+  const nextLesson = useMemo(
+    () => availableLessons.find((lesson) => lesson.slug === derived.nextLesson?.slug) ?? null,
+    [availableLessons, derived.nextLesson?.slug],
   )
   const lessonWorkspace = usePicoLessonWorkspace(selectedLesson?.slug ?? 'tutor', selectedLesson?.steps.length ?? 0, {
     progress,
@@ -166,72 +158,120 @@ export function PicoTutorPageClient() {
   })
   const tutorMethod = [
     {
-      label: '01 • Frame',
-      title: 'Bring one blocked step',
+      label: t('method.cards.frame.label'),
+      title: t('method.cards.frame.title'),
       body: selectedLesson
-        ? `Tie the question to ${selectedLesson.title}. Tutor works best when the lesson is attached.`
-        : 'Name the exact step, command, or approval state that stopped you.',
+        ? t('method.cards.frame.bodyWithLesson', { lessonTitle: selectedLesson.title })
+        : t('method.cards.frame.bodyWithoutLesson'),
     },
     {
-      label: '02 • Evidence',
-      title: 'Bring what actually happened',
-      body: 'Paste the command, transcript, error, or runtime status so the answer can stay specific.',
+      label: t('method.cards.evidence.label'),
+      title: t('method.cards.evidence.title'),
+      body: t('method.cards.evidence.body'),
     },
     {
-      label: '03 • Exit',
-      title: 'Leave with one move',
-      body: 'A good tutor answer gives one next action, one verification line, and a clear handoff when setup needs help.',
+      label: t('method.cards.exit.label'),
+      title: t('method.cards.exit.title'),
+      body: t('method.cards.exit.body'),
     },
   ]
+  const questionProtocol = ([0, 1, 2] as const).map((index) =>
+    t(`form.questionProtocol.${index}`),
+  )
   const lessonReviewBoard = selectedLesson
     ? [
         {
-          label: 'Lesson brief',
+          label: t('method.lessonReviewBoard.lessonBrief'),
           value: selectedLesson.objective,
         },
         {
-          label: 'Deliverable',
+          label: t('method.lessonReviewBoard.deliverable'),
           value: selectedLesson.expectedResult,
         },
         {
-          label: 'Critique line',
+          label: t('method.lessonReviewBoard.critiqueLine'),
           value: selectedLesson.validation,
         },
       ]
     : []
   const promptChips = useMemo(
-    () => getPicoTutorPromptChips(selectedLesson, examplePrompts),
-    [selectedLesson],
+    () => getPicoTutorPromptChips(
+      selectedLesson,
+      ([0, 1, 2] as const).map((index) => t(`form.examplePrompts.${index}`)),
+      sessionCapabilities.tutorAccess,
+    ),
+    [selectedLesson, sessionCapabilities.tutorAccess, t],
+  )
+  const authoritativeTutorAccess = Boolean(
+    openAIConnection?.entitlement.tutorAccess && openAIConnection.providerAvailable,
+  )
+  const academyGuidance = useMemo(
+    () =>
+      getPicoTutorAcademyGuidance(
+        selectedLesson,
+        lessonWorkspace.workspace.activeStepIndex >= 0
+          ? lessonWorkspace.workspace.activeStepIndex
+          : 0,
+      ),
+    [lessonWorkspace.workspace.activeStepIndex, selectedLesson],
   )
   const tutorSignal = reply
-    ? 'answer ready'
+    ? t('hero.signal.answerReady')
     : loading
-      ? 'reviewing blocker'
+      ? t('hero.signal.reviewingBlocker')
       : selectedLesson
-        ? 'lesson attached'
-        : 'awaiting blocker'
+        ? t('hero.signal.lessonAttached')
+        : t('hero.signal.awaitingBlocker')
   const connectionSignal =
     session.status !== 'authenticated'
-      ? 'local only'
+      ? t('hero.signal.localOnly')
       : openAIConnectionLoading
-        ? 'checking'
+        ? t('hero.signal.checking')
         : openAIConnection?.status === 'connected'
-          ? 'openai connected'
+          ? t('hero.signal.openaiConnected')
           : openAIConnection?.status === 'platform'
-            ? 'platform access'
-            : 'setup mode'
+            ? t('hero.signal.platformAccess')
+            : openAIConnection?.status === 'disconnected'
+              ? t('hero.signal.providerMissing')
+              : sessionCapabilities.tutorAccess
+                ? t('hero.signal.statusUnavailable')
+                : t('hero.signal.academyOnly')
+  const tutorCanSubmit =
+    session.status === 'authenticated' &&
+    sessionCapabilities.tutorAccess &&
+    authoritativeTutorAccess &&
+    !openAIConnectionLoading &&
+    !openAIConnectionSaving
+  const tutorAvailabilityMessage =
+    session.status === 'loading'
+      ? t('availability.checkingEntitlement')
+      : session.status !== 'authenticated'
+        ? t('availability.signIn')
+        : !sessionCapabilities.tutorAccess
+          ? t('availability.readOnly')
+          : openAIConnectionLoading
+            ? t('availability.checkingProvider')
+            : !openAIConnection?.providerAvailable
+              ? openAIConnection?.message
+                ? t('availability.providerDetail', { detail: openAIConnection.message })
+                : t('availability.providerUnavailable')
+              : t('availability.readyThrough', {
+                  provider: openAIConnection.source === 'user'
+                    ? t('availability.validatedKey')
+                    : t('availability.platformProvider'),
+                })
   const lessonSignal = selectedLesson
-    ? `${lessonWorkspace.completedStepCount}/${selectedLesson.steps.length} steps`
-    : 'attach lesson'
+    ? t('hero.signal.lessonSteps', { completed: lessonWorkspace.completedStepCount, total: selectedLesson.steps.length })
+    : t('hero.signal.attachLesson')
   const focusedStepLabel =
     selectedLesson && lessonWorkspace.workspace.activeStepIndex >= 0
-      ? selectedLesson.steps[lessonWorkspace.workspace.activeStepIndex]?.title ?? 'not set'
-      : 'not set'
+      ? selectedLesson.steps[lessonWorkspace.workspace.activeStepIndex]?.title ?? t('hero.signal.notSet')
+      : t('hero.signal.notSet')
   const tutorPacketPreview = [
-    `Lesson ${selectedLesson?.title ?? 'none attached'}`,
-    `State ${tutorSignal}`,
-    `Focus ${focusedStepLabel}`,
-    `Output one next step`,
+    t('hero.packetPreview.lane', { value: selectedLesson?.title ?? t('hero.packetPreview.noneAttached') }),
+    t('hero.packetPreview.state', { value: tutorSignal }),
+    t('hero.packetPreview.focus', { value: focusedStepLabel }),
+    t('hero.packetPreview.output', { value: t('hero.packetPreview.groundedMove') }),
   ].join('\n')
 
   useEffect(() => {
@@ -266,61 +306,117 @@ export function PicoTutorPageClient() {
     }
   }, [actions, progress.platform.activeSurface])
 
-  useEffect(() => {
-    if (session.status !== 'authenticated') {
-      setOpenAIConnection(null)
-      setOpenAIConnectionLoading(false)
-      setOpenAIConnectionError(null)
-      return
-    }
-
-    let cancelled = false
+  const loadConnection = useCallback(async (): Promise<PicoTutorConnection | null> => {
+    const lease = connectionReads.current.begin()
     setOpenAIConnectionLoading(true)
     setOpenAIConnectionError(null)
 
-    async function loadConnection() {
-      try {
-        const response = await fetch('/api/pico/tutor/openai', {
-          credentials: 'include',
-          cache: 'no-store',
-        })
-        const payload = (await response.json().catch(() => null)) as TutorOpenAIConnectionApiResponse | null
+    try {
+      const response = await fetch('/api/pico/tutor/openai', {
+        credentials: 'include',
+        cache: 'no-store',
+        signal: lease.signal,
+      })
+      const payload: unknown = await response.json().catch(() => null)
+      if (!connectionReads.current.isCurrent(lease)) return null
+      if (!response.ok) {
+        const failure = classifyTutorFailure(response.status, payload)
+        setOpenAIConnection(null)
+        setOpenAIConnectionError(failure.message)
+        return null
+      }
 
-        if (cancelled) {
-          return
-        }
+      const connection = normalizeTutorConnectionPayload(payload)
+      if (!connection) {
+        setOpenAIConnection(null)
+        setOpenAIConnectionError(t('errors.providerStatusUnverified'))
+        return null
+      }
 
-        if (!response.ok) {
-          throw new Error(readApiErrorMessage(payload) || 'Failed to load OpenAI connection')
-        }
-
-        setOpenAIConnection(payload as TutorOpenAIConnection)
-      } catch (loadError) {
-        if (!cancelled) {
-          setOpenAIConnection(null)
-          setOpenAIConnectionError(
-            loadError instanceof Error ? loadError.message : 'Failed to load OpenAI connection',
-          )
-        }
-      } finally {
-        if (!cancelled) {
-          setOpenAIConnectionLoading(false)
-        }
+      setOpenAIConnection(connection)
+      return connection
+    } catch (loadError) {
+      if (loadError instanceof Error && loadError.name === 'AbortError') return null
+      if (connectionReads.current.isCurrent(lease)) {
+        setOpenAIConnection(null)
+        setOpenAIConnectionError(
+          loadError instanceof Error ? loadError.message : t('errors.loadOpenAIConnection'),
+        )
+      }
+      return null
+    } finally {
+      if (connectionReads.current.isCurrent(lease)) {
+        connectionReads.current.finish(lease)
+        setOpenAIConnectionLoading(false)
       }
     }
+  }, [t])
 
-    void loadConnection()
+  useEffect(() => {
+    connectionReads.current.cancel()
+    connectionMutations.current.cancel()
+    chatRequests.current.cancel()
+    setLoading(false)
+    setReply(null)
+    setError(null)
+    setOpenAIConnectionSaving(false)
+
+    if (session.status === 'authenticated' && sessionCapabilities.tutorAccess) {
+      void loadConnection()
+    } else {
+      setOpenAIConnection(null)
+      setOpenAIConnectionLoading(false)
+      setOpenAIConnectionError(null)
+      setOpenAIApiKey('')
+    }
 
     return () => {
-      cancelled = true
+      connectionReads.current.cancel()
+      connectionMutations.current.cancel()
+      chatRequests.current.cancel()
     }
-  }, [session.status])
+  }, [loadConnection, session.status, sessionPlan, sessionCapabilities.tutorAccess])
+
+  useEffect(() => {
+    chatRequests.current.cancel()
+    setLoading(false)
+    setReply(null)
+    setError(null)
+  }, [openAIConnection?.source, openAIConnection?.status, openAIConnection?.validatedAt])
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!question.trim()) return
 
+    if (session.status !== 'authenticated') {
+      setError({
+        kind: 'unauthenticated',
+        message: t('errors.signInForLiveTutor'),
+        retryable: false,
+      })
+      return
+    }
+    if (!sessionCapabilities.tutorAccess || !openAIConnection?.entitlement.tutorAccess) {
+      setError({
+        kind: 'plan_denied',
+        message: t('errors.planRequired'),
+        retryable: false,
+      })
+      return
+    }
+    if (!authoritativeTutorAccess) {
+      setError({
+        kind: 'provider_required',
+        message: openAIConnection.message,
+        retryable: false,
+      })
+      return
+    }
+
+    const lease = chatRequests.current.begin()
     setLoading(true)
     setError(null)
+    setReply(null)
     try {
       const response = await fetch('/api/pico/tutor', {
         method: 'POST',
@@ -356,41 +452,82 @@ export function PicoTutorPageClient() {
             currentSurface: 'tutor',
           },
         }),
+        signal: lease.signal,
       })
-      const payload = (await response.json()) as TutorApiResponse
+      const payload: unknown = await response.json().catch(() => null)
+      if (!chatRequests.current.isCurrent(lease)) return
       if (!response.ok) {
-        throw new Error(readApiErrorMessage(payload) || 'Tutor request failed')
+        setError(classifyTutorFailure(response.status, payload))
+        return
       }
 
       const normalizedReply = normalizeTutorReplyPayload(payload)
-      if (!normalizedReply) {
-        throw new Error('Tutor response came back malformed')
+      if (
+        !normalizedReply ||
+        normalizedReply.entitlement.plan !== openAIConnection.entitlement.plan ||
+        normalizedReply.generation.source !== openAIConnection.source
+      ) {
+        setError({
+          kind: 'malformed_response',
+          message: t('errors.unverifiedResponse'),
+          retryable: true,
+        })
+        return
       }
 
       const normalizedQuestion = question.trim()
-      const nextRecentQuestions = [
-        normalizedQuestion,
-        ...recentQuestions.filter((item) => item !== normalizedQuestion),
-      ].slice(0, 5)
-
       setReply(normalizedReply)
-      setRecentQuestions(nextRecentQuestions)
-      writeRecentQuestions(nextRecentQuestions)
+      setRecentQuestions((currentQuestions) => {
+        const nextQuestions = [
+          normalizedQuestion,
+          ...currentQuestions.filter((item) => item !== normalizedQuestion),
+        ].slice(0, 5)
+        writeRecentQuestions(nextQuestions)
+        return nextQuestions
+      })
       actions.recordTutorQuestion()
     } catch (submitError) {
-      setReply(null)
-      setError(submitError instanceof Error ? submitError.message : 'Tutor request failed')
+      if (submitError instanceof Error && submitError.name === 'AbortError') return
+      if (chatRequests.current.isCurrent(lease)) {
+        setReply(null)
+        setError({
+          kind: 'model_unavailable',
+          message: submitError instanceof Error ? submitError.message : t('errors.tutorRequestFailed'),
+          retryable: true,
+        })
+      }
     } finally {
-      setLoading(false)
+      if (chatRequests.current.isCurrent(lease)) {
+        chatRequests.current.finish(lease)
+        setLoading(false)
+      }
     }
+  }
+
+  function cancelTutorRequest() {
+    chatRequests.current.cancel()
+    setLoading(false)
+    setError({
+      kind: 'unknown',
+      message: t('errors.requestCanceled'),
+      retryable: true,
+    })
   }
 
   async function connectOpenAI() {
     if (!openAIApiKey.trim()) {
-      setOpenAIConnectionError('Paste an OpenAI API key first')
+      setOpenAIConnectionError(t('errors.pasteOpenAIKeyFirst'))
+      return
+    }
+    if (!openAIConnection?.canConnect) {
+      setOpenAIConnectionError(t('errors.proPlanRequired'))
       return
     }
 
+    const lease = connectionMutations.current.begin()
+    chatRequests.current.cancel()
+    setLoading(false)
+    setReply(null)
     setOpenAIConnectionSaving(true)
     setOpenAIConnectionError(null)
     try {
@@ -401,55 +538,89 @@ export function PicoTutorPageClient() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ apiKey: openAIApiKey.trim() }),
+        signal: lease.signal,
       })
-      const payload = (await response.json().catch(() => null)) as TutorOpenAIConnectionApiResponse | null
+      const payload: unknown = await response.json().catch(() => null)
 
+      if (!connectionMutations.current.isCurrent(lease)) return
       if (!response.ok) {
-        throw new Error(readApiErrorMessage(payload) || 'Failed to connect the OpenAI key')
+        throw new Error(classifyTutorFailure(response.status, payload).message)
       }
 
-      setOpenAIConnection(payload as TutorOpenAIConnection)
+      const canonical = await loadConnection()
+      if (
+        !connectionMutations.current.isCurrent(lease) ||
+        canonical?.status !== 'connected' ||
+        canonical.source !== 'user'
+      ) {
+        throw new Error(t('errors.keyUpdateUnconfirmed'))
+      }
       setOpenAIApiKey('')
     } catch (connectError) {
-      setOpenAIConnectionError(
-        connectError instanceof Error ? connectError.message : 'Failed to connect the OpenAI key',
-      )
+      if (!(connectError instanceof Error && connectError.name === 'AbortError')) {
+        setOpenAIConnectionError(
+          connectError instanceof Error ? connectError.message : t('errors.connectOpenAIKey'),
+        )
+      }
     } finally {
-      setOpenAIConnectionSaving(false)
+      if (connectionMutations.current.isCurrent(lease)) {
+        connectionMutations.current.finish(lease)
+        setOpenAIConnectionSaving(false)
+      }
     }
   }
 
   async function disconnectOpenAI() {
+    if (!openAIConnection?.canConnect) return
+    const lease = connectionMutations.current.begin()
+    chatRequests.current.cancel()
+    setLoading(false)
+    setReply(null)
     setOpenAIConnectionSaving(true)
     setOpenAIConnectionError(null)
     try {
       const response = await fetch('/api/pico/tutor/openai', {
         method: 'DELETE',
         credentials: 'include',
+        signal: lease.signal,
       })
-      const payload = (await response.json().catch(() => null)) as TutorOpenAIConnectionApiResponse | null
+      const payload: unknown = await response.json().catch(() => null)
 
+      if (!connectionMutations.current.isCurrent(lease)) return
       if (!response.ok) {
-        throw new Error(readApiErrorMessage(payload) || 'Failed to disconnect the OpenAI key')
+        throw new Error(classifyTutorFailure(response.status, payload).message)
       }
 
-      setOpenAIConnection(payload as TutorOpenAIConnection)
+      const canonical = await loadConnection()
+      if (
+        !connectionMutations.current.isCurrent(lease) ||
+        !canonical ||
+        canonical.status === 'connected' ||
+        canonical.source === 'user'
+      ) {
+        throw new Error(t('errors.disconnectUnconfirmed'))
+      }
     } catch (disconnectError) {
-      setOpenAIConnectionError(
-        disconnectError instanceof Error
-          ? disconnectError.message
-          : 'Failed to disconnect the OpenAI key',
-      )
+      if (!(disconnectError instanceof Error && disconnectError.name === 'AbortError')) {
+        setOpenAIConnectionError(
+          disconnectError instanceof Error
+            ? disconnectError.message
+            : t('errors.disconnectOpenAIKey'),
+        )
+      }
     } finally {
-      setOpenAIConnectionSaving(false)
+      if (connectionMutations.current.isCurrent(lease)) {
+        connectionMutations.current.finish(lease)
+        setOpenAIConnectionSaving(false)
+      }
     }
   }
 
   return (
     <PicoShell
-      eyebrow="Grounded tutor"
-      title="Ask for the exact next step"
-      description="Bring one concrete blocker, get one next step back, and return to the lesson, runtime, or support path."
+      eyebrow={t('shell.eyebrow')}
+      title={t('shell.title')}
+      description={t('shell.description')}
       heroContent={
         <div
           className="relative overflow-hidden rounded-[28px] border border-[color:var(--pico-border-hover)] bg-[linear-gradient(135deg,rgba(var(--pico-accent-rgb),0.14),rgba(8,14,9,0.92)_36%,rgba(255,255,255,0.02)_100%)] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.28)] sm:p-6"
@@ -461,55 +632,55 @@ export function PicoTutorPageClient() {
           />
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -left-10 top-8 h-40 w-40 rounded-full bg-[rgba(var(--pico-accent-rgb),0.12)] blur-3xl"
+            className="pointer-events-none absolute -start-10 top-8 h-40 w-40 rounded-full bg-[rgba(var(--pico-accent-rgb),0.12)] blur-3xl"
           />
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute bottom-0 right-0 h-48 w-48 rounded-full bg-[rgba(var(--pico-accent-rgb),0.1)] blur-3xl"
+            className="pointer-events-none absolute bottom-0 end-0 h-48 w-48 rounded-full bg-[rgba(var(--pico-accent-rgb),0.1)] blur-3xl"
           />
           <div className="relative grid gap-5 xl:grid-cols-[minmax(0,1fr),18rem]">
             <div className="grid gap-5">
               <div className="flex flex-wrap items-center gap-2">
-                <span className={picoClasses.chip}>Tutor status</span>
+                <span className={picoClasses.chip}>{t('hero.badge')}</span>
                 <span className="inline-flex rounded-full border border-[color:var(--pico-border)] bg-[rgba(255,255,255,0.03)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--pico-text-secondary)]">
                   {tutorSignal}
                 </span>
               </div>
               <h2 className="font-[family:var(--font-site-display)] text-[clamp(1.9rem,4vw,2.9rem)] leading-[0.94] tracking-[-0.06em] text-[color:var(--pico-text)]">
-                Attach the blocked lesson and narrow the answer to one move.
+                {t('hero.title')}
               </h2>
               <p className="max-w-2xl text-sm leading-6 text-[color:var(--pico-text-secondary)]">
-                Route the question through the lesson, command, or runtime step that failed. Tutor should send you back into action.
+                {t('hero.body')}
               </p>
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className={picoSoft('p-4')}>
-                  <p className={picoClasses.label}>Lesson</p>
+                  <p className={picoClasses.label}>{t('hero.lessonLane.label')}</p>
                   <p className="mt-2 font-[family:var(--font-site-display)] text-3xl tracking-[-0.05em] text-[color:var(--pico-text)]">
                     {lessonSignal}
                   </p>
                   <p className="mt-2 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
-                    {selectedLesson ? selectedLesson.title : 'Connect the blocked lesson'}
+                    {selectedLesson ? selectedLesson.title : t('hero.lessonLane.connectBlockedLesson')}
                   </p>
                 </div>
 
                 <div className={picoSoft('p-4')}>
-                  <p className={picoClasses.label}>Reply state</p>
+                  <p className={picoClasses.label}>{t('hero.replyState.label')}</p>
                   <p className="mt-2 font-[family:var(--font-site-display)] text-3xl tracking-[-0.05em] text-[color:var(--pico-text)]">
                     {tutorSignal}
                   </p>
                   <p className="mt-2 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
-                    {reply ? 'ready to act on' : 'waiting for a precise blocker'}
+                    {reply ? t('hero.replyState.readyToActOn') : t('hero.replyState.waitingForPreciseBlocker')}
                   </p>
                 </div>
 
                 <div className={picoSoft('p-4')}>
-                  <p className={picoClasses.label}>Connection</p>
+                  <p className={picoClasses.label}>{t('hero.connection.label')}</p>
                   <p className="mt-2 font-[family:var(--font-site-display)] text-3xl tracking-[-0.05em] text-[color:var(--pico-text)]">
                     {connectionSignal}
                   </p>
                   <p className="mt-2 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
-                    {session.status === 'authenticated' ? 'hosted context available' : 'hosted context missing'}
+                    {tutorAvailabilityMessage}
                   </p>
                 </div>
               </div>
@@ -519,12 +690,12 @@ export function PicoTutorPageClient() {
                   <span className="h-3 w-3 rounded-full bg-[color:var(--pico-accent-bright)] shadow-[0_0_18px_rgba(var(--pico-accent-rgb),0.5)]" />
                 </div>
                 <div className="min-w-0">
-                  <p className={picoClasses.label}>Focused step</p>
+                  <p className={picoClasses.label}>{t('hero.focusedStep.label')}</p>
                   <p className="mt-2 font-[family:var(--font-site-display)] text-2xl tracking-[-0.05em] text-[color:var(--pico-text)]">
                     {focusedStepLabel}
                   </p>
                   <p className="mt-2 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
-                    If the answer does not make this step clearer, leave Tutor and use the better path.
+                    {t('hero.focusedStep.body')}
                   </p>
                 </div>
               </div>
@@ -532,17 +703,17 @@ export function PicoTutorPageClient() {
 
             <div className={picoInset('grid gap-4 overflow-hidden border-[color:rgba(var(--pico-accent-rgb),0.24)] bg-[radial-gradient(circle_at_50%_20%,rgba(var(--pico-accent-rgb),0.16),rgba(6,11,7,0.94)_54%,rgba(3,5,3,0.98)_100%)] p-4')}>
               <div className={picoSoft('p-4')}>
-                <p className={picoClasses.label}>Question packet</p>
+                <p className={picoClasses.label}>{t('hero.packetPreview.label')}</p>
                 <pre className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[color:var(--pico-text-secondary)]">
                   <code>{tutorPacketPreview}</code>
                 </pre>
               </div>
               <div className={picoSoft('p-4')}>
-                <p className={picoClasses.label}>Recent pressure</p>
+                <p className={picoClasses.label}>{t('hero.recentPressure.label')}</p>
                 <p className="mt-3 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
                   {recentQuestions[0]
                     ? recentQuestions[0]
-                    : 'No recent question saved yet. Bring the first blocked step instead of a broad description of the whole project.'}
+                    : t('hero.recentPressure.empty')}
                 </p>
               </div>
             </div>
@@ -563,54 +734,59 @@ export function PicoTutorPageClient() {
             href={selectedLesson ? toHref(`/academy/${selectedLesson.slug}`) : toHref('/academy')}
             className={picoClasses.secondaryButton}
           >
-            {selectedLesson ? 'Back to lesson' : 'Open academy'}
+            {selectedLesson ? t('actions.backToLesson') : t('actions.openAcademy')}
           </Link>
           <Link href={toHref('/support')} className={picoClasses.primaryButton}>
-            Escalate to human help
+            {t('actions.escalateToHumanHelp')}
           </Link>
         </div>
       }
     >
-      <PicoSessionBanner session={session} nextPath={pathname} />
+      <PicoSessionBanner
+        session={session}
+        nextPath={pathname}
+        progressSyncState={syncState}
+        runtimeSignal={{ label: runtimeBannerLabel, state: runtimeBannerState }}
+      />
       <PicoSurfaceCompass
-        title="Tutor should return you to setup"
-        body="Use Tutor for one blocked command, file path, provider setting, or validation step. Return to the lesson when the answer is enough, inspect Autopilot for runtime state, and get human help when keys, hosting, or implementation decisions are involved."
+        title={t('compass.title')}
+        body={t('compass.body')}
         status={
           reply
-            ? 'answer ready'
+            ? t('compass.status.answerReady')
             : selectedLesson
-              ? 'lesson context attached'
-              : 'awaiting blocker'
+              ? t('compass.status.lessonContextAttached')
+              : t('compass.status.awaitingBlocker')
         }
-        aside="A good tutor answer ends in one move. If it does not, return to the lesson, runtime, or support."
+        aside={t('compass.aside')}
         items={[
           {
             href: selectedLesson
               ? toHref(`/academy/${selectedLesson.slug}`)
-              : derived.nextLesson
-                ? toHref(`/academy/${derived.nextLesson.slug}`)
+              : nextLesson
+                ? toHref(`/academy/${nextLesson.slug}`)
                 : toHref('/academy'),
             label: selectedLesson
-              ? 'Return to blocked lesson'
-              : derived.nextLesson
-                ? `Open ${derived.nextLesson.title}`
-                : 'Return to academy',
-            caption: 'Go back here when the tutor answer unblocks the lesson step.',
-            note: 'Resume lesson',
+              ? t('compass.items.returnToBlockedLesson')
+              : nextLesson
+                ? t('shared.openLesson', { lessonTitle: nextLesson.title })
+                : t('compass.items.returnToAcademy'),
+            caption: t('compass.items.returnCaption'),
+            note: t('compass.items.resumeLane'),
             tone: 'primary',
           },
           {
             href: toHref('/autopilot'),
-            label: 'Inspect runtime state',
-            caption: 'Open this when the problem has shifted from knowable lesson logic to runtime state.',
-            note: 'Runtime',
+            label: t('compass.items.inspectLiveControlRoom'),
+            caption: t('compass.items.inspectCaption'),
+            note: t('compass.items.runtime'),
             tone: 'soft',
           },
           {
             href: toHref('/support'),
-            label: 'Get human help',
-            caption: 'Use this for API keys, hosting, integrations, or custom implementation.',
-            note: 'Support',
+            label: t('compass.items.openSupportLane'),
+            caption: t('compass.items.escalateCaption'),
+            note: t('compass.items.escalate'),
           },
         ]}
       />
@@ -620,12 +796,12 @@ export function PicoTutorPageClient() {
           <div>
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <p className={picoClasses.label}>Tutor method</p>
+                <p className={picoClasses.label}>{t('method.label')}</p>
                 <h2 className="mt-3 font-[family:var(--font-site-display)] text-4xl tracking-[-0.06em] text-[color:var(--pico-text)]">
-                  Keep each question narrow
+                  {t('method.title')}
                 </h2>
               </div>
-              <span className={picoClasses.chip}>frame • evidence • exit</span>
+              <span className={picoClasses.chip}>{t('method.chip')}</span>
             </div>
 
             <div className="mt-6 grid gap-4 xl:grid-cols-3">
@@ -645,17 +821,17 @@ export function PicoTutorPageClient() {
 
           <div className="grid gap-4">
             <div className={picoEmber('p-5')}>
-              <p className={picoClasses.label}>Tutor rule</p>
+              <p className={picoClasses.label}>{t('method.deskPosture.label')}</p>
               <p className="mt-3 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
-                This is not general chat. Use it to turn one setup blocker into one next move.
+                {t('method.deskPosture.body')}
               </p>
             </div>
             <div className={picoInset('p-5')}>
-              <p className={picoClasses.label}>Attached lesson</p>
+              <p className={picoClasses.label}>{t('method.attachedLane.label')}</p>
               <p className="mt-3 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
                 {selectedLesson
-                  ? `${selectedLesson.title} is attached, so the tutor can answer against the real lesson brief instead of guessing.`
-                  : 'No lesson is attached yet. Connect the blocked lesson if you want the answer tied to the setup path.'}
+                  ? t('method.attachedLane.bodyWithLesson', { lessonTitle: selectedLesson.title })
+                  : t('method.attachedLane.bodyWithoutLesson')}
               </p>
             </div>
           </div>
@@ -666,7 +842,7 @@ export function PicoTutorPageClient() {
         <div className={picoPanel('overflow-hidden p-0')}>
           <div className="grid gap-0 border-b border-[color:var(--pico-border)] lg:grid-cols-[minmax(0,1fr),18rem]">
             <form onSubmit={submit} aria-busy={loading} className="p-6 sm:p-7">
-              <p className={picoClasses.label}>Tutor desk</p>
+              <p className={picoClasses.label}>{t('form.label')}</p>
               <div className="mt-3 flex items-center gap-4">
                 <span
                   aria-hidden="true"
@@ -675,23 +851,42 @@ export function PicoTutorPageClient() {
                   03
                 </span>
                 <h2 className="font-[family:var(--font-site-display)] text-4xl tracking-[-0.06em] text-[color:var(--pico-text)] sm:text-5xl">
-                  Bring one blocker to the desk
+                  {t('form.title')}
                 </h2>
               </div>
               <p className="mt-4 max-w-3xl text-sm leading-7 text-[color:var(--pico-text-secondary)] sm:text-base">
-                Ask only when the lesson path is blocked. The answer should send you back into action, not into another loop of reading.
+                {t('form.body')}
               </p>
               <p className="mt-3 text-xs uppercase tracking-[0.18em] text-[color:var(--pico-text-muted)]">
-                {session.status === 'authenticated'
-                  ? 'Hosted identity and runtime context attached'
-                  : 'Read-only tutor mode. Hosted session context is missing until you sign in.'}
+                {tutorAvailabilityMessage}
               </p>
+
+              {!tutorCanSubmit ? (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className={picoInset('mt-5 p-4 text-sm leading-6 text-[color:var(--pico-text-secondary)]')}
+                  data-testid="pico-tutor-read-only-notice"
+                >
+                  <p>{tutorAvailabilityMessage}</p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                    <Link href={toHref('/academy')} className={cn(picoClasses.secondaryButton, 'w-full sm:w-auto')}>
+                      {t('actions.openAcademy')}
+                    </Link>
+                    {session.status === 'authenticated' && !sessionCapabilities.tutorAccess ? (
+                      <Link href={toHref('/pricing')} className={cn(picoClasses.tertiaryButton, 'w-full sm:w-auto')}>
+                        {t('form.comparePlans')}
+                      </Link>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
 
               {selectedLesson ? (
                 <div className={picoEmber('mt-6 p-5')}>
-                  <p className="font-medium text-[color:var(--pico-text)]">Where you are</p>
+                  <p className="font-medium text-[color:var(--pico-text)]">{t('form.whereYouAre.label')}</p>
                   <p className="mt-2 text-sm leading-6">
-                    You are asking about {selectedLesson.title}. Keep the question tied to the step that is actually blocked.
+                    {t('form.whereYouAre.body', { lessonTitle: selectedLesson.title })}
                   </p>
                   <div className="mt-4 grid gap-3 xl:grid-cols-5">
                     {lessonReviewBoard.map((item) => (
@@ -705,17 +900,17 @@ export function PicoTutorPageClient() {
                   </div>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <div className={picoInset('p-4')}>
-                      <p className="text-sm text-[color:var(--pico-text-muted)]">Lesson steps</p>
+                      <p className="text-sm text-[color:var(--pico-text-muted)]">{t('form.whereYouAre.lessonSteps')}</p>
                       <p className="mt-1 text-lg font-medium text-[color:var(--pico-text)]">
                         {lessonWorkspace.completedStepCount}/{selectedLesson.steps.length}
                       </p>
                     </div>
                     <div className={picoInset('p-4')}>
-                      <p className="text-sm text-[color:var(--pico-text-muted)]">Focused step</p>
+                      <p className="text-sm text-[color:var(--pico-text-muted)]">{t('form.whereYouAre.focusedStep')}</p>
                       <p className="mt-1 text-lg font-medium text-[color:var(--pico-text)]">
                         {lessonWorkspace.workspace.activeStepIndex >= 0
-                          ? selectedLesson.steps[lessonWorkspace.workspace.activeStepIndex]?.title ?? 'not set'
-                          : 'not set'}
+                          ? selectedLesson.steps[lessonWorkspace.workspace.activeStepIndex]?.title ?? t('hero.signal.notSet')
+                          : t('hero.signal.notSet')}
                       </p>
                     </div>
                   </div>
@@ -723,7 +918,7 @@ export function PicoTutorPageClient() {
                     href={toHref(`/academy/${selectedLesson.slug}`)}
                     className="mt-4 inline-flex text-sm font-medium text-[color:var(--pico-text)] underline decoration-[color:rgba(var(--pico-accent-rgb),0.38)] underline-offset-4"
                   >
-                    Back to lesson
+                    {t('form.whereYouAre.backToLesson')}
                   </Link>
                 </div>
               ) : null}
@@ -731,40 +926,40 @@ export function PicoTutorPageClient() {
               <div className={picoInset('mt-6 grid gap-4 p-5')}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className={picoClasses.label}>Question packet</p>
+                    <p className={picoClasses.label}>{t('form.packet.label')}</p>
                     <p
                       id={TUTOR_QUESTION_HELP_ID}
                       className="mt-2 text-sm leading-6 text-[color:var(--pico-text-secondary)]"
                     >
-                      Bring just enough context for a useful answer: page, failure, and expected result.
+                      {t('form.packet.body')}
                     </p>
                   </div>
-                  <span className={picoClasses.chip}>page • failure • expected result</span>
+                  <span className={picoClasses.chip}>{t('form.packet.chip')}</span>
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <div className={picoSoft('p-4')}>
-                    <p className="text-sm text-[color:var(--pico-text-muted)]">Current track</p>
+                    <p className="text-sm text-[color:var(--pico-text-muted)]">{t('form.packet.currentTrack')}</p>
                     <p className="mt-1 text-lg font-medium text-[color:var(--pico-text)]">
-                      {progress.selectedTrack ?? 'not chosen yet'}
+                      {progress.selectedTrack ? contentT(`tracks.${progress.selectedTrack}.title`) : t('form.packet.currentTrackNotChosenYet')}
                     </p>
                   </div>
                   <div className={picoSoft('p-4')}>
-                    <p className="text-sm text-[color:var(--pico-text-muted)]">Next lesson</p>
+                    <p className="text-sm text-[color:var(--pico-text-muted)]">{t('form.packet.nextLesson')}</p>
                     <p className="mt-1 text-lg font-medium text-[color:var(--pico-text)]">
-                      {derived.nextLesson?.title ?? 'none'}
+                      {nextLesson?.title ?? t('form.packet.nextLessonNone')}
                     </p>
                   </div>
                   <div className={picoSoft('p-4')}>
-                    <p className="text-sm text-[color:var(--pico-text-muted)]">Hosted onboarding step</p>
+                    <p className="text-sm text-[color:var(--pico-text-muted)]">{t('form.packet.hostedOnboardingStep')}</p>
                     <p className="mt-1 text-lg font-medium text-[color:var(--pico-text)]">
-                      {setup.onboarding?.current_step ?? 'session required'}
+                      {setup.onboarding?.current_step ?? t('form.packet.sessionRequired')}
                     </p>
                   </div>
                   <div className={picoSoft('p-4')}>
-                    <p className="text-sm text-[color:var(--pico-text-muted)]">Runtime status</p>
+                    <p className="text-sm text-[color:var(--pico-text-muted)]">{t('form.packet.runtimeStatus')}</p>
                     <p className="mt-1 text-lg font-medium text-[color:var(--pico-text)]">
-                      {setup.runtime?.status ?? 'not synced'}
+                      {setup.runtime?.status ?? t('form.packet.notSynced')}
                     </p>
                   </div>
                 </div>
@@ -784,33 +979,43 @@ export function PicoTutorPageClient() {
               </div>
 
               <label htmlFor={TUTOR_QUESTION_ID} className="sr-only">
-                Describe your setup blocker
+                {t('form.questionLabel')}
               </label>
               <textarea
                 id={TUTOR_QUESTION_ID}
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
-                disabled={!formReady || loading}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape' && loading) {
+                    event.preventDefault()
+                    cancelTutorRequest()
+                  } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                    event.preventDefault()
+                    event.currentTarget.form?.requestSubmit()
+                  }
+                }}
+                enterKeyHint="send"
+                disabled={!formReady || loading || !tutorCanSubmit}
                 aria-invalid={Boolean(error)}
                 aria-describedby={
                   error
                     ? `${TUTOR_QUESTION_HELP_ID} ${TUTOR_QUESTION_ERROR_ID}`
                     : TUTOR_QUESTION_HELP_ID
                 }
-                placeholder="Describe the blocker, the exact step, and what you expected to happen."
-                className="mt-6 min-h-[240px] w-full rounded-[28px] border border-[color:var(--pico-border)] bg-[color:var(--pico-bg-surface)] px-5 py-5 text-sm leading-7 text-[color:var(--pico-text-secondary)] outline-none placeholder:text-[color:var(--pico-text-muted)]"
+                placeholder={t('form.questionPlaceholder')}
+                className="mt-6 min-h-[240px] w-full rounded-[28px] border border-[color:var(--pico-border)] bg-[color:var(--pico-bg-surface)] px-5 py-5 text-sm leading-7 text-[color:var(--pico-text-secondary)] outline-none placeholder:text-[color:var(--pico-text-muted)] focus-visible:border-[color:var(--pico-border-hover)] focus-visible:ring-2 focus-visible:ring-[rgba(var(--pico-accent-rgb),0.35)]"
               />
 
               <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr),auto] lg:items-end">
                 <label className="block text-sm text-[color:var(--pico-text-secondary)]">
-                  <span className={picoClasses.label}>Blocked lesson</span>
+                  <span className={picoClasses.label}>{t('form.blockedLessonLabel')}</span>
                   <select
                     value={lessonSlug}
                     onChange={(event) => setLessonSlug(event.target.value)}
                     disabled={!formReady || loading}
-                    className="mt-3 w-full rounded-[22px] border border-[color:var(--pico-border)] bg-[color:var(--pico-bg-surface)] px-4 py-3 text-sm text-[color:var(--pico-text-secondary)] outline-none"
+                    className="mt-3 w-full rounded-[22px] border border-[color:var(--pico-border)] bg-[color:var(--pico-bg-surface)] px-4 py-3 text-sm text-[color:var(--pico-text-secondary)] outline-none focus-visible:border-[color:var(--pico-border-hover)] focus-visible:ring-2 focus-visible:ring-[rgba(var(--pico-accent-rgb),0.35)]"
                   >
-                    <option value="">No lesson selected</option>
+                    <option value="">{t('form.noLessonSelected')}</option>
                     {availableLessons.map((lesson) => (
                       <option key={lesson.slug} value={lesson.slug}>
                         {lesson.title}
@@ -818,9 +1023,24 @@ export function PicoTutorPageClient() {
                     ))}
                   </select>
                 </label>
-                <button type="submit" disabled={!formReady || loading} className={picoClasses.primaryButton}>
-                  {loading ? 'Finding the next step...' : 'Get next step'}
-                </button>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="submit"
+                    disabled={!formReady || loading || !tutorCanSubmit}
+                    className={cn(picoClasses.primaryButton, 'w-full sm:w-auto')}
+                  >
+                    {loading ? t('form.submitLoading') : t('form.submitIdle')}
+                  </button>
+                  {loading ? (
+                    <button
+                      type="button"
+                      onClick={cancelTutorRequest}
+                      className={cn(picoClasses.secondaryButton, 'w-full sm:w-auto')}
+                    >
+                      {t('form.cancelRequest')}
+                    </button>
+                  ) : null}
+                </div>
               </div>
 
               {promptChips.length ? (
@@ -830,7 +1050,7 @@ export function PicoTutorPageClient() {
                       key={prompt}
                       type="button"
                       onClick={() => setQuestion(prompt)}
-                      disabled={!formReady || loading}
+                      disabled={!formReady || loading || !tutorCanSubmit}
                       className={picoClasses.tertiaryButton}
                     >
                       {prompt}
@@ -840,33 +1060,34 @@ export function PicoTutorPageClient() {
               ) : null}
             </form>
 
-            <div className="border-t border-[color:var(--pico-border)] bg-[color:var(--pico-bg-surface)] p-6 lg:border-l lg:border-t-0">
-              <p className={picoClasses.label}>Tutor rail</p>
+            <div className="border-t border-[color:var(--pico-border)] bg-[color:var(--pico-bg-surface)] p-6 lg:border-s lg:border-t-0">
+              <p className={picoClasses.label}>{t('rail.label')}</p>
               <div className="mt-4 grid gap-3">
                 <div className={picoSoft('p-4')}>
-                  <p className="text-sm text-[color:var(--pico-text-muted)]">Questions asked</p>
+                  <p className="text-sm text-[color:var(--pico-text-muted)]">{t('rail.questionsAsked')}</p>
                   <p className="mt-1 text-2xl font-semibold text-[color:var(--pico-text)]">{progress.tutorQuestions}</p>
                 </div>
                 <div className={picoSoft('p-4')}>
-                  <p className="text-sm text-[color:var(--pico-text-muted)]">Live answer state</p>
+                  <p className="text-sm text-[color:var(--pico-text-muted)]">{t('rail.liveAnswerState')}</p>
                   <p className="mt-1 text-lg font-medium text-[color:var(--pico-text)]">
-                    {reply ? reply.confidence : loading ? 'thinking' : 'waiting'}
+                    {reply ? reply.confidence : loading ? t('rail.thinking') : t('rail.waiting')}
                   </p>
                 </div>
               </div>
 
               {recentQuestions.length > 0 ? (
                 <div className={picoInset('mt-4 p-4')}>
-                  <p className={picoClasses.label}>Recent questions</p>
+                  <p className={picoClasses.label}>{t('rail.recentQuestions')}</p>
                   <div className="mt-3 grid gap-2">
                     {recentQuestions.map((item) => (
                       <button
                         key={item}
                         type="button"
                         onClick={() => setQuestion(item)}
+                        disabled={loading || !tutorCanSubmit}
                         className={cn(
                           picoClasses.tertiaryButton,
-                          'w-full justify-start rounded-[18px] px-3 py-2 text-left',
+                          'w-full justify-start rounded-[18px] px-3 py-2 text-start',
                         )}
                       >
                         {item}
@@ -881,7 +1102,7 @@ export function PicoTutorPageClient() {
                   data-testid="pico-openai-connect-panel"
                   aria-busy={openAIConnectionLoading || openAIConnectionSaving}
                 >
-                  <p className={picoClasses.label}>OpenAI connection</p>
+                  <p className={picoClasses.label}>{t('rail.connection.label')}</p>
                   <div className="mt-3 rounded-[18px] border border-[color:var(--pico-border)] bg-[color:var(--pico-bg-surface)] p-4">
                     <p
                       role="status"
@@ -890,42 +1111,48 @@ export function PicoTutorPageClient() {
                       data-testid="pico-openai-connect-status"
                     >
                       {session.status !== 'authenticated'
-                        ? 'Sign in to attach your own OpenAI key. Tutor still works in read-only mode without a personal connection.'
-                        : openAIConnectionLoading
-                          ? 'Checking whether your OpenAI key is already connected.'
-                          : openAIConnection?.message ??
-                            'Connect an OpenAI key if you want your own live Tutor quota and model access.'}
+                        ? t('rail.connection.authPrompt')
+                        : !sessionCapabilities.tutorAccess
+                          ? t('availability.readOnly')
+                          : openAIConnectionLoading
+                          ? t('rail.connection.checking')
+                          : openAIConnection?.message
+                            ? t('availability.providerDetail', { detail: openAIConnection.message })
+                            : t('availability.providerUnavailable')}
                     </p>
-                    {session.status === 'authenticated' ? (
+                    {session.status === 'authenticated' && sessionCapabilities.tutorAccess ? (
                       <div className="mt-4 grid gap-3">
                         {openAIConnection?.status === 'connected' ? (
                           <div className={picoSoft('p-4')}>
                             <p className="font-medium text-[color:var(--pico-text)]">
-                              Connected {openAIConnection.maskedKey ? `as ${openAIConnection.maskedKey}` : 'key'}
+                              {t('rail.connection.connectedAs', { maskedKey: openAIConnection.maskedKey ?? t('rail.connection.personalKey') })}
                             </p>
                             <p className="mt-2 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
-                              Live Tutor answers now prefer your own OpenAI access before any platform fallback.
+                              {t('rail.connection.connectedBody')}
                             </p>
                             <div className="mt-3 flex flex-wrap gap-2">
                               <span className={picoClasses.chip}>{openAIConnection.model}</span>
-                              <span className={picoClasses.chip}>source: {openAIConnection.source}</span>
+                              <span className={picoClasses.chip}>{t('rail.connection.source', { value: openAIConnection.source })}</span>
                             </div>
+                            <p className="mt-3 text-xs leading-6 text-[color:var(--pico-text-muted)]">
+                              {t('rail.connection.validatedAt', { value: openAIConnection.validatedAt ?? t('hero.signal.notSet') })}
+                            </p>
                             <button
                               type="button"
                               onClick={() => void disconnectOpenAI()}
                               disabled={openAIConnectionSaving}
-                              className={cn(picoClasses.secondaryButton, 'mt-4')}
+                              className={cn(picoClasses.secondaryButton, 'mt-4 w-full sm:w-auto')}
                             >
-                              {openAIConnectionSaving ? 'Disconnecting...' : 'Disconnect OpenAI'}
+                              {openAIConnectionSaving ? t('rail.connection.disconnecting') : t('rail.connection.disconnect')}
                             </button>
                           </div>
-                        ) : (
+                        ) : openAIConnection?.canConnect ? (
                           <>
                             <label
                               htmlFor={OPENAI_KEY_ID}
                               className="block text-sm text-[color:var(--pico-text-secondary)]"
                             >
-                              <span className={picoClasses.label}>Bring your own OpenAI key</span>
+                              <span className={picoClasses.label}>{t('rail.connection.bringYourOwnKey')}</span>
                               <input
                                 id={OPENAI_KEY_ID}
                                 type="password"
@@ -935,23 +1162,26 @@ export function PicoTutorPageClient() {
                                 aria-describedby={
                                   openAIConnectionError ? OPENAI_CONNECTION_ERROR_ID : undefined
                                 }
-                                placeholder="sk-proj-..."
-                                className="mt-3 w-full rounded-[18px] border border-[color:var(--pico-border)] bg-[color:var(--pico-bg-surface)] px-4 py-3 text-sm text-[color:var(--pico-text-secondary)] outline-none placeholder:text-[color:var(--pico-text-muted)]"
+                                autoComplete="off"
+                                placeholder={t('rail.connection.apiKeyPlaceholder')}
+                                className="mt-3 w-full rounded-[18px] border border-[color:var(--pico-border)] bg-[color:var(--pico-bg-surface)] px-4 py-3 text-sm text-[color:var(--pico-text-secondary)] outline-none placeholder:text-[color:var(--pico-text-muted)] focus-visible:border-[color:var(--pico-border-hover)] focus-visible:ring-2 focus-visible:ring-[rgba(var(--pico-accent-rgb),0.35)]"
                               />
                             </label>
                             <button
                               type="button"
                               onClick={() => void connectOpenAI()}
                               disabled={openAIConnectionSaving}
-                              className={picoClasses.secondaryButton}
+                              className={cn(picoClasses.secondaryButton, 'w-full sm:w-auto')}
                             >
-                              {openAIConnectionSaving ? 'Connecting OpenAI...' : 'Connect OpenAI'}
+                              {openAIConnectionSaving ? t('rail.connection.connecting') : t('rail.connection.connect')}
                             </button>
                           </>
-                        )}
+                        ) : null}
                         {openAIConnection?.status === 'platform' ? (
                           <p className="text-xs leading-6 text-[color:var(--pico-text-muted)]">
-                            Platform access is already available. Connecting your own key simply overrides the Tutor model budget and ownership path for this account.
+                            {openAIConnection.canConnect
+                              ? t('rail.connection.platformHint')
+                              : t('rail.connection.platformStarterHint')}
                           </p>
                         ) : null}
                       </div>
@@ -962,7 +1192,7 @@ export function PicoTutorPageClient() {
                         role="alert"
                         className="mt-3 text-sm leading-6 text-rose-200"
                       >
-                        {openAIConnectionError}
+                        {t('errors.detail', { detail: openAIConnectionError })}
                       </p>
                     ) : null}
                   </div>
@@ -970,12 +1200,12 @@ export function PicoTutorPageClient() {
               </div>
 
               <div className={picoInset('mt-4 p-4')}>
-                <p className={picoClasses.label}>Support rule</p>
+                <p className={picoClasses.label}>{t('rail.escalationRule.label')}</p>
                 <p className="mt-3 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
-                  If the answer still does not give you one concrete move, stop looping and open support with the lesson context attached.
+                  {t('rail.escalationRule.body')}
                 </p>
                 <Link href={toHref('/support')} className={cn(picoClasses.secondaryButton, 'mt-4')}>
-                  Get human help
+                  {t('rail.escalationRule.cta')}
                 </Link>
               </div>
             </div>
@@ -983,10 +1213,14 @@ export function PicoTutorPageClient() {
         </div>
 
         <aside className="space-y-6 xl:sticky xl:top-6 xl:self-start">
-          <section aria-busy={loading} className={picoPanel('p-5')}>
-            <p className={picoClasses.label}>Tutor answer</p>
+          <section
+            aria-busy={loading}
+            aria-labelledby="pico-tutor-answer-heading"
+            className={picoPanel('p-5')}
+          >
+            <p id="pico-tutor-answer-heading" className={picoClasses.label}>{t('critique.label')}</p>
             <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-              {loading ? 'Tutor is finding the next step.' : reply ? 'Tutor answer ready.' : ''}
+              {loading ? t('critique.loadingAnnouncement') : reply ? t('critique.readyAnnouncement') : ''}
             </p>
             {error ? (
               <div
@@ -994,7 +1228,12 @@ export function PicoTutorPageClient() {
                 role="alert"
                 className="mt-4 rounded-[24px] border border-rose-400/20 bg-rose-400/10 p-5 text-sm leading-6 text-rose-50"
               >
-                {error}
+                <p>{t('errors.detail', { detail: error.message })}</p>
+                {error.retryable ? (
+                  <p className="mt-2 text-xs text-rose-100/80">
+                    {t('critique.retryHint')}
+                  </p>
+                ) : null}
               </div>
             ) : null}
 
@@ -1003,36 +1242,41 @@ export function PicoTutorPageClient() {
                 <div className={picoEmber('p-5')}>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={picoClasses.chip}>{reply.title}</span>
-                    <span className={picoClasses.chip}>{reply.confidence} confidence</span>
+                    <span className={picoClasses.chip}>{t('critique.chips.confidence', { value: reply.confidence })}</span>
                     <span className={picoClasses.chip}>{reply.intent}</span>
                     <span className={picoClasses.chip}>{reply.skillLevel}</span>
-                    {reply.usedOfficialFallback ? <span className={picoClasses.chip}>official fallback</span> : null}
-                    {reply.escalate ? <span className={picoClasses.chip}>human escalation likely</span> : null}
+                    <span className={picoClasses.chip}>{t('rail.connection.source', { value: reply.generation.source })}</span>
+                    <span className={picoClasses.chip}>{reply.generation.model}</span>
+                    {reply.usedOfficialFallback ? <span className={picoClasses.chip}>{t('critique.chips.officialFallback')}</span> : null}
+                    {reply.escalate ? <span className={picoClasses.chip}>{t('critique.chips.humanEscalationLikely')}</span> : null}
                   </div>
                   <div className={picoInset('mt-4 p-4')}>
-                    <p className={picoClasses.label}>Single next move</p>
+                    <p className={picoClasses.label}>{t('critique.singleNextMove')}</p>
                     <p className="mt-3 font-[family:var(--font-site-display)] text-2xl leading-8 tracking-[-0.05em] text-[color:var(--pico-text)]">
                       {reply.structured.steps[0] ?? reply.title}
                     </p>
                   </div>
+                  <p className="mt-3 break-all text-xs leading-6 text-[color:var(--pico-text-muted)]">
+                    {t('critique.generationProof', { responseId: reply.generation.responseId, completedAt: reply.generation.completedAt })}
+                  </p>
                   <div className="mt-4 grid gap-4">
                     <div>
-                      <p className={picoClasses.label}>Situation</p>
+                      <p className={picoClasses.label}>{t('critique.situation')}</p>
                       <p className="mt-2 text-sm leading-7 text-[color:var(--pico-text-secondary)]">{reply.structured.situation}</p>
                     </div>
                     <div>
-                      <p className={picoClasses.label}>Diagnosis</p>
+                      <p className={picoClasses.label}>{t('critique.diagnosis')}</p>
                       <p className="mt-2 text-sm leading-7 text-[color:var(--pico-text-secondary)]">{reply.structured.diagnosis}</p>
                     </div>
                   </div>
                 </div>
 
                 <div className={picoSoft('p-5')}>
-                  <p className="font-medium text-[color:var(--pico-text)]">Steps</p>
+                  <p className="font-medium text-[color:var(--pico-text)]">{t('critique.steps')}</p>
                   <div className="mt-3 grid gap-3">
                     {reply.structured.steps.map((item, index) => (
                       <div key={item} className={picoInset('px-4 py-3 text-sm leading-6 text-[color:var(--pico-text-secondary)]')}>
-                        <span className="mr-3 text-[color:var(--pico-accent)]">{String(index + 1).padStart(2, '0')}</span>
+                        <span className="me-3 text-[color:var(--pico-accent)]">{String(index + 1).padStart(2, '0')}</span>
                         {item}
                       </div>
                     ))}
@@ -1041,14 +1285,14 @@ export function PicoTutorPageClient() {
 
                 {reply.structured.commands.length ? (
                   <div className={picoSoft('p-5')}>
-                    <p className="font-medium text-[color:var(--pico-text)]">Commands</p>
+                    <p className="font-medium text-[color:var(--pico-text)]">{t('critique.commands')}</p>
                     <div className="mt-3 grid gap-3">
                       {reply.structured.commands.map((command) => (
                         <div key={`${command.label}-${command.code}`} className={picoInset('p-4')}>
                           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--pico-text-muted)]">
                             {command.label}
                           </p>
-                          <pre className="mt-3 overflow-x-auto rounded-[18px] border border-[color:var(--pico-border)] bg-[color:var(--pico-bg-input)] p-4 text-xs leading-6 text-[color:var(--pico-text-secondary)]">
+                          <pre className="mt-3 overflow-x-auto rounded-[18px] border border-[color:var(--pico-border)] bg-[color:var(--pico-bg-input)] p-4 text-xs leading-6 text-[color:var(--pico-text-secondary)]" dir="ltr">
                             <code>{command.code}</code>
                           </pre>
                           {command.note ? (
@@ -1062,7 +1306,7 @@ export function PicoTutorPageClient() {
 
                 {reply.structured.verify.length ? (
                   <div className={picoSoft('p-5')}>
-                    <p className="font-medium text-[color:var(--pico-text)]">Review check</p>
+                    <p className="font-medium text-[color:var(--pico-text)]">{t('critique.reviewLine')}</p>
                     <div className="mt-3 grid gap-3">
                       {reply.structured.verify.map((item) => (
                         <div key={item} className={picoInset('px-4 py-3 text-sm leading-6 text-[color:var(--pico-text-secondary)]')}>
@@ -1075,7 +1319,7 @@ export function PicoTutorPageClient() {
 
                 {reply.structured.ifThisFails.length ? (
                   <div className={picoSoft('p-5')}>
-                    <p className="font-medium text-[color:var(--pico-text)]">Fallback path</p>
+                    <p className="font-medium text-[color:var(--pico-text)]">{t('critique.fallbackRoute')}</p>
                     <div className="mt-3 grid gap-3">
                       {reply.structured.ifThisFails.map((item) => (
                         <div key={item} className={picoInset('px-4 py-3 text-sm leading-6 text-[color:var(--pico-text-secondary)]')}>
@@ -1086,13 +1330,41 @@ export function PicoTutorPageClient() {
                   </div>
                 ) : null}
               </div>
+            ) : academyGuidance ? (
+              <div className={picoSoft('mt-4 p-5')} data-testid="pico-tutor-academy-guidance">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={picoClasses.chip}>{t('critique.academyGuidance')}</span>
+                  <span className={picoClasses.chip}>{t('critique.readOnly')}</span>
+                </div>
+                <p className="mt-4 font-medium text-[color:var(--pico-text)]">
+                  {academyGuidance.title}
+                </p>
+                <p className="mt-3 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
+                  {academyGuidance.objective}
+                </p>
+                <div className={picoInset('mt-4 p-4')}>
+                  <p className={picoClasses.label}>{t('critique.nextLessonStep')}</p>
+                  <p className="mt-2 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
+                    {academyGuidance.nextStep}
+                  </p>
+                </div>
+                <div className={picoInset('mt-3 p-4')}>
+                  <p className={picoClasses.label}>{t('critique.lessonValidation')}</p>
+                  <p className="mt-2 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
+                    {academyGuidance.validation}
+                  </p>
+                </div>
+                <Link
+                  href={toHref(academyGuidance.href)}
+                  className={cn(picoClasses.secondaryButton, 'mt-4 w-full sm:w-auto')}
+                >
+                  {t('critique.openLesson')}
+                </Link>
+              </div>
             ) : (
               <div className={picoSoft('mt-4 p-5')}>
                 <p className={picoClasses.body}>
-                  Ask one blocker, not the whole project. Pico Tutor uses lessons, the builder pack, and official docs when the question depends on current setup details.
-                </p>
-                <p className="mt-4 text-sm leading-6 text-[color:var(--pico-text-secondary)]">
-                  How this works: state the failing step, the expected result, and the exact failure. The answer should give you a concrete move, one verification step, and a clean escalation path if the evidence is still thin.
+                  {t('critique.academyGuidanceEmpty')}
                 </p>
               </div>
             )}
@@ -1100,7 +1372,7 @@ export function PicoTutorPageClient() {
 
           {reply?.lessons.length ? (
             <section className={picoPanel('p-5')}>
-              <p className={picoClasses.label}>Lesson matches</p>
+              <p className={picoClasses.label}>{t('matches.label')}</p>
               <div className="mt-4 grid gap-3">
                 {reply.lessons.map((lesson, index) => (
                   <Link
@@ -1112,7 +1384,7 @@ export function PicoTutorPageClient() {
                     )}
                   >
                     <span>{lesson.title}</span>
-                    <span className={picoClasses.chip}>{index === 0 ? 'best match' : 'alt'}</span>
+                    <span className={picoClasses.chip}>{index === 0 ? t('matches.bestMatch') : t('matches.alternative')}</span>
                   </Link>
                 ))}
               </div>
@@ -1121,7 +1393,7 @@ export function PicoTutorPageClient() {
 
           {reply?.structured.sources.length ? (
             <section className={picoPanel('p-5')}>
-              <p className={picoClasses.label}>Answer sources</p>
+              <p className={picoClasses.label}>{t('evidence.label')}</p>
               <div className="mt-4 grid gap-3">
                 {reply.structured.sources.map((source) => (
                   <div
@@ -1143,7 +1415,7 @@ export function PicoTutorPageClient() {
                         href={resolveTutorHref(toHref, source.href)}
                         className="mt-3 inline-flex text-sm font-medium text-[color:var(--pico-text)] underline decoration-[color:rgba(var(--pico-accent-rgb),0.38)] underline-offset-4"
                       >
-                        Open source
+                        {t('evidence.openSource')}
                       </Link>
                     ) : null}
                   </div>
@@ -1154,7 +1426,7 @@ export function PicoTutorPageClient() {
 
           {reply?.structured.officialLinks.length ? (
             <section className={picoPanel('p-5')}>
-              <p className={picoClasses.label}>Official links</p>
+              <p className={picoClasses.label}>{t('officialLinks.label')}</p>
               <div className="mt-4 grid gap-3">
                 {reply.structured.officialLinks.map((doc) => (
                   <Link
@@ -1176,46 +1448,46 @@ export function PicoTutorPageClient() {
           ) : null}
 
           <section className={picoPanel('p-5')}>
-            <p className={picoClasses.label}>Exit path</p>
+            <p className={picoClasses.label}>{t('exitRoute.label')}</p>
             <div className="mt-4 grid gap-3">
               <Link
                 href={
                   selectedLesson
                     ? toHref(`/academy/${selectedLesson.slug}`)
-                    : derived.nextLesson
-                      ? toHref(`/academy/${derived.nextLesson.slug}`)
+                    : nextLesson
+                      ? toHref(`/academy/${nextLesson.slug}`)
                       : toHref('/academy')
                 }
                 className={picoClasses.secondaryButton}
               >
                 {selectedLesson
-                  ? 'Return to blocked lesson'
-                  : derived.nextLesson
-                    ? `Open ${derived.nextLesson.title}`
-                    : 'Return to academy'}
+                  ? t('exitRoute.returnToBlockedLesson')
+                  : nextLesson
+                    ? t('shared.openLesson', { lessonTitle: nextLesson.title })
+                    : t('exitRoute.returnToAcademy')}
               </Link>
               <Link href={toHref('/autopilot')} className={picoClasses.tertiaryButton}>
-                Open Autopilot
+                {t('exitRoute.openAutopilot')}
               </Link>
               <Link href={toHref('/support')} className={picoClasses.tertiaryButton}>
-                Get human help
+                {t('exitRoute.openSupportLane')}
               </Link>
             </div>
             <div className={picoSoft('mt-4 p-4')}>
               <p className={picoClasses.body}>
-                Tutor should end with a next step. Return to the lesson if the path is clear, open Autopilot if runtime state is the blocker, and get human help when setup needs a person.
+                {t('exitRoute.body')}
               </p>
             </div>
           </section>
 
           {reply?.escalationReason ? (
             <section className={picoPanel('p-5')}>
-              <p className={picoClasses.label}>Escalation note</p>
+              <p className={picoClasses.label}>{t('escalationNote.label')}</p>
               <div className="mt-4 rounded-[24px] border border-amber-400/20 bg-amber-400/10 p-5 text-sm text-amber-50">
                 {reply.escalationReason}
                 <div className="mt-4">
                   <Link href={toHref('/support')} className={picoClasses.primaryButton}>
-                    Get human help
+                    {t('escalationNote.getHumanHelp')}
                   </Link>
                 </div>
               </div>
@@ -1224,7 +1496,7 @@ export function PicoTutorPageClient() {
 
           {reply?.structured.nextQuestion ? (
             <section className={picoPanel('p-5')}>
-              <p className={picoClasses.label}>If the answer is still fuzzy</p>
+              <p className={picoClasses.label}>{t('nextQuestion.label')}</p>
               <div className={picoSoft('mt-4 p-4')}>
                 <p className={picoClasses.body}>{reply.structured.nextQuestion}</p>
               </div>

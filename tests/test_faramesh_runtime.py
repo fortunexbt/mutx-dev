@@ -1,20 +1,32 @@
 from __future__ import annotations
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from cli.faramesh_runtime import (
+    ActionResult,
     FAREMESH_INSTALL_REF,
     FAREMESH_INSTALL_VERSION,
     FarameshDaemonHealth,
     FarameshDecision,
+    GateDecision,
+    GateOutcome,
+    GovernanceDecisionStatus,
+    GovernanceEffect,
+    _GovernanceTimeoutError,
+    _GovernanceUnavailableError,
     collect_faramesh_snapshot,
     ensure_faramesh_installed,
+    execute_if_allowed,
+    gate_decide,
     get_daemon_status,
     get_faramesh_health,
     get_pending_defers,
     get_recent_decisions,
     is_socket_reachable,
     start_faramesh_daemon,
+    submit_action,
     _count_decisions_by_effect,
 )
 
@@ -307,3 +319,284 @@ class TestCollectFarameshSnapshot:
         snapshot = collect_faramesh_snapshot()
 
         assert snapshot.payload.get("role") == "governance"
+
+
+class TestFailClosedGateDecision:
+    @pytest.mark.parametrize(
+        ("response", "expected_status", "expected_effect"),
+        [
+            (
+                {"effect": "DENY", "reason": "blocked", "reason_code": "policy_deny"},
+                GovernanceDecisionStatus.DENIED,
+                GovernanceEffect.DENY,
+            ),
+            (
+                {"effect": "DEFER", "reason": "review", "defer_token": "defer-1"},
+                GovernanceDecisionStatus.APPROVAL_REQUIRED,
+                GovernanceEffect.DEFER,
+            ),
+            ({}, GovernanceDecisionStatus.MALFORMED, None),
+            (
+                {"effect": "PERMIT", "policy_loaded": False},
+                GovernanceDecisionStatus.POLICY_DISABLED,
+                None,
+            ),
+        ],
+    )
+    @patch("cli.faramesh_runtime._send_socket_request")
+    def test_distinguishes_non_permit_responses(
+        self,
+        mock_send,
+        response,
+        expected_status,
+        expected_effect,
+    ):
+        mock_send.return_value = [response]
+
+        decision = gate_decide("agent-1", "openclaw/action", {"value": 1})
+
+        assert decision.status == expected_status
+        assert decision.effect == expected_effect
+        assert decision.is_authoritative_permit is False
+        assert decision.outcome != GateOutcome.EXECUTE
+
+    @patch("cli.faramesh_runtime._send_socket_request")
+    def test_distinguishes_no_decision(self, mock_send):
+        mock_send.return_value = []
+
+        decision = gate_decide("agent-1", "openclaw/action", {})
+
+        assert decision.status == GovernanceDecisionStatus.NO_DECISION
+        assert decision.effect is None
+        assert decision.reason_code == "governance_no_decision"
+
+    @patch("cli.faramesh_runtime._send_socket_request")
+    def test_distinguishes_timeout(self, mock_send):
+        mock_send.side_effect = _GovernanceTimeoutError("decision timed out")
+
+        decision = gate_decide("agent-1", "openclaw/action", {})
+
+        assert decision.status == GovernanceDecisionStatus.TIMEOUT
+        assert decision.effect is None
+        assert decision.reason == "decision timed out"
+
+    @patch("cli.faramesh_runtime._send_socket_request")
+    def test_distinguishes_unavailable(self, mock_send):
+        mock_send.side_effect = _GovernanceUnavailableError("socket unavailable")
+
+        decision = gate_decide("agent-1", "openclaw/action", {})
+
+        assert decision.status == GovernanceDecisionStatus.UNAVAILABLE
+        assert decision.effect is None
+        assert decision.reason == "socket unavailable"
+
+    @patch("cli.faramesh_runtime._send_socket_request")
+    def test_authoritative_permit_preserves_receipt_and_audit_context(self, mock_send):
+        response = {
+            "effect": "PERMIT",
+            "action_id": "action-1",
+            "receipt": {"receipt_id": "receipt-1", "signature": "signed"},
+            "audit_context": {"trace_id": "trace-1", "span_id": "span-1"},
+        }
+        mock_send.return_value = [response]
+
+        decision = gate_decide("agent-1", "openclaw/action", {})
+
+        assert decision.is_authoritative_permit is True
+        assert decision.receipt_id == "receipt-1"
+        assert decision.receipt == response["receipt"]
+        assert decision.audit_context == response["audit_context"]
+        assert decision.decision_payload == response
+
+
+class TestExecuteIfAllowed:
+    @pytest.mark.parametrize(
+        "status",
+        [
+            GovernanceDecisionStatus.UNAVAILABLE,
+            GovernanceDecisionStatus.DENIED,
+            GovernanceDecisionStatus.NO_DECISION,
+            GovernanceDecisionStatus.MALFORMED,
+            GovernanceDecisionStatus.TIMEOUT,
+            GovernanceDecisionStatus.ERROR,
+        ],
+    )
+    @patch("cli.faramesh_runtime.gate_decide")
+    def test_does_not_execute_for_non_permit_statuses(self, mock_decide, status):
+        effect = GovernanceEffect.DENY if status == GovernanceDecisionStatus.DENIED else None
+        mock_decide.return_value = GateDecision(
+            outcome=GateOutcome.HALT,
+            effect=effect,
+            status=status,
+            reason="blocked diagnostic",
+            reason_code=f"test_{status.value}",
+            authoritative=status == GovernanceDecisionStatus.DENIED,
+            decision_payload={"diagnostic": status.value},
+        )
+        executor = MagicMock()
+
+        result = execute_if_allowed("agent-1", "openclaw/action", {}, executor)
+
+        executor.assert_not_called()
+        assert result.executed is False
+        assert result.governance_status == status
+        assert result.reason == "blocked diagnostic"
+        assert result.decision_payload == {"diagnostic": status.value}
+
+    @patch("cli.faramesh_runtime.submit_action")
+    @patch("cli.faramesh_runtime.gate_decide")
+    def test_does_not_execute_when_approval_is_required(self, mock_decide, mock_submit):
+        gate_payload = {"effect": "DEFER", "defer_token": "defer-1", "rule_id": "review"}
+        mock_decide.return_value = GateDecision(
+            outcome=GateOutcome.ABSTAIN,
+            effect=GovernanceEffect.DEFER,
+            status=GovernanceDecisionStatus.APPROVAL_REQUIRED,
+            reason="human review required",
+            defer_token="defer-1",
+            authoritative=True,
+            receipt_id="receipt-defer",
+            receipt={"receipt_id": "receipt-defer"},
+            audit_context={"trace_id": "trace-defer"},
+            decision_payload=gate_payload,
+        )
+        mock_submit.return_value = ActionResult(
+            status="pending_approval",
+            executed=False,
+            defer_token="defer-1",
+            governance_status=GovernanceDecisionStatus.APPROVAL_REQUIRED,
+            effect=GovernanceEffect.DEFER,
+            authoritative=True,
+        )
+        executor = MagicMock()
+
+        result = execute_if_allowed("agent-1", "openclaw/action", {}, executor)
+
+        executor.assert_not_called()
+        assert result.status == "pending_approval"
+        assert result.governance_status == GovernanceDecisionStatus.APPROVAL_REQUIRED
+        assert result.receipt_id == "receipt-defer"
+        assert result.audit_context == {"trace_id": "trace-defer"}
+        assert result.gate_decision_payload == gate_payload
+
+    def test_does_not_execute_when_policy_is_disabled(self):
+        executor = MagicMock()
+
+        result = execute_if_allowed(
+            "agent-1",
+            "openclaw/action",
+            {},
+            executor,
+            governance_enabled=False,
+        )
+
+        executor.assert_not_called()
+        assert result.governance_status == GovernanceDecisionStatus.POLICY_DISABLED
+        assert result.status == "policy_disabled"
+
+    @patch("cli.faramesh_runtime.gate_decide")
+    def test_does_not_execute_when_governance_throws(self, mock_decide):
+        mock_decide.side_effect = RuntimeError("governance bridge exploded")
+        executor = MagicMock()
+
+        result = execute_if_allowed("agent-1", "openclaw/action", {}, executor)
+
+        executor.assert_not_called()
+        assert result.governance_status == GovernanceDecisionStatus.ERROR
+        assert result.reason == "governance bridge exploded"
+        assert result.decision_payload == {"exception_type": "RuntimeError"}
+
+    @patch("cli.faramesh_runtime.gate_decide")
+    def test_does_not_execute_non_authoritative_permit(self, mock_decide):
+        mock_decide.return_value = GateDecision(
+            outcome=GateOutcome.EXECUTE,
+            effect=GovernanceEffect.PERMIT,
+            status=GovernanceDecisionStatus.PERMITTED,
+            authoritative=False,
+        )
+        executor = MagicMock()
+
+        result = execute_if_allowed("agent-1", "openclaw/action", {}, executor)
+
+        executor.assert_not_called()
+        assert result.governance_status == GovernanceDecisionStatus.MALFORMED
+        assert result.reason_code == "governance_non_authoritative_permit"
+
+    @patch("cli.faramesh_runtime.gate_decide")
+    def test_executes_once_for_authoritative_permit_and_preserves_context(self, mock_decide):
+        decision_payload = {
+            "effect": "PERMIT",
+            "action_id": "action-1",
+            "receipt": {"receipt_id": "receipt-1", "signature": "signed"},
+            "audit_context": {"trace_id": "trace-1"},
+        }
+        mock_decide.return_value = GateDecision(
+            outcome=GateOutcome.EXECUTE,
+            effect=GovernanceEffect.PERMIT,
+            status=GovernanceDecisionStatus.PERMITTED,
+            authoritative=True,
+            action_id="action-1",
+            receipt_id="receipt-1",
+            receipt=decision_payload["receipt"],
+            audit_context=decision_payload["audit_context"],
+            decision_payload=decision_payload,
+        )
+        executor = MagicMock(return_value={"ok": True})
+
+        result = execute_if_allowed(
+            "agent-1",
+            "openclaw/action",
+            {"value": 1},
+            executor,
+        )
+
+        executor.assert_called_once_with("openclaw/action", {"value": 1})
+        assert result.status == "executed"
+        assert result.executed is True
+        assert result.payload == {"ok": True}
+        assert result.receipt_id == "receipt-1"
+        assert result.receipt == decision_payload["receipt"]
+        assert result.audit_context == {"trace_id": "trace-1"}
+        assert result.decision_payload == decision_payload
+
+
+class TestSubmitActionCompatibility:
+    @pytest.mark.parametrize(
+        ("response", "expected_status", "expected_governance_status", "expected_executed"),
+        [
+            (
+                {"effect": "PERMIT", "action_id": "action-1", "payload": {"ok": True}},
+                "executed",
+                GovernanceDecisionStatus.PERMITTED,
+                True,
+            ),
+            (
+                {"effect": "DENY", "action_id": "action-2", "reason": "policy denied"},
+                "denied",
+                GovernanceDecisionStatus.DENIED,
+                False,
+            ),
+            (
+                {"effect": "DEFER", "action_id": "action-3", "defer_token": "defer-3"},
+                "pending_approval",
+                GovernanceDecisionStatus.APPROVAL_REQUIRED,
+                False,
+            ),
+        ],
+    )
+    @patch("cli.faramesh_runtime._send_socket_request")
+    def test_preserves_legitimate_action_statuses(
+        self,
+        mock_send,
+        response,
+        expected_status,
+        expected_governance_status,
+        expected_executed,
+    ):
+        mock_send.return_value = [response]
+
+        result = submit_action("agent-1", "openclaw/action", {})
+
+        assert result.status == expected_status
+        assert result.governance_status == expected_governance_status
+        assert result.executed is expected_executed
+        assert result.action_id == response["action_id"]

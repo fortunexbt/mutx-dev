@@ -324,13 +324,62 @@ export async function POST(request: Request): Promise<NextResponse> {
   })(request)
 }
 
+const newsletterCountResponseHeaders = {
+  'Cache-Control': 'no-store',
+}
+
+function unavailableNewsletterCount() {
+  return NextResponse.json(
+    {
+      status: 'unavailable',
+      error: {
+        code: 'COUNT_UNAVAILABLE',
+        message: 'Subscriber count is unavailable',
+      },
+    },
+    { status: 503, headers: newsletterCountResponseHeaders },
+  )
+}
+
+function parseNewsletterCount(result: unknown): number | null {
+  if (!Array.isArray(result) || result.length !== 1) return null
+
+  const row = result[0]
+  if (!row || typeof row !== 'object' || !('count' in row)) return null
+
+  const rawCount = (row as { count: unknown }).count
+  if (
+    typeof rawCount !== 'number'
+    && typeof rawCount !== 'string'
+    && typeof rawCount !== 'bigint'
+  ) {
+    return null
+  }
+
+  if (typeof rawCount === 'string' && !/^(0|[1-9][0-9]*)$/.test(rawCount)) {
+    return null
+  }
+
+  const count = Number(rawCount)
+  return Number.isSafeInteger(count) && count >= 0 ? count : null
+}
+
 export async function GET(): Promise<NextResponse> {
-  return withErrorHandling(async () => {
-    if (!sql) return NextResponse.json({ count: 24 })
+  if (!sql) return unavailableNewsletterCount()
+
+  try {
     await ensureTableExists()
     const result = await sql`SELECT COUNT(*) as count FROM waitlist_emails`
-    // Start at 24 and add current db entries
-    const count = Number(result[0].count) + 24
-    return NextResponse.json({ count })
-  })(new Request('http://localhost'))
+    const count = parseNewsletterCount(result)
+
+    if (count === null) return unavailableNewsletterCount()
+
+    return NextResponse.json(
+      { count },
+      { headers: newsletterCountResponseHeaders },
+    )
+  } catch {
+    console.error('Newsletter subscriber count provider is unavailable')
+    return unavailableNewsletterCount()
+  }
 }

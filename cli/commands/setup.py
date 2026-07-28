@@ -300,12 +300,15 @@ def setup_hosted(
 
     try:
         if register:
-            _auth_service().register(
+            registration = _auth_service().register(
                 name=_require_value("Name", display_name or "MUTX User", no_input),
                 email=_require_value("Email", email, no_input),
                 password=_require_value("Password", password, no_input, secret=True),
                 api_url=target_api_url,
             )
+            if registration is not None and not registration.authenticated:
+                click.echo("Registered. Verify your email, then rerun 'mutx setup hosted'.")
+                return
         else:
             _auth_service().login(
                 email=_require_value("Email", email, no_input),
@@ -417,11 +420,14 @@ def setup_local(
             email_value = _require_value("Email", email, no_input)
             password_value = _require_value("Password", password, no_input, secret=True)
             if register:
-                _auth_service().register(
+                registration = _auth_service().register(
                     name=display_name,
                     email=email_value,
                     password=password_value,
                 )
+                if registration is not None and not registration.authenticated:
+                    click.echo("Registered. Verify your email, then rerun 'mutx setup local'.")
+                    return
             else:
                 _auth_service().login(email=email_value, password=password_value)
         else:

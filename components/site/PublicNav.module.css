@@ -98,14 +98,13 @@
 
 .navLinks a::after {
   position: absolute;
-  right: 1rem;
-  bottom: -1px;
-  left: 1rem;
+  inset-inline: 1rem;
+  inset-block-end: -1px;
   height: 3px;
   background: #ff4d00;
   content: "";
   transform: scaleX(0);
-  transform-origin: left;
+  transform-origin: center;
   transition: transform 160ms ease;
 }
 
@@ -144,7 +143,7 @@
   gap: 0.5rem;
   padding: 0 1.15rem;
   border: 0;
-  border-left: 1px solid #393a35;
+  border-inline-start: 1px solid #393a35;
   color: #f3f0e7;
   font-family: var(--font-mono), monospace;
   font-size: 0.72rem;
@@ -217,6 +216,10 @@
   border: 0;
 }
 
+:global([dir='rtl']) .directionalIcon {
+  transform: scaleX(-1);
+}
+
 @media (max-width: 1040px) {
   .navInner {
     grid-template-columns: minmax(11rem, 1fr) auto minmax(11rem, 1fr);
@@ -262,9 +265,8 @@
   .mobileMenu {
     position: absolute;
     z-index: 1;
-    top: 5.25rem;
-    right: 0;
-    left: 0;
+    inset-block-start: 5.25rem;
+    inset-inline: 0;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     max-height: calc(100dvh - 5.25rem);
@@ -344,7 +346,7 @@
     align-items: center;
     padding: 0 1rem;
     border-top: 1px solid #393a35;
-    border-left: 1px solid #393a35;
+    border-inline-start: 1px solid #393a35;
     color: #f3f0e7;
     font-size: 1.45rem;
     letter-spacing: -0.035em;
@@ -352,7 +354,7 @@
   }
 
   .mobileMenu > a:nth-of-type(even) {
-    border-right: 1px solid #393a35;
+    border-inline-end: 1px solid #393a35;
   }
 
   .mobileMenu > a:nth-last-of-type(-n + 2) {
@@ -374,6 +376,7 @@
 
   .mobileMenu > a:hover,
   .mobileMenu > a:focus-visible,
+  .mobileMenu > a.active,
   .mobileMenu > a[aria-current="page"] {
     background: #171916;
   }
@@ -414,7 +417,7 @@
   }
 
   .mobileMenu {
-    top: 4.75rem;
+    inset-block-start: 4.75rem;
     grid-template-columns: 1fr;
     max-height: calc(100dvh - 4.75rem);
     padding-inline: 1rem;
@@ -424,7 +427,7 @@
   .mobileMenu > a:nth-of-type(even),
   .mobileMenu > a:nth-last-of-type(-n + 2) {
     min-height: 4.7rem;
-    border-right: 1px solid #393a35;
+    border-inline-end: 1px solid #393a35;
     border-bottom: 0;
   }
 

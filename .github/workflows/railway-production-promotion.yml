@@ -1,10 +1,13 @@
-name: Production Release Verification
+name: Railway Production Promotion
 
 on:
   workflow_call:
     inputs:
       release_tag:
-        required: false
+        required: true
+        type: string
+      target_commit:
+        required: true
         type: string
       site_url:
         required: false
@@ -18,59 +21,87 @@ on:
       docs_release_url:
         required: false
         type: string
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Release tag to promote (defaults to v<package-version>)
+      release_identity_url:
         required: false
         type: string
-      site_url:
-        description: Override the public marketing URL
-        required: false
-        type: string
-      app_url:
-        description: Override the public app-host URL
-        required: false
-        type: string
-      api_url:
-        description: Override the public API URL
-        required: false
-        type: string
-      docs_release_url:
-        description: Override the docs release-notes URL
-        required: false
-        type: string
-
 permissions:
   contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+concurrency:
+  group: railway-production-promotion
+  cancel-in-progress: false
+
 jobs:
   promote:
-    runs-on: ubuntu-latest
+    name: Validate, promote, and verify
+    runs-on: ubuntu-24.04
+    environment: production
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.target_commit }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.15.0"
           cache: "npm"
 
-      - name: Determine release tag
+      - name: Validate release inputs
         id: release
         env:
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          INPUT_TARGET_COMMIT: ${{ inputs.target_commit }}
+          SITE_URL: ${{ inputs.site_url }}
+          APP_URL: ${{ inputs.app_url }}
+          API_URL: ${{ inputs.api_url }}
+          DOCS_RELEASE_URL: ${{ inputs.docs_release_url }}
+          RELEASE_IDENTITY_URL: ${{ inputs.release_identity_url }}
         run: |
-          if [[ -n "${INPUT_RELEASE_TAG}" ]]; then
-            tag="${INPUT_RELEASE_TAG}"
-          else
-            tag="v$(node -p "require('./package.json').version")"
+          set -euo pipefail
+          tag="${INPUT_RELEASE_TAG}"
+          package_version="$(node -p "require('./package.json').version")"
+
+          version="$(bash scripts/validate-release-version.sh desktop "${tag}" "${package_version}")"
+          if [[ "${version}" == *-* ]]; then
+            echo "Production promotion accepts stable desktop releases only: ${tag}" >&2
+            exit 1
           fi
+          if [[ ! "${INPUT_TARGET_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "target_commit must be a full lowercase commit SHA." >&2
+            exit 1
+          fi
+
+          for url_name in SITE_URL APP_URL API_URL DOCS_RELEASE_URL RELEASE_IDENTITY_URL; do
+            url="${!url_name}"
+            if [[ -n "${url}" ]]; then
+              node -e 'const url = new URL(process.argv[1]); if (url.protocol !== "https:") process.exit(1)' "${url}"
+            fi
+          done
+
+          sha="$(git rev-parse HEAD)"
+          tag_sha="$(git rev-list -n 1 "${tag}")"
+          if [[ "${sha}" != "${INPUT_TARGET_COMMIT}" || "${sha}" != "${tag_sha}" ]]; then
+            echo "Validated target, checkout, and ${tag} must resolve to the same commit." >&2
+            exit 1
+          fi
+
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Re-resolve immutable tag binding before production promotion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: bash scripts/verify-release-tag-binding.sh
 
       - name: Require docs release notes page in repo
         env:
@@ -80,16 +111,67 @@ jobs:
           release_notes_file="docs/releases/v$(echo "${version}" | cut -d. -f1-2).md"
           test -f "${release_notes_file}"
 
-      - name: Require GitHub release to exist
+      - name: Require a published stable GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release view "${{ steps.release.outputs.tag }}" >/dev/null
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          release_state="$(
+            gh release view "${RELEASE_TAG}" --json tagName,isDraft,isPrerelease \
+              --jq '[.tagName, .isDraft, .isPrerelease] | @tsv'
+          )"
+          expected_release_state="$(printf '%s\tfalse\tfalse' "${RELEASE_TAG}")"
+          if [[ "${release_state}" != "${expected_release_state}" ]]; then
+            echo "Production promotion requires the exact published stable release ${RELEASE_TAG}." >&2
+            exit 1
+          fi
+
+      - name: Install checksum-verified Railway CLI
+        env:
+          RAILWAY_CLI_VERSION: "5.30.1"
+          RAILWAY_CLI_SHA256: c6169e27e87d95d73fb7a30ec2c6b6c767c042f8a3ba9aa98c92deccda8db10c
+        run: |
+          set -euo pipefail
+          archive="railway-v${RAILWAY_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          archive_path="${RUNNER_TEMP}/${archive}"
+          install_dir="${RUNNER_TEMP}/railway-bin"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            --output "${archive_path}" \
+            "https://github.com/railwayapp/cli/releases/download/v${RAILWAY_CLI_VERSION}/${archive}"
+          printf '%s  %s\n' "${RAILWAY_CLI_SHA256}" "${archive_path}" | sha256sum --check
+          mkdir -p "${install_dir}"
+          tar --extract --gzip --file "${archive_path}" --directory "${install_dir}" railway
+          chmod 0755 "${install_dir}/railway"
+          installed_version="$("${install_dir}/railway" --version | awk '{print $NF}')"
+          if [[ "${installed_version}" != "${RAILWAY_CLI_VERSION}" ]]; then
+            echo "Railway CLI install did not resolve the reviewed version ${RAILWAY_CLI_VERSION}." >&2
+            exit 1
+          fi
+          echo "${install_dir}" >> "${GITHUB_PATH}"
+
+      - name: Promote exact release to Railway production
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_FRONTEND_SERVICE_ID: ${{ secrets.RAILWAY_FRONTEND_SERVICE_ID }}
+          RAILWAY_API_SERVICE_ID: ${{ secrets.RAILWAY_API_SERVICE_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          APP_URL: ${{ inputs.app_url }}
+          API_URL: ${{ inputs.api_url }}
+          RELEASE_IDENTITY_URL: ${{ inputs.release_identity_url }}
+        run: bash scripts/promote-railway-production.sh
 
       - name: Verify public release surfaces
         env:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
           SITE_URL: ${{ inputs.site_url }}
           APP_URL: ${{ inputs.app_url }}
           API_URL: ${{ inputs.api_url }}
           DOCS_RELEASE_URL: ${{ inputs.docs_release_url }}
+          RELEASE_IDENTITY_URL: ${{ inputs.release_identity_url }}
         run: bash scripts/verify-production-release.sh

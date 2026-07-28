@@ -111,7 +111,7 @@ def test_list_returns_list_of_sessions() -> None:
             json=_sessions_response_payload([_session_payload(id="s1"), _session_payload(id="s2")]),
         )
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     sessions = Sessions(client)
 
     result = sessions.list()
@@ -119,7 +119,7 @@ def test_list_returns_list_of_sessions() -> None:
     assert isinstance(result, list)
     assert len(result) == 2
     assert all(isinstance(s, Session) for s in result)
-    assert captured["path"] == "/sessions"
+    assert captured["path"] == "/v1/sessions"
     assert captured["params"] == {}
     client.close()
 
@@ -132,7 +132,7 @@ def test_list_filters_by_agent_id() -> None:
         captured["params"] = dict(request.url.params)
         return httpx.Response(200, json=_sessions_response_payload([]))
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     sessions = Sessions(client)
 
     sessions.list(agent_id=agent_id)
@@ -142,7 +142,7 @@ def test_list_filters_by_agent_id() -> None:
 
 
 def test_list_requires_sync_client() -> None:
-    async_client = httpx.AsyncClient(base_url="https://api.test")
+    async_client = httpx.AsyncClient(base_url="https://api.test/v1/")
     sessions = Sessions(async_client)
 
     with pytest.raises(RuntimeError, match="sync"):
@@ -167,7 +167,7 @@ async def test_alist_returns_list_of_sessions() -> None:
         )
 
     client = httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     )
     sessions = Sessions(client)
@@ -191,7 +191,7 @@ async def test_alist_filters_by_agent_id() -> None:
         return httpx.Response(200, json=_sessions_response_payload([]))
 
     client = httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     )
     sessions = Sessions(client)
@@ -204,7 +204,7 @@ async def test_alist_filters_by_agent_id() -> None:
 
 @pytest.mark.asyncio
 async def test_alist_requires_async_client() -> None:
-    sync_client = httpx.Client(base_url="https://api.test")
+    sync_client = httpx.Client(base_url="https://api.test/v1/")
     sessions = Sessions(sync_client)
 
     with pytest.raises(RuntimeError, match="async"):
@@ -227,12 +227,12 @@ def test_set_thinking_hits_correct_route() -> None:
         captured["json"] = _read_json(request)
         return httpx.Response(200, json={"ok": True})
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     sessions = Sessions(client)
 
     sessions.set_thinking("sk_test", "high")
 
-    assert captured["path"] == "/sessions"
+    assert captured["path"] == "/v1/sessions"
     assert captured["params"] == {"action": "set-thinking"}
     assert captured["json"]["session_key"] == "sk_test"
     assert captured["json"]["level"] == "high"
@@ -240,7 +240,7 @@ def test_set_thinking_hits_correct_route() -> None:
 
 
 def test_set_thinking_rejects_invalid_level() -> None:
-    client = httpx.Client(base_url="https://api.test")
+    client = httpx.Client(base_url="https://api.test/v1/")
     sessions = Sessions(client)
 
     with pytest.raises(ValueError, match="Invalid thinking level"):
@@ -250,7 +250,7 @@ def test_set_thinking_rejects_invalid_level() -> None:
 
 
 def test_set_thinking_requires_sync_client() -> None:
-    async_client = httpx.AsyncClient(base_url="https://api.test")
+    async_client = httpx.AsyncClient(base_url="https://api.test/v1/")
     sessions = Sessions(async_client)
 
     with pytest.raises(RuntimeError, match="sync"):
@@ -276,7 +276,7 @@ async def test_aset_thinking_hits_correct_route() -> None:
         return httpx.Response(200, json={"ok": True})
 
     client = httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     )
     sessions = Sessions(client)
@@ -291,7 +291,7 @@ async def test_aset_thinking_hits_correct_route() -> None:
 
 @pytest.mark.asyncio
 async def test_aset_thinking_rejects_invalid_level() -> None:
-    client = httpx.AsyncClient(base_url="https://api.test")
+    client = httpx.AsyncClient(base_url="https://api.test/v1/")
     sessions = Sessions(client)
 
     with pytest.raises(ValueError, match="Invalid thinking level"):
@@ -302,7 +302,7 @@ async def test_aset_thinking_rejects_invalid_level() -> None:
 
 @pytest.mark.asyncio
 async def test_aset_thinking_requires_async_client() -> None:
-    sync_client = httpx.Client(base_url="https://api.test")
+    sync_client = httpx.Client(base_url="https://api.test/v1/")
     sessions = Sessions(sync_client)
 
     with pytest.raises(RuntimeError, match="async"):
@@ -325,12 +325,12 @@ def test_set_reasoning_hits_correct_route() -> None:
         captured["json"] = _read_json(request)
         return httpx.Response(200, json={"ok": True})
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     sessions = Sessions(client)
 
     sessions.set_reasoning("sk_test", "stream")
 
-    assert captured["path"] == "/sessions"
+    assert captured["path"] == "/v1/sessions"
     assert captured["params"] == {"action": "set-reasoning"}
     assert captured["json"]["session_key"] == "sk_test"
     assert captured["json"]["level"] == "stream"
@@ -338,7 +338,7 @@ def test_set_reasoning_hits_correct_route() -> None:
 
 
 def test_set_reasoning_rejects_invalid_level() -> None:
-    client = httpx.Client(base_url="https://api.test")
+    client = httpx.Client(base_url="https://api.test/v1/")
     sessions = Sessions(client)
 
     with pytest.raises(ValueError, match="Invalid reasoning level"):
@@ -348,7 +348,7 @@ def test_set_reasoning_rejects_invalid_level() -> None:
 
 
 def test_set_reasoning_requires_sync_client() -> None:
-    async_client = httpx.AsyncClient(base_url="https://api.test")
+    async_client = httpx.AsyncClient(base_url="https://api.test/v1/")
     sessions = Sessions(async_client)
 
     with pytest.raises(RuntimeError, match="sync"):
@@ -374,7 +374,7 @@ async def test_aset_reasoning_hits_correct_route() -> None:
         return httpx.Response(200, json={"ok": True})
 
     client = httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     )
     sessions = Sessions(client)
@@ -389,7 +389,7 @@ async def test_aset_reasoning_hits_correct_route() -> None:
 
 @pytest.mark.asyncio
 async def test_aset_reasoning_rejects_invalid_level() -> None:
-    client = httpx.AsyncClient(base_url="https://api.test")
+    client = httpx.AsyncClient(base_url="https://api.test/v1/")
     sessions = Sessions(client)
 
     with pytest.raises(ValueError, match="Invalid reasoning level"):
@@ -412,12 +412,12 @@ def test_set_label_hits_correct_route() -> None:
         captured["json"] = _read_json(request)
         return httpx.Response(200, json={"ok": True})
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     sessions = Sessions(client)
 
     sessions.set_label("sk_test", "my-session-label")
 
-    assert captured["path"] == "/sessions"
+    assert captured["path"] == "/v1/sessions"
     assert captured["params"] == {"action": "set-label"}
     assert captured["json"]["session_key"] == "sk_test"
     assert captured["json"]["label"] == "my-session-label"
@@ -425,7 +425,7 @@ def test_set_label_hits_correct_route() -> None:
 
 
 def test_set_label_rejects_label_over_100_chars() -> None:
-    client = httpx.Client(base_url="https://api.test")
+    client = httpx.Client(base_url="https://api.test/v1/")
     sessions = Sessions(client)
 
     with pytest.raises(ValueError, match="100 characters"):
@@ -435,7 +435,7 @@ def test_set_label_rejects_label_over_100_chars() -> None:
 
 
 def test_set_label_requires_sync_client() -> None:
-    async_client = httpx.AsyncClient(base_url="https://api.test")
+    async_client = httpx.AsyncClient(base_url="https://api.test/v1/")
     sessions = Sessions(async_client)
 
     with pytest.raises(RuntimeError, match="sync"):
@@ -461,7 +461,7 @@ async def test_aset_label_hits_correct_route() -> None:
         return httpx.Response(200, json={"ok": True})
 
     client = httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     )
     sessions = Sessions(client)
@@ -476,7 +476,7 @@ async def test_aset_label_hits_correct_route() -> None:
 
 @pytest.mark.asyncio
 async def test_aset_label_rejects_label_over_100_chars() -> None:
-    client = httpx.AsyncClient(base_url="https://api.test")
+    client = httpx.AsyncClient(base_url="https://api.test/v1/")
     sessions = Sessions(client)
 
     with pytest.raises(ValueError, match="100 characters"):
@@ -497,7 +497,7 @@ def test_delete_rejects_json_kwarg_incompatible_with_httpx_028() -> None:
     raises TypeError. This test documents the known incompatibility — the SDK
     should be updated to use ``client.request("DELETE", "/sessions", json=...)``.
     """
-    client = httpx.Client(base_url="https://api.test")
+    client = httpx.Client(base_url="https://api.test/v1/")
     sessions = Sessions(client)
 
     with pytest.raises(TypeError, match="got an unexpected keyword argument 'json'"):
@@ -507,7 +507,7 @@ def test_delete_rejects_json_kwarg_incompatible_with_httpx_028() -> None:
 
 
 def test_delete_requires_sync_client() -> None:
-    async_client = httpx.AsyncClient(base_url="https://api.test")
+    async_client = httpx.AsyncClient(base_url="https://api.test/v1/")
     sessions = Sessions(async_client)
 
     with pytest.raises(RuntimeError, match="sync"):
@@ -526,7 +526,7 @@ def test_delete_requires_sync_client() -> None:
 @pytest.mark.asyncio
 async def test_adelete_rejects_json_kwarg_incompatible_with_httpx_028() -> None:
     """Same delete() json= incompatibility as sync version, for async client."""
-    client = httpx.AsyncClient(base_url="https://api.test")
+    client = httpx.AsyncClient(base_url="https://api.test/v1/")
     sessions = Sessions(client)
 
     with pytest.raises(TypeError, match="got an unexpected keyword argument 'json'"):
@@ -537,7 +537,7 @@ async def test_adelete_rejects_json_kwarg_incompatible_with_httpx_028() -> None:
 
 @pytest.mark.asyncio
 async def test_adelete_requires_async_client() -> None:
-    sync_client = httpx.Client(base_url="https://api.test")
+    sync_client = httpx.Client(base_url="https://api.test/v1/")
     sessions = Sessions(sync_client)
 
     with pytest.raises(RuntimeError, match="async"):

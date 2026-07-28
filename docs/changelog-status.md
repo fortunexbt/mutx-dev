@@ -10,7 +10,7 @@ This page covers where to track MUTX changes, release processes, and live status
 - Release summary: `https://mutx.dev/releases`
 - App availability: `https://app.mutx.dev/dashboard` (stable operator routes)
 - Control demo availability: `https://app.mutx.dev/control`
-- Docs availability: `https://docs.mutx.dev`
+- Docs availability: `https://mutx.dev/docs`
 
 ## Changelog
 
@@ -22,7 +22,7 @@ The canonical public release narrative for the current launch lives at [docs/rel
 
 - GitHub releases: `https://github.com/mutx-dev/mutx-dev/releases`
 - Merged pull requests: `https://github.com/mutx-dev/mutx-dev/pulls?q=is%3Apr+is%3Amerged`
-- OpenAPI contract diff: compare revisions of [`docs/api/openapi.json`](./api/openapi.json)
+- OpenAPI contract diff: compare revisions of [`docs/api/openapi.json`](https://github.com/mutx-dev/mutx-dev/blob/main/docs/api/openapi.json)
 
 ## Release Process
 
@@ -47,7 +47,7 @@ When preparing a release:
 
 4. **Publish the docs-backed release narrative**:
    - Merge `docs/releases/v1.4.md`
-   - Verify GitBook sync publishes `https://docs.mutx.dev/docs/v1.4`
+   - Verify the self-hosted docs publish `https://mutx.dev/docs/releases/v1.4`
    - Keep `mutx.dev/releases` aligned with the same version and download contract
    - Keep `mutx.dev/download/macos/release-notes` resolving to that synced page
 

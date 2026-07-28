@@ -13,6 +13,7 @@ from mutx.governance_supervision import (
     LaunchProfile,
     SupervisedAgent,
 )
+from tests.sdk_contract_utils import assert_v1_request
 
 
 # ---------------------------------------------------------------------------
@@ -118,13 +119,17 @@ def test_list_agents_hits_contract_route():
 
     with patch("mutx.governance_supervision.httpx.Client") as mock_client:
         mock_instance = mock_client.return_value.__enter__.return_value
-        mock_instance.get = mock_get
+        mock_instance.get.side_effect = mock_get
 
         gs = GovernanceSupervision.__new__(GovernanceSupervision)
         gs._client = mock_instance
         agents = gs.list_agents()
 
-    assert captured["path"] == "/runtime/governance/supervised/"
+    assert_v1_request(
+        mock_instance.get,
+        "GET",
+        "/v1/runtime/governance/supervised/",
+    )
     assert len(agents) == 2
     assert all(isinstance(a, SupervisedAgent) for a in agents)
 
@@ -151,13 +156,17 @@ def test_list_profiles_hits_contract_route():
 
     with patch("mutx.governance_supervision.httpx.Client") as mock_client:
         mock_instance = mock_client.return_value.__enter__.return_value
-        mock_instance.get = mock_get
+        mock_instance.get.side_effect = mock_get
 
         gs = GovernanceSupervision.__new__(GovernanceSupervision)
         gs._client = mock_instance
         profiles = gs.list_profiles()
 
-    assert captured["path"] == "/runtime/governance/supervised/profiles"
+    assert_v1_request(
+        mock_instance.get,
+        "GET",
+        "/v1/runtime/governance/supervised/profiles",
+    )
     assert len(profiles) == 2
     assert all(isinstance(p, LaunchProfile) for p in profiles)
 
@@ -183,13 +192,17 @@ def test_get_agent_hits_contract_route():
 
     with patch("mutx.governance_supervision.httpx.Client") as mock_client:
         mock_instance = mock_client.return_value.__enter__.return_value
-        mock_instance.get = mock_get
+        mock_instance.get.side_effect = mock_get
 
         gs = GovernanceSupervision.__new__(GovernanceSupervision)
         gs._client = mock_instance
         agent = gs.get_agent(agent_id=agent_id)
 
-    assert captured["path"] == f"/runtime/governance/supervised/{agent_id}"
+    assert_v1_request(
+        mock_instance.get,
+        "GET",
+        f"/v1/runtime/governance/supervised/{agent_id}",
+    )
     assert isinstance(agent, SupervisedAgent)
     assert agent.agent_id == agent_id
 
@@ -215,7 +228,7 @@ def test_start_agent_hits_contract_route():
 
     with patch("mutx.governance_supervision.httpx.Client") as mock_client:
         mock_instance = mock_client.return_value.__enter__.return_value
-        mock_instance.post = mock_post
+        mock_instance.post.side_effect = mock_post
 
         gs = GovernanceSupervision.__new__(GovernanceSupervision)
         gs._client = mock_instance
@@ -227,7 +240,11 @@ def test_start_agent_hits_contract_route():
             faramesh_policy="strict",
         )
 
-    assert captured["path"] == "/runtime/governance/supervised/start"
+    assert_v1_request(
+        mock_instance.post,
+        "POST",
+        "/v1/runtime/governance/supervised/start",
+    )
     assert captured["json"]["agent_id"] == agent_id
     assert captured["json"]["command"] == ["python", "run.py"]
     assert captured["json"]["profile"] == "default"
@@ -247,7 +264,7 @@ def test_start_agent_minimal_payload():
 
     with patch("mutx.governance_supervision.httpx.Client") as mock_client:
         mock_instance = mock_client.return_value.__enter__.return_value
-        mock_instance.post = mock_post
+        mock_instance.post.side_effect = mock_post
 
         gs = GovernanceSupervision.__new__(GovernanceSupervision)
         gs._client = mock_instance
@@ -281,13 +298,17 @@ def test_stop_agent_hits_contract_route():
 
     with patch("mutx.governance_supervision.httpx.Client") as mock_client:
         mock_instance = mock_client.return_value.__enter__.return_value
-        mock_instance.post = mock_post
+        mock_instance.post.side_effect = mock_post
 
         gs = GovernanceSupervision.__new__(GovernanceSupervision)
         gs._client = mock_instance
         result = gs.stop_agent(agent_id=agent_id, timeout=30.0)
 
-    assert captured["path"] == f"/runtime/governance/supervised/{agent_id}/stop"
+    assert_v1_request(
+        mock_instance.post,
+        "POST",
+        f"/v1/runtime/governance/supervised/{agent_id}/stop",
+    )
     assert captured["json"]["timeout"] == 30.0
     assert isinstance(result, dict)
 
@@ -303,7 +324,7 @@ def test_stop_agent_default_timeout():
 
     with patch("mutx.governance_supervision.httpx.Client") as mock_client:
         mock_instance = mock_client.return_value.__enter__.return_value
-        mock_instance.post = mock_post
+        mock_instance.post.side_effect = mock_post
 
         gs = GovernanceSupervision.__new__(GovernanceSupervision)
         gs._client = mock_instance
@@ -332,13 +353,17 @@ def test_restart_agent_hits_contract_route():
 
     with patch("mutx.governance_supervision.httpx.Client") as mock_client:
         mock_instance = mock_client.return_value.__enter__.return_value
-        mock_instance.post = mock_post
+        mock_instance.post.side_effect = mock_post
 
         gs = GovernanceSupervision.__new__(GovernanceSupervision)
         gs._client = mock_instance
         agent = gs.restart_agent(agent_id=agent_id)
 
-    assert captured["path"] == f"/runtime/governance/supervised/{agent_id}/restart"
+    assert_v1_request(
+        mock_instance.post,
+        "POST",
+        f"/v1/runtime/governance/supervised/{agent_id}/restart",
+    )
     assert isinstance(agent, SupervisedAgent)
     assert agent.agent_id == agent_id
 
@@ -369,13 +394,13 @@ async def test_alist_agents_hits_contract_route():
 
     # Use real httpx.AsyncClient so isinstance check passes; mock the method
     client = httpx.AsyncClient()
-    client.get = mock_get
+    client.get = AsyncMock(side_effect=mock_get)
 
     gs = GovernanceSupervision.__new__(GovernanceSupervision)
     gs._client = client
     agents = await gs.alist_agents()
 
-    assert captured["path"] == "/runtime/governance/supervised/"
+    assert_v1_request(client.get, "GET", "/v1/runtime/governance/supervised/")
     assert len(agents) == 1
     assert isinstance(agents[0], SupervisedAgent)
 
@@ -401,13 +426,17 @@ async def test_alist_profiles_hits_contract_route():
         return response
 
     client = httpx.AsyncClient()
-    client.get = mock_get
+    client.get = AsyncMock(side_effect=mock_get)
 
     gs = GovernanceSupervision.__new__(GovernanceSupervision)
     gs._client = client
     profiles = await gs.alist_profiles()
 
-    assert captured["path"] == "/runtime/governance/supervised/profiles"
+    assert_v1_request(
+        client.get,
+        "GET",
+        "/v1/runtime/governance/supervised/profiles",
+    )
     assert len(profiles) == 2
     assert all(isinstance(p, LaunchProfile) for p in profiles)
 
@@ -434,13 +463,17 @@ async def test_aget_agent_hits_contract_route():
         return response
 
     client = httpx.AsyncClient()
-    client.get = mock_get
+    client.get = AsyncMock(side_effect=mock_get)
 
     gs = GovernanceSupervision.__new__(GovernanceSupervision)
     gs._client = client
     agent = await gs.aget_agent(agent_id=agent_id)
 
-    assert captured["path"] == f"/runtime/governance/supervised/{agent_id}"
+    assert_v1_request(
+        client.get,
+        "GET",
+        f"/v1/runtime/governance/supervised/{agent_id}",
+    )
     assert isinstance(agent, SupervisedAgent)
     assert agent.agent_id == agent_id
 
@@ -468,7 +501,7 @@ async def test_astar_agent_hits_contract_route():
         return response
 
     client = httpx.AsyncClient()
-    client.post = mock_post
+    client.post = AsyncMock(side_effect=mock_post)
 
     gs = GovernanceSupervision.__new__(GovernanceSupervision)
     gs._client = client
@@ -480,7 +513,11 @@ async def test_astar_agent_hits_contract_route():
         faramesh_policy="strict",
     )
 
-    assert captured["path"] == "/runtime/governance/supervised/start"
+    assert_v1_request(
+        client.post,
+        "POST",
+        "/v1/runtime/governance/supervised/start",
+    )
     assert captured["json"]["agent_id"] == agent_id
     assert captured["json"]["command"] == ["python", "agent.py"]
     assert captured["json"]["profile"] == "prod"
@@ -512,13 +549,17 @@ async def test_astop_agent_hits_contract_route():
         return response
 
     client = httpx.AsyncClient()
-    client.post = mock_post
+    client.post = AsyncMock(side_effect=mock_post)
 
     gs = GovernanceSupervision.__new__(GovernanceSupervision)
     gs._client = client
     result = await gs.astop_agent(agent_id=agent_id, timeout=15.0)
 
-    assert captured["path"] == f"/runtime/governance/supervised/{agent_id}/stop"
+    assert_v1_request(
+        client.post,
+        "POST",
+        f"/v1/runtime/governance/supervised/{agent_id}/stop",
+    )
     assert captured["json"]["timeout"] == 15.0
     assert isinstance(result, dict)
 
@@ -545,13 +586,17 @@ async def test_arestart_agent_hits_contract_route():
         return response
 
     client = httpx.AsyncClient()
-    client.post = mock_post
+    client.post = AsyncMock(side_effect=mock_post)
 
     gs = GovernanceSupervision.__new__(GovernanceSupervision)
     gs._client = client
     agent = await gs.arestart_agent(agent_id=agent_id)
 
-    assert captured["path"] == f"/runtime/governance/supervised/{agent_id}/restart"
+    assert_v1_request(
+        client.post,
+        "POST",
+        f"/v1/runtime/governance/supervised/{agent_id}/restart",
+    )
     assert isinstance(agent, SupervisedAgent)
     assert agent.agent_id == agent_id
 

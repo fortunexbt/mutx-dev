@@ -1,4 +1,23 @@
-import { getLessonBySlug, searchLessonCorpus } from '@/lib/pico/academy'
+import { getLessonBySlug, searchLessonCorpus, type PicoLesson } from '@/lib/pico/academy'
+
+export type PicoTutorPlan = 'free' | 'starter' | 'pro' | 'enterprise'
+
+export type PicoTutorEntitlement = {
+  authenticated: true
+  plan: PicoTutorPlan
+  tutorAccess: boolean
+  minimumPlan: 'starter'
+  byokAccess: boolean
+  byokMinimumPlan: 'pro'
+}
+
+export type PicoTutorGenerationProof = {
+  provider: 'openai'
+  source: 'user' | 'platform'
+  model: string
+  responseId: string
+  completedAt: string
+}
 
 export type PicoTutorAnswer = {
   answer: string
@@ -60,6 +79,86 @@ export type PicoTutorReply = {
   intent: 'choose' | 'install' | 'repair' | 'migrate' | 'compare' | 'tailscale' | 'optimize' | 'integrate'
   skillLevel: 'beginner' | 'intermediate' | 'advanced'
   usedOfficialFallback: boolean
+  entitlement: PicoTutorEntitlement
+  generation: PicoTutorGenerationProof
+}
+
+export type PicoTutorProviderProof = {
+  kind: 'validated_user_key' | 'configured_platform_key'
+  checkedAt: string
+  validatedAt?: string | null
+}
+
+export type PicoTutorConnection = {
+  provider: 'openai'
+  status: 'connected' | 'platform' | 'disconnected' | 'error'
+  source: 'user' | 'platform' | 'none'
+  connected: boolean
+  model: string
+  maskedKey?: string | null
+  connectedAt?: string | null
+  validatedAt?: string | null
+  message: string
+  providerAvailable: boolean
+  canConnect: boolean
+  entitlement: PicoTutorEntitlement
+  proof?: PicoTutorProviderProof | null
+}
+
+export type PicoTutorFailureKind =
+  | 'unauthenticated'
+  | 'plan_denied'
+  | 'provider_required'
+  | 'rate_limited'
+  | 'model_unavailable'
+  | 'malformed_response'
+  | 'unknown'
+
+export type PicoTutorFailure = {
+  kind: PicoTutorFailureKind
+  message: string
+  retryable: boolean
+}
+
+export type PicoTutorAcademyGuidance = {
+  title: string
+  objective: string
+  nextStep: string
+  validation: string
+  href: string
+}
+
+export type TutorRequestLease = {
+  id: number
+  signal: AbortSignal
+}
+
+export class LatestTutorRequest {
+  private active: { id: number; controller: AbortController } | null = null
+  private sequence = 0
+
+  begin(): TutorRequestLease {
+    this.cancel()
+    const controller = new AbortController()
+    const id = ++this.sequence
+    this.active = { id, controller }
+    return { id, signal: controller.signal }
+  }
+
+  isCurrent(lease: TutorRequestLease): boolean {
+    return this.active?.id === lease.id && !lease.signal.aborted
+  }
+
+  finish(lease: TutorRequestLease): void {
+    if (this.active?.id === lease.id) {
+      this.active = null
+    }
+  }
+
+  cancel(): void {
+    this.active?.controller.abort()
+    this.active = null
+  }
 }
 
 const RISKY_KEYWORDS = [
@@ -151,49 +250,269 @@ export function answerPicoTutorQuestion(
   }
 }
 
-type LegacyTutorReply = Omit<PicoTutorReply, 'structured' | 'intent' | 'skillLevel' | 'usedOfficialFallback'> & {
-  structured?: PicoTutorStructuredReply
-  intent?: PicoTutorReply['intent']
-  skillLevel?: PicoTutorReply['skillLevel']
-  usedOfficialFallback?: boolean
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-export function normalizeTutorReplyPayload(payload: LegacyTutorReply | { reply?: LegacyTutorReply } | null | undefined): PicoTutorReply | null {
-  const raw =
-    payload && 'answer' in payload && typeof payload.answer === 'string'
-      ? payload
-      : payload && 'reply' in payload && payload.reply && typeof payload.reply.answer === 'string'
-        ? payload.reply
-        : null
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0
+}
 
-  if (!raw) {
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function isTutorEntitlement(value: unknown): value is PicoTutorEntitlement {
+  if (!isRecord(value)) return false
+  const plan = value.plan
+  const expectedTutorAccess = plan !== 'free'
+  const expectedByokAccess = plan === 'pro' || plan === 'enterprise'
+  return (
+    value.authenticated === true &&
+    (plan === 'free' || plan === 'starter' || plan === 'pro' || plan === 'enterprise') &&
+    typeof value.tutorAccess === 'boolean' &&
+    value.minimumPlan === 'starter' &&
+    typeof value.byokAccess === 'boolean' &&
+    value.byokMinimumPlan === 'pro' &&
+    value.tutorAccess === expectedTutorAccess &&
+    value.byokAccess === expectedByokAccess
+  )
+}
+
+function isTutorGenerationProof(value: unknown): value is PicoTutorGenerationProof {
+  return (
+    isRecord(value) &&
+    value.provider === 'openai' &&
+    (value.source === 'user' || value.source === 'platform') &&
+    isNonEmptyString(value.model) &&
+    isNonEmptyString(value.responseId) &&
+    isNonEmptyString(value.completedAt)
+  )
+}
+
+function isTutorStructuredReply(value: unknown): value is PicoTutorStructuredReply {
+  if (!isRecord(value)) return false
+  return (
+    isNonEmptyString(value.situation) &&
+    isNonEmptyString(value.diagnosis) &&
+    isStringArray(value.steps) &&
+    Array.isArray(value.commands) &&
+    value.commands.every(
+      (command) =>
+        isRecord(command) &&
+        isNonEmptyString(command.label) &&
+        isNonEmptyString(command.code) &&
+        isNonEmptyString(command.language),
+    ) &&
+    isStringArray(value.verify) &&
+    isStringArray(value.ifThisFails) &&
+    Array.isArray(value.officialLinks) &&
+    value.officialLinks.every(
+      (link) =>
+        isRecord(link) &&
+        isNonEmptyString(link.label) &&
+        isNonEmptyString(link.href) &&
+        isNonEmptyString(link.sourcePath),
+    ) &&
+    Array.isArray(value.sources) &&
+    value.sources.every(
+      (source) =>
+        isRecord(source) &&
+        (source.kind === 'lesson' || source.kind === 'knowledge_pack' || source.kind === 'official') &&
+        isNonEmptyString(source.title) &&
+        isNonEmptyString(source.sourcePath),
+    )
+  )
+}
+
+export function normalizeTutorReplyPayload(payload: unknown): PicoTutorReply | null {
+  const raw = isRecord(payload) && isRecord(payload.reply) ? payload.reply : payload
+  if (!isRecord(raw)) return null
+
+  const confidence = raw.confidence
+  const intent = raw.intent
+  const skillLevel = raw.skillLevel
+  if (
+    !isNonEmptyString(raw.title) ||
+    !isNonEmptyString(raw.summary) ||
+    !isNonEmptyString(raw.answer) ||
+    (confidence !== 'high' && confidence !== 'medium' && confidence !== 'low') ||
+    !isStringArray(raw.nextActions) ||
+    !Array.isArray(raw.lessons) ||
+    !raw.lessons.every(
+      (lesson) =>
+        isRecord(lesson) &&
+        isNonEmptyString(lesson.id) &&
+        isNonEmptyString(lesson.title) &&
+        isNonEmptyString(lesson.href),
+    ) ||
+    !Array.isArray(raw.docs) ||
+    !raw.docs.every(
+      (doc) =>
+        isRecord(doc) &&
+        isNonEmptyString(doc.label) &&
+        isNonEmptyString(doc.href) &&
+        isNonEmptyString(doc.sourcePath),
+    ) ||
+    !isStringArray(raw.recommendedLessonIds) ||
+    typeof raw.escalate !== 'boolean' ||
+    !isTutorStructuredReply(raw.structured) ||
+    !(
+      intent === 'choose' ||
+      intent === 'install' ||
+      intent === 'repair' ||
+      intent === 'migrate' ||
+      intent === 'compare' ||
+      intent === 'tailscale' ||
+      intent === 'optimize' ||
+      intent === 'integrate'
+    ) ||
+    (skillLevel !== 'beginner' && skillLevel !== 'intermediate' && skillLevel !== 'advanced') ||
+    typeof raw.usedOfficialFallback !== 'boolean' ||
+    !isTutorEntitlement(raw.entitlement) ||
+    !isTutorGenerationProof(raw.generation)
+  ) {
     return null
   }
 
-  if (raw.structured && raw.intent && raw.skillLevel && typeof raw.usedOfficialFallback === 'boolean') {
-    return raw as PicoTutorReply
+  return raw as PicoTutorReply
+}
+
+export function normalizeTutorConnectionPayload(payload: unknown): PicoTutorConnection | null {
+  if (!isRecord(payload) || !isTutorEntitlement(payload.entitlement)) return null
+  const proof = payload.proof
+  const proofIsValid =
+    proof == null ||
+    (isRecord(proof) &&
+      (proof.kind === 'validated_user_key' || proof.kind === 'configured_platform_key') &&
+      isNonEmptyString(proof.checkedAt) &&
+      (proof.validatedAt == null || isNonEmptyString(proof.validatedAt)))
+  if (
+    payload.provider !== 'openai' ||
+    !(
+      payload.status === 'connected' ||
+      payload.status === 'platform' ||
+      payload.status === 'disconnected' ||
+      payload.status === 'error'
+    ) ||
+    !(payload.source === 'user' || payload.source === 'platform' || payload.source === 'none') ||
+    typeof payload.connected !== 'boolean' ||
+    !isNonEmptyString(payload.model) ||
+    !isNonEmptyString(payload.message) ||
+    typeof payload.providerAvailable !== 'boolean' ||
+    typeof payload.canConnect !== 'boolean' ||
+    payload.canConnect !== payload.entitlement.byokAccess ||
+    !proofIsValid
+  ) {
+    return null
   }
 
+  if (
+    payload.status === 'connected' &&
+    !(
+      payload.connected === true &&
+      payload.source === 'user' &&
+      payload.providerAvailable === true &&
+      isNonEmptyString(payload.validatedAt) &&
+      isRecord(proof) &&
+      proof.kind === 'validated_user_key' &&
+      proof.validatedAt === payload.validatedAt
+    )
+  ) {
+    return null
+  }
+  if (
+    payload.status === 'platform' &&
+    !(
+      payload.connected === false &&
+      payload.source === 'platform' &&
+      payload.providerAvailable === true &&
+      isRecord(proof) &&
+      proof.kind === 'configured_platform_key'
+    )
+  ) {
+    return null
+  }
+  if (
+    (payload.status === 'disconnected' || payload.status === 'error') &&
+    (payload.connected || payload.providerAvailable || payload.source !== 'none')
+  ) {
+    return null
+  }
+
+  return payload as PicoTutorConnection
+}
+
+export function getPicoTutorPlanCapabilities(plan: string | null | undefined) {
+  const normalized = plan?.trim().toLowerCase()
+  const level = normalized === 'enterprise' ? 3 : normalized === 'pro' ? 2 : normalized === 'starter' ? 1 : 0
   return {
-    ...raw,
-    structured: raw.structured ?? {
-      situation: raw.summary,
-      diagnosis: raw.answer,
-      steps: raw.nextActions,
-      commands: [],
-      verify: [],
-      ifThisFails: raw.escalationReason ? [raw.escalationReason] : [],
-      officialLinks: raw.docs,
-      sources: raw.docs.map((doc) => ({
-        kind: doc.href.startsWith('http') ? 'official' : 'knowledge_pack',
-        title: doc.label,
-        sourcePath: doc.sourcePath,
-        href: doc.href,
-      })),
-      nextQuestion: null,
-    },
-    intent: raw.intent ?? 'repair',
-    skillLevel: raw.skillLevel ?? 'intermediate',
-    usedOfficialFallback: raw.usedOfficialFallback ?? false,
+    tutorAccess: level >= 1,
+    byokAccess: level >= 2,
+  }
+}
+
+function readFailureMessage(payload: unknown): string | null {
+  if (!isRecord(payload)) return null
+  if (typeof payload.detail === 'string' && payload.detail) return payload.detail
+  if (isRecord(payload.detail) && typeof payload.detail.message === 'string') {
+    return payload.detail.message
+  }
+  if (typeof payload.error === 'string' && payload.error) return payload.error
+  if (isRecord(payload.error) && typeof payload.error.message === 'string') {
+    return payload.error.message
+  }
+  return null
+}
+
+export function classifyTutorFailure(statusCode: number, payload: unknown): PicoTutorFailure {
+  const message = readFailureMessage(payload)
+  if (statusCode === 401) {
+    return { kind: 'unauthenticated', message: message ?? 'Sign in to use live Tutor.', retryable: false }
+  }
+  if (statusCode === 402 || statusCode === 403) {
+    return {
+      kind: 'plan_denied',
+      message: message ?? 'Your current plan does not include this Tutor capability.',
+      retryable: false,
+    }
+  }
+  if (statusCode === 409 || statusCode === 424) {
+    return {
+      kind: 'provider_required',
+      message: message ?? 'No validated model provider is available for live Tutor.',
+      retryable: false,
+    }
+  }
+  if (statusCode === 429) {
+    return {
+      kind: 'rate_limited',
+      message: message ?? 'Tutor is rate limited. Wait a moment and try again.',
+      retryable: true,
+    }
+  }
+  if (statusCode >= 500) {
+    return {
+      kind: 'model_unavailable',
+      message: message ?? 'Tutor could not complete this request. Try again shortly.',
+      retryable: true,
+    }
+  }
+  return { kind: 'unknown', message: message ?? 'Tutor request failed.', retryable: false }
+}
+
+export function getPicoTutorAcademyGuidance(
+  lesson: PicoLesson | null,
+  activeStepIndex = 0,
+): PicoTutorAcademyGuidance | null {
+  if (!lesson) return null
+  const safeIndex = Math.max(0, Math.min(activeStepIndex, lesson.steps.length - 1))
+  const step = lesson.steps[safeIndex]
+  return {
+    title: lesson.title,
+    objective: lesson.objective,
+    nextStep: step ? `${step.title}: ${step.body}` : lesson.expectedResult,
+    validation: lesson.validation,
+    href: `/academy/${lesson.slug}`,
   }
 }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -9,6 +10,7 @@ import httpx
 import pytest
 
 from sdk.mutx.observability import Observability, _build_run_from_steps
+from tests.sdk_contract_utils import assert_v1_request
 
 
 def _run_payload(**overrides: Any) -> dict[str, Any]:
@@ -139,7 +141,8 @@ class TestObservabilityReportRun:
         result = obs.report_run(_run_payload())
 
         assert result == returned
-        mock_client.post.assert_called_once_with("/v1/observability/runs", json=_run_payload())
+        request = assert_v1_request(mock_client.post, "POST", "/v1/observability/runs")
+        assert json.loads(request.content) == _run_payload()
         mock_response.raise_for_status.assert_called_once()
 
     def test_report_run_raises_for_status(self):
@@ -172,9 +175,8 @@ class TestObservabilityListRuns:
         result = obs.list_runs()
 
         assert result == payload
-        mock_client.get.assert_called_once_with(
-            "/v1/observability/runs", params={"skip": 0, "limit": 50}
-        )
+        request = assert_v1_request(mock_client.get, "GET", "/v1/observability/runs")
+        assert dict(request.url.params) == {"skip": "0", "limit": "50"}
         mock_response.raise_for_status.assert_called_once()
 
     def test_list_runs_with_all_filters(self):
@@ -190,17 +192,15 @@ class TestObservabilityListRuns:
         )
 
         assert result == payload
-        mock_client.get.assert_called_once_with(
-            "/v1/observability/runs",
-            params={
-                "skip": 10,
-                "limit": 20,
-                "agent_id": "agent-x",
-                "status": "failed",
-                "runtime": "mutx",
-                "trigger": "cron",
-            },
-        )
+        request = assert_v1_request(mock_client.get, "GET", "/v1/observability/runs")
+        assert dict(request.url.params) == {
+            "skip": "10",
+            "limit": "20",
+            "agent_id": "agent-x",
+            "status": "failed",
+            "runtime": "mutx",
+            "trigger": "cron",
+        }
 
     def test_list_runs_partial_filters(self):
         mock_response = MagicMock()
@@ -211,10 +211,13 @@ class TestObservabilityListRuns:
 
         obs.list_runs(agent_id="agent-only", status="completed")
 
-        mock_client.get.assert_called_once_with(
-            "/v1/observability/runs",
-            params={"skip": 0, "limit": 50, "agent_id": "agent-only", "status": "completed"},
-        )
+        request = assert_v1_request(mock_client.get, "GET", "/v1/observability/runs")
+        assert dict(request.url.params) == {
+            "skip": "0",
+            "limit": "50",
+            "agent_id": "agent-only",
+            "status": "completed",
+        }
 
     def test_list_runs_raises_for_status(self):
         mock_response = MagicMock()
@@ -246,7 +249,7 @@ class TestObservabilityGetRun:
         result = obs.get_run("run-123")
 
         assert result == payload
-        mock_client.get.assert_called_once_with("/v1/observability/runs/run-123")
+        assert_v1_request(mock_client.get, "GET", "/v1/observability/runs/run-123")
         mock_response.raise_for_status.assert_called_once()
 
     def test_get_run_raises_for_status(self):
@@ -280,7 +283,12 @@ class TestObservabilityAddSteps:
         result = obs.add_steps("run-abc", steps)
 
         assert result == payload
-        mock_client.post.assert_called_once_with("/v1/observability/runs/run-abc/steps", json=steps)
+        request = assert_v1_request(
+            mock_client.post,
+            "POST",
+            "/v1/observability/runs/run-abc/steps",
+        )
+        assert json.loads(request.content) == steps
         mock_response.raise_for_status.assert_called_once()
 
     def test_add_steps_raises_for_status(self):
@@ -313,7 +321,11 @@ class TestObservabilityGetEval:
         result = obs.get_eval("run-eval-001")
 
         assert result == payload
-        mock_client.get.assert_called_once_with("/v1/observability/runs/run-eval-001/eval")
+        assert_v1_request(
+            mock_client.get,
+            "GET",
+            "/v1/observability/runs/run-eval-001/eval",
+        )
         mock_response.raise_for_status.assert_called_once()
 
     def test_get_eval_not_found_returns_none(self):
@@ -358,9 +370,12 @@ class TestObservabilitySubmitEval:
         result = obs.submit_eval("run-submit", {"pass": True, "score": 85.0})
 
         assert result == payload
-        mock_client.post.assert_called_once_with(
-            "/v1/observability/runs/run-submit/eval", json={"pass": True, "score": 85.0}
+        request = assert_v1_request(
+            mock_client.post,
+            "POST",
+            "/v1/observability/runs/run-submit/eval",
         )
+        assert json.loads(request.content) == {"pass": True, "score": 85.0}
         mock_response.raise_for_status.assert_called_once()
 
     def test_submit_eval_raises_for_status(self):
@@ -393,7 +408,11 @@ class TestObservabilityGetProvenance:
         result = obs.get_provenance("run-prov-001")
 
         assert result == payload
-        mock_client.get.assert_called_once_with("/v1/observability/runs/run-prov-001/provenance")
+        assert_v1_request(
+            mock_client.get,
+            "GET",
+            "/v1/observability/runs/run-prov-001/provenance",
+        )
         mock_response.raise_for_status.assert_called_once()
 
     def test_get_provenance_not_found_returns_none(self):
@@ -445,15 +464,17 @@ class TestObservabilityUpdateStatus:
         )
 
         assert result == payload
-        mock_client.patch.assert_called_once_with(
+        request = assert_v1_request(
+            mock_client.patch,
+            "PATCH",
             "/v1/observability/runs/run-upd/status",
-            json={
-                "status": "completed",
-                "outcome": "success",
-                "ended_at": "2026-04-03T02:00:00+00:00",
-                "duration_ms": 3600000,
-            },
         )
+        assert json.loads(request.content) == {
+            "status": "completed",
+            "outcome": "success",
+            "ended_at": "2026-04-03T02:00:00+00:00",
+            "duration_ms": 3600000,
+        }
         mock_response.raise_for_status.assert_called_once()
 
     def test_update_status_partial(self):
@@ -463,12 +484,14 @@ class TestObservabilityUpdateStatus:
         mock_client.patch.return_value = mock_response
         obs = Observability(mock_client)
 
-        result = obs.update_status(run_id="run-partial", status="running")
+        obs.update_status(run_id="run-partial", status="running")
 
-        mock_client.patch.assert_called_once_with(
+        request = assert_v1_request(
+            mock_client.patch,
+            "PATCH",
             "/v1/observability/runs/run-partial/status",
-            json={"status": "running"},
         )
+        assert json.loads(request.content) == {"status": "running"}
 
     def test_update_status_empty_payload(self):
         mock_response = MagicMock()
@@ -477,12 +500,14 @@ class TestObservabilityUpdateStatus:
         mock_client.patch.return_value = mock_response
         obs = Observability(mock_client)
 
-        result = obs.update_status(run_id="run-empty")
+        obs.update_status(run_id="run-empty")
 
-        mock_client.patch.assert_called_once_with(
+        request = assert_v1_request(
+            mock_client.patch,
+            "PATCH",
             "/v1/observability/runs/run-empty/status",
-            json={},
         )
+        assert json.loads(request.content) == {}
 
     def test_update_status_error_field(self):
         mock_response = MagicMock()
@@ -491,12 +516,14 @@ class TestObservabilityUpdateStatus:
         mock_client.patch.return_value = mock_response
         obs = Observability(mock_client)
 
-        result = obs.update_status(run_id="run-err", status="failed", error="oops")
+        obs.update_status(run_id="run-err", status="failed", error="oops")
 
-        mock_client.patch.assert_called_once_with(
+        request = assert_v1_request(
+            mock_client.patch,
+            "PATCH",
             "/v1/observability/runs/run-err/status",
-            json={"status": "failed", "error": "oops"},
         )
+        assert json.loads(request.content) == {"status": "failed", "error": "oops"}
 
     def test_update_status_raises_for_status(self):
         mock_response = MagicMock()
@@ -543,9 +570,12 @@ class TestObservabilityAsyncMethods:
         result = await obs.alist_runs(agent_id="async-agent")
 
         assert result == payload
-        mock_client.get.assert_called_once_with(
-            "/v1/observability/runs", params={"skip": 0, "limit": 50, "agent_id": "async-agent"}
-        )
+        request = assert_v1_request(mock_client.get, "GET", "/v1/observability/runs")
+        assert dict(request.url.params) == {
+            "skip": "0",
+            "limit": "50",
+            "agent_id": "async-agent",
+        }
 
     @pytest.mark.asyncio
     async def test_aget_run_success(self):
@@ -558,7 +588,7 @@ class TestObservabilityAsyncMethods:
         result = await obs.aget_run("async-run")
 
         assert result["id"] == "550e8400-e29b-41d4-a716-446655440000"
-        mock_client.get.assert_called_once_with("/v1/observability/runs/async-run")
+        assert_v1_request(mock_client.get, "GET", "/v1/observability/runs/async-run")
 
     @pytest.mark.asyncio
     async def test_aadd_steps_success(self):

@@ -121,6 +121,7 @@ export function PublicNav({ overlay = false }: { overlay?: boolean }) {
           {NAV_ITEMS.map((item) => {
             const productActive = item.label === "Product" && pathname.startsWith("/ai-agent-");
             const active = !item.external && (productActive || pathname === item.href || pathname.startsWith(`${item.href}/`));
+            const current = !item.external && (pathname === item.href || pathname.startsWith(`${item.href}/`));
 
             return item.external ? (
               <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer">
@@ -128,7 +129,7 @@ export function PublicNav({ overlay = false }: { overlay?: boolean }) {
                 <span className={styles.visuallyHidden}> (opens in a new tab)</span>
               </a>
             ) : (
-              <Link key={item.href} href={item.href} className={active ? styles.active : undefined} aria-current={active ? "page" : undefined}>
+              <Link key={item.href} href={item.href} className={active ? styles.active : undefined} aria-current={current ? "page" : undefined}>
                 {item.label}
               </Link>
             );
@@ -140,7 +141,7 @@ export function PublicNav({ overlay = false }: { overlay?: boolean }) {
             Pico <ArrowUpRight aria-hidden="true" /><span className={styles.visuallyHidden}> (opens in a new tab)</span>
           </a>
           <Link href="/download" className={styles.download}>
-            Download <ArrowRight aria-hidden="true" />
+            Download <ArrowRight className={styles.directionalIcon} aria-hidden="true" />
           </Link>
           <button
             ref={menuButtonRef}
@@ -183,6 +184,7 @@ export function PublicNav({ overlay = false }: { overlay?: boolean }) {
             {NAV_ITEMS.map((item, index) => {
               const productActive = item.label === "Product" && pathname.startsWith("/ai-agent-");
               const active = !item.external && (productActive || pathname === item.href || pathname.startsWith(`${item.href}/`));
+              const current = !item.external && (pathname === item.href || pathname.startsWith(`${item.href}/`));
 
               return item.external ? (
                 <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer">
@@ -190,13 +192,19 @@ export function PublicNav({ overlay = false }: { overlay?: boolean }) {
                   <span className={styles.visuallyHidden}> (opens in a new tab)</span>
                 </a>
               ) : (
-                <Link key={item.href} href={item.href} onClick={() => setMobileOpen(false)} aria-current={active ? "page" : undefined}>
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={active ? styles.active : undefined}
+                  onClick={() => setMobileOpen(false)}
+                  aria-current={current ? "page" : undefined}
+                >
                   <span>{String(index + 1).padStart(2, "0")}</span>{item.label}
                 </Link>
               );
             })}
             <Link href="/download" onClick={() => setMobileOpen(false)} className={styles.mobileDownload}>
-              <span>05</span>Download<ArrowRight aria-hidden="true" />
+              <span>05</span>Download<ArrowRight className={styles.directionalIcon} aria-hidden="true" />
             </Link>
             <a href="https://pico.mutx.dev" target="_blank" rel="noopener noreferrer">
               <span>06</span>Pico<ArrowUpRight aria-hidden="true" />

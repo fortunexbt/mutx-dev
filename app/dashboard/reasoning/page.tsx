@@ -16,11 +16,6 @@ export default function DashboardReasoningPage() {
             icon={Brain}
             iconTone="text-violet-300 bg-violet-400/10"
             badge="autoreason v1"
-            hint={{
-              tone: 'beta',
-              detail:
-                'Autoreason is usable, but this v1 workflow is still settling its operator ergonomics, artifact conventions, and launch contract.',
-            }}
             stats={[
               { label: "Loop", value: "A/B/AB" },
               { label: "Judging", value: "Blind panel", tone: "success" },

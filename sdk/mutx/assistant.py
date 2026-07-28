@@ -6,6 +6,8 @@ from typing import Any, Optional
 
 import httpx
 
+from mutx._http import api_path
+
 
 class AssistantSkill:
     """Represents an assistant skill."""
@@ -107,7 +109,7 @@ class Assistant:
         params: dict[str, Any] = {}
         if agent_id:
             params["agent_id"] = str(agent_id)
-        response = self._client.get("/assistant/overview", params=params)
+        response = self._client.get("assistant/overview", params=params)
         response.raise_for_status()
         return AssistantOverview(response.json())
 
@@ -120,7 +122,7 @@ class Assistant:
         params: dict[str, Any] = {}
         if agent_id:
             params["agent_id"] = str(agent_id)
-        response = await self._client.get("/assistant/overview", params=params)
+        response = await self._client.get("assistant/overview", params=params)
         response.raise_for_status()
         return AssistantOverview(response.json())
 
@@ -130,7 +132,7 @@ class Assistant:
     ) -> list[AssistantSkill]:
         """List skills for an assistant."""
         self._require_sync_client()
-        response = self._client.get(f"/assistant/{agent_id}/skills")
+        response = self._client.get(api_path("assistant/{agent_id}/skills", agent_id=agent_id))
         response.raise_for_status()
         return [AssistantSkill(d) for d in response.json()]
 
@@ -140,7 +142,9 @@ class Assistant:
     ) -> list[AssistantSkill]:
         """List skills for an assistant (async)."""
         self._require_async_client()
-        response = await self._client.get(f"/assistant/{agent_id}/skills")
+        response = await self._client.get(
+            api_path("assistant/{agent_id}/skills", agent_id=agent_id)
+        )
         response.raise_for_status()
         return [AssistantSkill(d) for d in response.json()]
 
@@ -151,7 +155,9 @@ class Assistant:
     ) -> list[AssistantSkill]:
         """Install a skill for an assistant."""
         self._require_sync_client()
-        response = self._client.post(f"/assistant/{agent_id}/skills/{skill_id}")
+        response = self._client.post(
+            api_path("assistant/{agent_id}/skills/{skill_id}", agent_id=agent_id, skill_id=skill_id)
+        )
         response.raise_for_status()
         return [AssistantSkill(d) for d in response.json()]
 
@@ -162,7 +168,9 @@ class Assistant:
     ) -> list[AssistantSkill]:
         """Install a skill for an assistant (async)."""
         self._require_async_client()
-        response = await self._client.post(f"/assistant/{agent_id}/skills/{skill_id}")
+        response = await self._client.post(
+            api_path("assistant/{agent_id}/skills/{skill_id}", agent_id=agent_id, skill_id=skill_id)
+        )
         response.raise_for_status()
         return [AssistantSkill(d) for d in response.json()]
 
@@ -173,7 +181,9 @@ class Assistant:
     ) -> list[AssistantSkill]:
         """Uninstall a skill from an assistant."""
         self._require_sync_client()
-        response = self._client.delete(f"/assistant/{agent_id}/skills/{skill_id}")
+        response = self._client.delete(
+            api_path("assistant/{agent_id}/skills/{skill_id}", agent_id=agent_id, skill_id=skill_id)
+        )
         response.raise_for_status()
         return [AssistantSkill(d) for d in response.json()]
 
@@ -184,7 +194,9 @@ class Assistant:
     ) -> list[AssistantSkill]:
         """Uninstall a skill from an assistant (async)."""
         self._require_async_client()
-        response = await self._client.delete(f"/assistant/{agent_id}/skills/{skill_id}")
+        response = await self._client.delete(
+            api_path("assistant/{agent_id}/skills/{skill_id}", agent_id=agent_id, skill_id=skill_id)
+        )
         response.raise_for_status()
         return [AssistantSkill(d) for d in response.json()]
 
@@ -194,7 +206,7 @@ class Assistant:
     ) -> list[AssistantChannel]:
         """List channels for an assistant."""
         self._require_sync_client()
-        response = self._client.get(f"/assistant/{agent_id}/channels")
+        response = self._client.get(api_path("assistant/{agent_id}/channels", agent_id=agent_id))
         response.raise_for_status()
         return [AssistantChannel(d) for d in response.json()]
 
@@ -204,7 +216,9 @@ class Assistant:
     ) -> list[AssistantChannel]:
         """List channels for an assistant (async)."""
         self._require_async_client()
-        response = await self._client.get(f"/assistant/{agent_id}/channels")
+        response = await self._client.get(
+            api_path("assistant/{agent_id}/channels", agent_id=agent_id)
+        )
         response.raise_for_status()
         return [AssistantChannel(d) for d in response.json()]
 
@@ -214,7 +228,7 @@ class Assistant:
     ) -> list[AssistantWakeup]:
         """List wakeup phrases for an assistant."""
         self._require_sync_client()
-        response = self._client.get(f"/assistant/{agent_id}/wakeups")
+        response = self._client.get(api_path("assistant/{agent_id}/wakeups", agent_id=agent_id))
         response.raise_for_status()
         return [AssistantWakeup(d) for d in response.json()]
 
@@ -224,7 +238,9 @@ class Assistant:
     ) -> list[AssistantWakeup]:
         """List wakeup phrases for an assistant (async)."""
         self._require_async_client()
-        response = await self._client.get(f"/assistant/{agent_id}/wakeups")
+        response = await self._client.get(
+            api_path("assistant/{agent_id}/wakeups", agent_id=agent_id)
+        )
         response.raise_for_status()
         return [AssistantWakeup(d) for d in response.json()]
 
@@ -234,7 +250,7 @@ class Assistant:
     ) -> AssistantHealth:
         """Get health status for an assistant."""
         self._require_sync_client()
-        response = self._client.get(f"/assistant/{agent_id}/health")
+        response = self._client.get(api_path("assistant/{agent_id}/health", agent_id=agent_id))
         response.raise_for_status()
         return AssistantHealth(response.json())
 
@@ -244,7 +260,9 @@ class Assistant:
     ) -> AssistantHealth:
         """Get health status for an assistant (async)."""
         self._require_async_client()
-        response = await self._client.get(f"/assistant/{agent_id}/health")
+        response = await self._client.get(
+            api_path("assistant/{agent_id}/health", agent_id=agent_id)
+        )
         response.raise_for_status()
         return AssistantHealth(response.json())
 
@@ -254,7 +272,7 @@ class Assistant:
     ) -> list[AssistantSession]:
         """List sessions for an assistant."""
         self._require_sync_client()
-        response = self._client.get(f"/assistant/{agent_id}/sessions")
+        response = self._client.get(api_path("assistant/{agent_id}/sessions", agent_id=agent_id))
         response.raise_for_status()
         return [AssistantSession(d) for d in response.json()]
 
@@ -264,6 +282,8 @@ class Assistant:
     ) -> list[AssistantSession]:
         """List sessions for an assistant (async)."""
         self._require_async_client()
-        response = await self._client.get(f"/assistant/{agent_id}/sessions")
+        response = await self._client.get(
+            api_path("assistant/{agent_id}/sessions", agent_id=agent_id)
+        )
         response.raise_for_status()
         return [AssistantSession(d) for d in response.json()]

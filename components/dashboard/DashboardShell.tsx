@@ -13,7 +13,10 @@ import {
   useNavigateToPanel,
   usePrefetchPanel,
 } from "@/lib/navigation";
+import { useMissionControl } from "@/lib/store";
 import { cn } from "@/lib/utils";
+
+import visualContract from "./dashboardVisualContract.module.css";
 
 import {
   ALL_DASHBOARD_NAV_ITEMS,
@@ -137,7 +140,7 @@ function DashboardNav({
               const itemClassName = cn(
                 "group relative flex min-h-11 items-center gap-2.5 rounded-[4px] border px-2.5 py-2 text-[12px] transition-[background-color,border-color,color] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847]",
                 active
-                  ? "border-[#34342e] bg-[#171813] font-medium text-[#f0ebdf] shadow-[inset_3px_0_0_#ff571c]"
+                  ? "dashboard-active-rail border-[#34342e] bg-[#171813] font-medium text-[#f0ebdf]"
                   : "border-transparent text-[#aaa397] hover:border-[#2b2b26] hover:bg-[#12130f] hover:text-[#eee9dc]",
               );
               const itemContent = (
@@ -160,7 +163,7 @@ function DashboardNav({
                   />
                   <span className="truncate">{item.title}</span>
                   {active ? (
-                    <ChevronRight className="ml-auto h-3.5 w-3.5 text-[#58aaff]" aria-hidden="true" />
+                    <ChevronRight className="rtl-directional-icon ms-auto h-3.5 w-3.5 text-[#58aaff]" aria-hidden="true" />
                   ) : null}
                 </>
               );
@@ -239,6 +242,7 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
   const navigateToPanel = useNavigateToPanel();
   const prefetchPanel = usePrefetchPanel();
   const { status, isDesktop, platformReady } = useDesktopStatus();
+  const webCurrentUser = useMissionControl((state) => state.currentUser);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [timecode, setTimecode] = useState("TC --:--:--Z");
@@ -328,7 +332,10 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
 
   return (
     <div
-      className="dashboard-app min-h-screen bg-[#090a08] text-[#eee9dc]"
+      className={cn(
+        "dashboard-app min-h-screen bg-[#090a08] text-[#eee9dc]",
+        visualContract.visualContract,
+      )}
       data-dashboard-theme="flight-recorder"
     >
       {mobileOpen ? (
@@ -346,7 +353,7 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
             role="dialog"
             aria-modal="true"
             aria-label="Dashboard navigation"
-            className="relative flex h-full w-[min(88vw,18rem)] flex-col border-r border-[#383730] bg-[#080907] shadow-[24px_0_64px_rgba(0,0,0,0.55)]"
+            className="dashboard-mobile-drawer relative flex h-full w-[min(88vw,18rem)] flex-col bg-[#080907]"
           >
             <div className="flex h-16 items-center justify-between border-b border-[#292a25] px-4">
               <MutxBrand />
@@ -382,7 +389,7 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
         ref={appContentRef}
         className="min-h-screen lg:grid lg:grid-cols-[16.75rem_minmax(0,1fr)]"
       >
-        <aside className="hidden h-screen flex-col border-r border-[#292a25] bg-[#080907] lg:sticky lg:top-0 lg:flex">
+        <aside className="hidden h-screen flex-col border-e border-[#292a25] bg-[#080907] lg:sticky lg:top-0 lg:flex">
           <div className="flex h-16 items-center border-b border-[#292a25] px-5">
             <MutxBrand />
           </div>
@@ -408,8 +415,8 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
               />
               <span>{controlPlaneReady ? "Control plane connected" : "Browser workspace"}</span>
             </div>
-            <p className="mt-2 truncate font-[family:var(--font-mono)] text-[11px] text-[#8d867a]">
-              {status.user?.email || "Sign in to load workspace data"}
+            <p dir="auto" className="mt-2 truncate font-[family:var(--font-mono)] text-[11px] text-[#8d867a]">
+              {(isDesktop ? status.user?.email : webCurrentUser?.email) || "Operator identity unavailable"}
             </p>
           </div>
         </aside>
@@ -420,7 +427,7 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
               ref={mobileTriggerRef}
               type="button"
               onClick={() => setMobileOpen(true)}
-              className="mr-3 flex h-11 w-11 items-center justify-center rounded-[4px] border border-[#393830] bg-[#131410] text-[#d6d0c3] transition hover:border-[#5c584f] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847] lg:hidden"
+              className="me-3 flex h-11 w-11 items-center justify-center rounded-[4px] border border-[#393830] bg-[#131410] text-[#d6d0c3] transition hover:border-[#5c584f] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff7847] lg:hidden"
               aria-label="Open dashboard sidebar"
               aria-controls="dashboard-mobile-navigation"
               aria-expanded={mobileOpen}
@@ -428,9 +435,9 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
               <Menu className="h-4 w-4" aria-hidden="true" />
             </button>
 
-            <div className="min-w-0 border-l border-[#36362f] pl-3">
+            <div className="min-w-0 border-s border-[#36362f] ps-3">
               <p className="flex items-center gap-2 truncate font-[family:var(--font-mono)] text-[11px] font-semibold uppercase tracking-[0.14em] text-[#918b80]">
-                <span className="text-[#ff6a32]">REC {String(activeRecord).padStart(2, "0")}</span>
+                <span className="text-[#ff6a32]">SYS {String(activeRecord).padStart(2, "0")}</span>
                 <span aria-hidden="true">/</span>
                 <span>{activeGroup}</span>
               </p>
@@ -439,8 +446,8 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
               </p>
             </div>
 
-            <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-              <span className="mr-1 hidden border-r border-[#34342e] pr-4 font-[family:var(--font-mono)] text-[11px] tabular-nums tracking-[0.08em] text-[#8d867a] xl:inline">
+            <div className="ms-auto flex items-center gap-1.5 sm:gap-2">
+              <span dir="ltr" className="me-1 hidden border-e border-[#34342e] pe-4 font-[family:var(--font-mono)] text-[11px] tabular-nums tracking-[0.08em] text-[#8d867a] xl:inline">
                 {timecode}
               </span>
               <button
@@ -453,7 +460,7 @@ export function DashboardShell({ children, spaShellEnabled }: DashboardShellProp
               >
                 <Search className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>Find a surface</span>
-                <kbd className="ml-2 rounded-[3px] border border-[#3b3a33] bg-[#090a08] px-1.5 py-0.5 font-[family:var(--font-mono)] text-[11px] text-[#7f7a70]">
+                <kbd className="ms-2 rounded-[3px] border border-[#3b3a33] bg-[#090a08] px-1.5 py-0.5 font-[family:var(--font-mono)] text-[11px] text-[#7f7a70]">
                   &#8984;K
                 </kbd>
               </button>

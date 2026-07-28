@@ -1,10 +1,13 @@
-from ipaddress import ip_address
 from datetime import datetime, timezone
-from typing import Optional
-from urllib.parse import urlsplit
+from ipaddress import ip_address
+import logging
+from typing import Any, Awaitable, Callable, Optional
+from urllib.parse import unquote, urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict, EmailStr
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.config import get_settings
@@ -14,12 +17,25 @@ from src.api.services.user_service import UserService
 from src.api.services.analytics import log_analytics_event, AnalyticsEventType
 from src.api.auth.dependencies import get_current_user, get_current_user_optional
 from src.api.auth.jwt import (
+    create_access_token as create_dashboard_access_token,
     issue_token_pair,
     revoke_refresh_token,
     refresh_access_token,
 )
+from src.api.auth.oauth_state import consume_oauth_state, issue_oauth_state
 from src.api.auth.password import validate_password_strength
+from src.api.services.auth import (
+    OAuthIdentityConflictError,
+    authenticate_password_user,
+    consume_email_verification_token,
+    consume_password_reset_token,
+    get_auth_user_by_email,
+    resolve_external_auth_user,
+    resolve_oauth_user,
+)
 from src.api.services.email.email_service import (
+    EmailActionTokenError,
+    decode_email_action_token,
     send_verification_email,
     send_password_reset_email,
 )
@@ -29,10 +45,12 @@ from src.api.services.social_auth import (
     build_authorization_url,
     exchange_code_for_user_profile,
     get_provider_client_id,
+    get_provider_client_secret,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 settings = get_settings()
+logger = logging.getLogger(__name__)
 LOCAL_BOOTSTRAP_EMAIL = "local-operator@mutx.local"
 
 
@@ -40,28 +58,33 @@ def _get_expires_in_seconds(expires_at: datetime) -> int:
     return max(0, int((expires_at - datetime.now(timezone.utc)).total_seconds()))
 
 
-class RegisterRequest(BaseModel):
+class AuthRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class RegisterRequest(AuthRequest):
     email: EmailStr
-    name: str
-    password: str
+    name: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=1, max_length=1024)
     verification_origin: str | None = None
+    return_path: str | None = Field(default=None, max_length=1024)
 
 
-class LoginRequest(BaseModel):
+class LoginRequest(AuthRequest):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=1, max_length=1024)
 
 
-class RefreshRequest(BaseModel):
-    refresh_token: str
+class RefreshRequest(AuthRequest):
+    refresh_token: str = Field(min_length=32, max_length=4096)
 
 
-class LogoutRequest(BaseModel):
-    refresh_token: Optional[str] = None
+class LogoutRequest(AuthRequest):
+    refresh_token: Optional[str] = Field(default=None, min_length=32, max_length=4096)
 
 
-class LocalBootstrapRequest(BaseModel):
-    name: str = "Local Operator"
+class LocalBootstrapRequest(AuthRequest):
+    name: str = Field(default="Local Operator", min_length=1, max_length=255)
 
 
 class TokenResponse(BaseModel):
@@ -71,9 +94,14 @@ class TokenResponse(BaseModel):
     expires_in: int
 
 
-class RegisterResponse(TokenResponse):
-    verification_email_sent: bool = True
+class RegisterResponse(BaseModel):
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_type: str = "bearer"
+    expires_in: int | None = None
+    verification_email_sent: bool
     requires_email_verification: bool = False
+    return_path: str
 
 
 class UserResponse(BaseModel):
@@ -81,6 +109,7 @@ class UserResponse(BaseModel):
     email: str
     name: str
     plan: str
+    roles: list[str]
     created_at: datetime
     is_active: bool
     is_email_verified: bool = False
@@ -125,20 +154,40 @@ def _assert_local_bootstrap_allowed(request: Request) -> None:
         )
 
 
-def _normalize_origin(value: str | None) -> str | None:
+def _origin_from_url(value: str | None) -> str | None:
     if not value:
         return None
 
     parsed = urlsplit(value)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
         return None
 
     return f"{parsed.scheme}://{parsed.netloc}"
 
 
+def _normalize_origin(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    parsed = urlsplit(value)
+    if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+        return None
+    return _origin_from_url(value)
+
+
 def _get_allowed_frontend_origins() -> set[str]:
-    origins = {settings.frontend_url.rstrip("/")}
-    configured = settings.cors_origins if isinstance(settings.cors_origins, list) else []
+    origins: set[str] = set()
+    default_origin = _normalize_origin(settings.frontend_url)
+    if default_origin:
+        origins.add(default_origin)
+    configured = (
+        settings.auth_redirect_origins if isinstance(settings.auth_redirect_origins, list) else []
+    )
     for origin in configured:
         normalized = _normalize_origin(origin)
         if normalized:
@@ -147,33 +196,71 @@ def _get_allowed_frontend_origins() -> set[str]:
 
 
 def _is_allowed_frontend_origin(origin: str) -> bool:
-    if origin in _get_allowed_frontend_origins():
-        return True
-
-    parsed = urlsplit(origin)
-    host = (parsed.hostname or "").lower()
-
-    if host == "mutx.dev" or host.endswith(".mutx.dev"):
-        return True
-
-    if host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".localhost"):
-        return True
-
-    return False
+    return origin in _get_allowed_frontend_origins()
 
 
 def _resolve_frontend_origin(requested_origin: str | None) -> str:
     normalized = _normalize_origin(requested_origin)
     if normalized and _is_allowed_frontend_origin(normalized):
         return normalized
-    return settings.frontend_url.rstrip("/")
+    default_origin = _normalize_origin(settings.frontend_url)
+    if default_origin is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Frontend URL configuration is invalid.",
+        )
+    return default_origin
+
+
+def _default_return_path_for_origin(origin: str) -> str:
+    hostname = (urlsplit(origin).hostname or "").casefold()
+    pico_hosts = {"pico.mutx.dev", "pico.localhost"}
+    return "/" if hostname in pico_hosts else "/dashboard"
+
+
+def _sanitize_return_path(value: str | None, *, fallback: str = "/dashboard") -> str:
+    if not value:
+        return fallback
+
+    candidate = value.strip()
+    decoded = unquote(candidate)
+    if (
+        not candidate
+        or len(candidate) > 1024
+        or not candidate.startswith("/")
+        or candidate.startswith("//")
+        or not decoded.startswith("/")
+        or decoded.startswith("//")
+        or "\\" in candidate
+        or "\\" in decoded
+        or any(ord(character) < 32 for character in candidate)
+    ):
+        return fallback
+
+    parsed = urlsplit(candidate)
+    decoded_parsed = urlsplit(decoded)
+    if parsed.scheme or parsed.netloc or decoded_parsed.scheme or decoded_parsed.netloc:
+        return fallback
+
+    path = decoded_parsed.path.casefold()
+    blocked_paths = (
+        "/login",
+        "/register",
+        "/forgot-password",
+        "/reset-password",
+        "/verify-email",
+        "/api/auth/",
+    )
+    if any(path == blocked.rstrip("/") or path.startswith(blocked) for blocked in blocked_paths):
+        return fallback
+    return candidate
 
 
 def _validate_oauth_redirect_uri(provider: OAuthProvider, redirect_uri: str) -> str:
     parsed = urlsplit(redirect_uri)
-    origin = _normalize_origin(redirect_uri)
+    origin = _origin_from_url(redirect_uri)
 
-    if origin is None or not _is_allowed_frontend_origin(origin):
+    if origin is None or not _is_allowed_frontend_origin(origin) or parsed.query or parsed.fragment:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="OAuth redirect URI must target an allowed frontend origin.",
@@ -186,18 +273,48 @@ def _validate_oauth_redirect_uri(provider: OAuthProvider, redirect_uri: str) -> 
             detail="OAuth redirect URI path is invalid.",
         )
 
-    return redirect_uri
+    return f"{origin}{parsed.path}"
+
+
+def _assert_social_provider_configured(provider: OAuthProvider) -> str:
+    client_id = get_provider_client_id(provider)
+    if not client_id:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"{provider.value.title()} OAuth is not configured.",
+        )
+
+    if provider == OAuthProvider.APPLE:
+        required = (
+            settings.apple_team_id,
+            settings.apple_key_id,
+            settings.apple_private_key,
+        )
+        has_credentials = all(required)
+    else:
+        has_credentials = bool(get_provider_client_secret(provider))
+
+    if not has_credentials:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"{provider.value.title()} OAuth is not configured.",
+        )
+    return client_id
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
-async def register(request: RegisterRequest, session: AsyncSession = Depends(get_db)):
+async def register(
+    request: RegisterRequest,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db),
+):
     user_service = UserService(session)
-
-    existing_user = await user_service.get_user_by_email(request.email)
-    if existing_user:
+    normalized_email = str(request.email).strip().casefold()
+    normalized_name = request.name.strip()
+    if not normalized_name:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered",
+            detail="Name must not be empty",
         )
 
     is_valid, error_message = validate_password_strength(request.password)
@@ -207,44 +324,62 @@ async def register(request: RegisterRequest, session: AsyncSession = Depends(get
             detail=error_message,
         )
 
-    user = await user_service.create_user(
-        email=request.email,
-        name=request.name,
-        password=request.password,
+    verification_origin = _resolve_frontend_origin(request.verification_origin)
+    return_path = _sanitize_return_path(
+        request.return_path,
+        fallback=_default_return_path_for_origin(verification_origin),
     )
 
-    # Send verification email
-    token = await user_service.create_email_verification_token(user.id)
-    send_verification_email(
-        user.email,
-        user.name,
-        token,
-        frontend_url=_resolve_frontend_origin(request.verification_origin),
-    )
+    user: User | None = None
+    try:
+        user = await user_service.create_user(
+            email=normalized_email,
+            name=normalized_name,
+            password=request.password,
+        )
+    except IntegrityError as exc:
+        await session.rollback()
+        existing_user = await get_auth_user_by_email(session, normalized_email)
+        if existing_user is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Account registration is temporarily unavailable",
+            ) from exc
+        if not existing_user.is_email_verified:
+            user = existing_user
 
-    access_token, access_token_expires_at, refresh_token = await issue_token_pair(session, user.id)
+    if user is not None and not user.is_email_verified:
+        token = await user_service.create_email_verification_token(user.id)
+        background_tasks.add_task(
+            _deliver_auth_email_safely,
+            send_verification_email,
+            user.email,
+            user.name,
+            token,
+            frontend_url=verification_origin,
+            return_path=return_path,
+        )
 
-    # Track analytics event
-    await log_analytics_event(
-        session,
-        event_name="User logged in",
-        event_type=AnalyticsEventType.USER_LOGIN,
-        user_id=user.id,
-    )
-
+    # Registration is an account-creation request, not a login. Returning the
+    # same accepted shape for new and existing addresses avoids enumeration;
+    # users authenticate separately when verification policy is disabled.
     return RegisterResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        expires_in=_get_expires_in_seconds(access_token_expires_at),
+        access_token=None,
+        refresh_token=None,
+        expires_in=None,
+        verification_email_sent=True,
         requires_email_verification=settings.require_email_verification,
+        return_path=return_path,
     )
 
 
 @router.post("/login", response_model=TokenResponse)
 async def login(request: LoginRequest, session: AsyncSession = Depends(get_db)):
-    user_service = UserService(session)
-
-    user = await user_service.authenticate_user(request.email, request.password)
+    user = await authenticate_password_user(
+        session,
+        email=str(request.email),
+        password=request.password,
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -348,8 +483,14 @@ async def logout(
             refresh_token,
             user_id=current_user.id if current_user else None,
         )
-        if not revoked and current_user:
-            await UserService(session).revoke_all_refresh_tokens(current_user.id)
+        if not revoked:
+            if current_user:
+                await UserService(session).revoke_all_refresh_tokens(current_user.id)
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or expired refresh token",
+                )
     elif current_user:
         await UserService(session).revoke_all_refresh_tokens(current_user.id)
 
@@ -366,16 +507,12 @@ async def logout(
 
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
-    if settings.require_email_verification and not current_user.is_email_verified:
-        raise HTTPException(
-            status_code=403,
-            detail="Email verification is required before accessing this resource.",
-        )
     return UserResponse(
         id=str(current_user.id),
         email=current_user.email,
         name=current_user.name,
         plan=current_user.plan,
+        roles=current_user.roles,
         created_at=current_user.created_at,
         is_active=current_user.is_active,
         is_email_verified=current_user.is_email_verified,
@@ -383,71 +520,112 @@ async def get_me(current_user: User = Depends(get_current_user)):
 
 
 # New request models for password reset and email verification
-class ForgotPasswordRequest(BaseModel):
+class ForgotPasswordRequest(AuthRequest):
     email: EmailStr
     email_link_origin: str | None = None
+    return_path: str | None = Field(default=None, max_length=1024)
 
 
-class ResetPasswordRequest(BaseModel):
-    token: str
-    new_password: str
+class ResetPasswordRequest(AuthRequest):
+    token: str = Field(min_length=32, max_length=4096)
+    new_password: str = Field(min_length=8, max_length=1024)
 
 
-class VerifyEmailRequest(BaseModel):
-    token: str
+class VerifyEmailRequest(AuthRequest):
+    token: str = Field(min_length=32, max_length=4096)
 
 
-class ResendVerificationRequest(BaseModel):
+class ResendVerificationRequest(AuthRequest):
     email: EmailStr
     verification_origin: str | None = None
+    return_path: str | None = Field(default=None, max_length=1024)
 
 
 class MessageResponse(BaseModel):
     message: str
+    return_path: str | None = None
 
 
 class OAuthAuthorizeResponse(BaseModel):
     authorization_url: str
+    state: str
 
 
-class OAuthExchangeRequest(BaseModel):
-    code: str
-    redirect_uri: str
+class OAuthExchangeRequest(AuthRequest):
+    code: str = Field(min_length=1, max_length=4096)
+    redirect_uri: str = Field(min_length=1, max_length=2048)
+    state: str = Field(min_length=32, max_length=512)
 
 
 VERIFICATION_EMAIL_RESPONSE_MESSAGE = (
-    "If an account exists and is not verified, a verification email has been sent"
+    "If an unverified account exists, the delivery request was processed. "
+    "Check the inbox if the configured provider accepted it."
+)
+PASSWORD_RESET_EMAIL_RESPONSE_MESSAGE = (
+    "If an eligible account exists, the reset request was processed. "
+    "Check the inbox if the configured provider accepted it."
 )
 
 
+async def _deliver_auth_email_safely(
+    delivery: Callable[..., Awaitable[bool]],
+    *args: Any,
+    **kwargs: Any,
+) -> None:
+    """Run post-response auth email I/O without changing the public response."""
+    try:
+        await delivery(*args, **kwargs)
+    except Exception:
+        logger.exception("Background transactional authentication email failed")
+
+
 @router.post("/forgot-password", response_model=MessageResponse)
-async def forgot_password(request: ForgotPasswordRequest, session: AsyncSession = Depends(get_db)):
+async def forgot_password(
+    request: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db),
+):
     """Request a password reset email."""
     user_service = UserService(session)
+    frontend_origin = _resolve_frontend_origin(request.email_link_origin)
+    return_path = _sanitize_return_path(
+        request.return_path,
+        fallback=_default_return_path_for_origin(frontend_origin),
+    )
 
-    user = await user_service.get_user_by_email(request.email)
-    if user:
-        # Only send email if user exists (don't reveal if email exists)
-        # Create reset token
+    user = await get_auth_user_by_email(session, str(request.email))
+    if user is not None and user.password_hash is not None:
         token = await user_service.create_password_reset_token(user.id)
-        # Send email
-        send_password_reset_email(
+        background_tasks.add_task(
+            _deliver_auth_email_safely,
+            send_password_reset_email,
             user.email,
             user.name,
             token,
-            frontend_url=_resolve_frontend_origin(request.email_link_origin),
+            frontend_url=frontend_origin,
+            return_path=return_path,
         )
 
     # Always return success to prevent email enumeration
     return MessageResponse(
-        message="If an account exists with this email, a password reset link has been sent"
+        message=PASSWORD_RESET_EMAIL_RESPONSE_MESSAGE,
+        return_path=return_path,
     )
 
 
 @router.post("/reset-password", response_model=MessageResponse)
 async def reset_password(request: ResetPasswordRequest, session: AsyncSession = Depends(get_db)):
     """Reset password using token."""
-    user_service = UserService(session)
+    try:
+        reset_token, return_path = decode_email_action_token(
+            request.token,
+            purpose="reset-password",
+        )
+    except EmailActionTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        ) from exc
 
     # Validate password strength
     is_valid, error_message = validate_password_strength(request.new_password)
@@ -458,78 +636,120 @@ async def reset_password(request: ResetPasswordRequest, session: AsyncSession = 
         )
 
     # Reset password
-    user = await user_service.reset_password(request.token, request.new_password)
+    user = await consume_password_reset_token(
+        session,
+        token=reset_token,
+        new_password=request.new_password,
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired reset token",
         )
-    await user_service.revoke_all_refresh_tokens(user.id)
-
-    return MessageResponse(message="Password has been reset successfully")
+    return MessageResponse(
+        message="Password has been reset successfully",
+        return_path=_sanitize_return_path(return_path),
+    )
 
 
 @router.post("/verify-email", response_model=MessageResponse)
 async def verify_email(request: VerifyEmailRequest, session: AsyncSession = Depends(get_db)):
     """Verify email with token."""
-    user_service = UserService(session)
+    try:
+        verification_token, return_path = decode_email_action_token(
+            request.token,
+            purpose="verify-email",
+        )
+    except EmailActionTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification token",
+        ) from exc
 
-    user = await user_service.verify_email(request.token)
+    user = await consume_email_verification_token(session, verification_token)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired verification token",
         )
 
-    return MessageResponse(message="Email has been verified successfully")
+    return MessageResponse(
+        message="Email has been verified successfully",
+        return_path=_sanitize_return_path(return_path),
+    )
 
 
 @router.post("/resend-verification", response_model=MessageResponse)
 async def resend_verification(
-    request: ResendVerificationRequest, session: AsyncSession = Depends(get_db)
+    request: ResendVerificationRequest,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db),
 ):
     """Resend verification email."""
     user_service = UserService(session)
+    verification_origin = _resolve_frontend_origin(request.verification_origin)
+    return_path = _sanitize_return_path(
+        request.return_path,
+        fallback=_default_return_path_for_origin(verification_origin),
+    )
 
-    user = await user_service.get_user_by_email(request.email)
+    user = await get_auth_user_by_email(session, str(request.email))
     if not user:
         # Don't reveal if email exists
-        return MessageResponse(message=VERIFICATION_EMAIL_RESPONSE_MESSAGE)
+        return MessageResponse(
+            message=VERIFICATION_EMAIL_RESPONSE_MESSAGE,
+            return_path=return_path,
+        )
 
     if user.is_email_verified:
-        return MessageResponse(message=VERIFICATION_EMAIL_RESPONSE_MESSAGE)
+        return MessageResponse(
+            message=VERIFICATION_EMAIL_RESPONSE_MESSAGE,
+            return_path=return_path,
+        )
 
     # Create new verification token
     token = await user_service.create_email_verification_token(user.id)
-    # Send email
-    send_verification_email(
+    background_tasks.add_task(
+        _deliver_auth_email_safely,
+        send_verification_email,
         user.email,
         user.name,
         token,
-        frontend_url=_resolve_frontend_origin(request.verification_origin),
+        frontend_url=verification_origin,
+        return_path=return_path,
     )
 
-    return MessageResponse(message=VERIFICATION_EMAIL_RESPONSE_MESSAGE)
+    return MessageResponse(
+        message=VERIFICATION_EMAIL_RESPONSE_MESSAGE,
+        return_path=return_path,
+    )
 
 
 @router.get("/oauth/{provider}/authorize", response_model=OAuthAuthorizeResponse)
-async def authorize_oauth(provider: OAuthProvider, redirect_uri: str, state: str):
+async def authorize_oauth(
+    provider: OAuthProvider,
+    redirect_uri: str,
+    state: str | None = None,
+    session: AsyncSession = Depends(get_db),
+):
     validated_redirect_uri = _validate_oauth_redirect_uri(provider, redirect_uri)
-    client_id = get_provider_client_id(provider)
-
-    if not client_id:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"{provider.value.title()} OAuth is not configured.",
-        )
+    client_id = _assert_social_provider_configured(provider)
+    bound_state = await issue_oauth_state(
+        session,
+        flow="oauth",
+        provider=provider.value,
+        redirect_uri=validated_redirect_uri,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
 
     return OAuthAuthorizeResponse(
         authorization_url=build_authorization_url(
             provider,
             client_id=client_id,
             redirect_uri=validated_redirect_uri,
-            state=state,
-        )
+            state=bound_state,
+        ),
+        state=bound_state,
     )
 
 
@@ -540,7 +760,19 @@ async def exchange_oauth_code(
     session: AsyncSession = Depends(get_db),
 ):
     validated_redirect_uri = _validate_oauth_redirect_uri(provider, request.redirect_uri)
-    user_service = UserService(session)
+    _assert_social_provider_configured(provider)
+    state_is_valid = await consume_oauth_state(
+        session,
+        state=request.state,
+        flow="oauth",
+        provider=provider.value,
+        redirect_uri=validated_redirect_uri,
+    )
+    if not state_is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OAuth state.",
+        )
 
     try:
         profile = await exchange_code_for_user_profile(
@@ -549,9 +781,41 @@ async def exchange_oauth_code(
             redirect_uri=validated_redirect_uri,
         )
     except SocialAuthError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+        upstream_status = (
+            status.HTTP_502_BAD_GATEWAY
+            if exc.status_code == 429 or exc.status_code >= 500
+            else status.HTTP_400_BAD_REQUEST
+        )
+        detail = (
+            "OAuth provider is temporarily unavailable."
+            if upstream_status == status.HTTP_502_BAD_GATEWAY
+            else "OAuth authorization code was rejected."
+        )
+        raise HTTPException(status_code=upstream_status, detail=detail) from exc
 
-    user = await user_service.get_or_create_user_for_oauth(profile)
+    if profile.provider != provider:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="OAuth provider returned an inconsistent identity.",
+        )
+    if not profile.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="OAuth account email must be verified.",
+        )
+    try:
+        user = await resolve_oauth_user(session, profile)
+    except OAuthIdentityConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="OAuth account cannot be linked automatically.",
+        ) from exc
+    except ValueError as exc:
+        logger.warning("OAuth provider returned an unusable identity: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="OAuth provider returned an incomplete identity.",
+        ) from exc
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -595,6 +859,28 @@ class SSOUserInfo(BaseModel):
     exp: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+def _get_public_api_origin() -> str:
+    public_api_url = getattr(settings, "public_api_url", None)
+    origin = _normalize_origin(public_api_url)
+    if origin is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Public API URL is not configured for SSO.",
+        )
+    return origin
+
+
+def _get_sso_client_credentials(provider: str) -> tuple[str, str]:
+    client_id = getattr(settings, f"{provider.lower()}_client_id", None)
+    client_secret = getattr(settings, f"{provider.lower()}_client_secret", None)
+    if not client_id or not client_secret:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"{provider.title()} SSO is not configured.",
+        )
+    return client_id, client_secret
 
 
 def _build_sso_authorization_url(
@@ -641,17 +927,24 @@ def _build_sso_authorization_url(
         getattr(settings, f"{provider_lower}_realm", None) if provider_lower == "keycloak" else None
     )
 
-    if not domain:
+    if provider_lower != SSOProvider.GOOGLE.value and _normalize_origin(domain) is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"No domain configured for SSO provider: {provider}",
+            detail=f"{provider.title()} SSO domain is not configured.",
+        )
+    if provider_lower == SSOProvider.KEYCLOAK.value and not realm:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Keycloak SSO realm is not configured.",
         )
 
     auth_url_template = auth_urls[provider_lower]
     scope = scopes[provider_lower]
 
-    if provider_lower == SSOProvider.KEYCLOAK.value and realm:
+    if provider_lower == SSOProvider.KEYCLOAK.value:
         auth_url = auth_url_template.format(domain=domain, realm=realm)
+    elif provider_lower == SSOProvider.GOOGLE.value:
+        auth_url = auth_url_template
     else:
         auth_url = auth_url_template.format(domain=domain)
 
@@ -681,7 +974,7 @@ async def _exchange_code_for_token(
     code: str,
     redirect_uri: str,
     client_id: str,
-    client_secret: str | None = None,
+    client_secret: str,
 ) -> dict:
     """
     Exchange authorization code for access token.
@@ -706,15 +999,22 @@ async def _exchange_code_for_token(
         getattr(settings, f"{provider_lower}_realm", None) if provider_lower == "keycloak" else None
     )
 
-    if not domain:
+    if provider_lower != SSOProvider.GOOGLE.value and _normalize_origin(domain) is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"No domain configured for SSO provider: {provider}",
+            detail=f"{provider.title()} SSO domain is not configured.",
+        )
+    if provider_lower == SSOProvider.KEYCLOAK.value and not realm:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Keycloak SSO realm is not configured.",
         )
 
     token_url_template = token_urls[provider_lower]
-    if provider_lower == SSOProvider.KEYCLOAK.value and realm:
+    if provider_lower == SSOProvider.KEYCLOAK.value:
         token_url = token_url_template.format(domain=domain, realm=realm)
+    elif provider_lower == SSOProvider.GOOGLE.value:
+        token_url = token_url_template
     else:
         token_url = token_url_template.format(domain=domain)
 
@@ -726,23 +1026,50 @@ async def _exchange_code_for_token(
         "client_id": client_id,
     }
 
-    if client_secret:
-        data["client_secret"] = client_secret
+    data["client_secret"] = client_secret
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            token_url,
-            data=data,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                token_url,
+                data=data,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="SSO provider is temporarily unavailable.",
+        ) from exc
+
+    if response.status_code >= 500:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="SSO provider is temporarily unavailable.",
         )
-        response.raise_for_status()
-        return response.json()
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="SSO authorization code was rejected.",
+        )
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="SSO provider returned an invalid response.",
+        ) from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="SSO provider returned an invalid response.",
+        )
+    return payload
 
 
 @router.get("/sso/{provider}", tags=["auth"])
 async def sso_redirect(
     provider: str,
-    request: Request,
+    session: AsyncSession = Depends(get_db),
 ):
     """
     Initiate SSO authentication by redirecting to the provider's authorization endpoint.
@@ -750,8 +1077,6 @@ async def sso_redirect(
     Returns a redirect to the SSO provider's authorization URL with appropriate
     client_id, redirect_uri, scope, and state parameters.
     """
-    import secrets
-
     # Validate provider
     from src.api.services.auth import SSOProvider
 
@@ -763,20 +1088,17 @@ async def sso_redirect(
             detail=f"Unsupported SSO provider: {provider}",
         )
 
-    # Get client configuration
-    client_id = getattr(settings, f"{provider.lower()}_client_id", None)
-    if not client_id:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"No client_id configured for SSO provider: {provider}",
-        )
+    client_id, _ = _get_sso_client_credentials(provider)
 
-    # Build redirect URI (callback URL)
-    callback_base = str(request.base_url).rstrip("/")
-    redirect_uri = f"{callback_base}/v1/auth/sso/{provider}/callback"
+    redirect_uri = f"{_get_public_api_origin()}/v1/auth/sso/{provider.lower()}/callback"
 
-    # Generate state for CSRF protection
-    state = secrets.token_urlsafe(32)
+    state = await issue_oauth_state(
+        session,
+        flow="sso",
+        provider=provider.lower(),
+        redirect_uri=redirect_uri,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
 
     # Build authorization URL
     auth_url, _ = _build_sso_authorization_url(
@@ -786,16 +1108,13 @@ async def sso_redirect(
         state=state,
     )
 
-    # Redirect to provider
-    from fastapi import RedirectResponse
-
     return RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
 
 
 @router.get("/sso/{provider}/callback", response_model=SSOCallbackResponse, tags=["auth"])
 async def sso_callback(
     provider: str,
-    code: str,
+    code: str | None = None,
     state: str | None = None,
     error: str | None = None,
     error_description: str | None = None,
@@ -807,18 +1126,7 @@ async def sso_callback(
     Exchanges the authorization code for an access token from the SSO provider,
     verifies the token, and issues a MUTX JWT access token.
     """
-    from src.api.services.auth import (
-        SSOProvider,
-        create_access_token,
-        verify_oauth_token,
-    )
-
-    # Check for error from provider
-    if error:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"SSO error: {error_description or error}",
-        )
+    from src.api.services.auth import SSOProvider, verify_oauth_token
 
     # Validate provider
     try:
@@ -829,19 +1137,37 @@ async def sso_callback(
             detail=f"Unsupported SSO provider: {provider}",
         )
 
-    # Get client configuration
-    client_id = getattr(settings, f"{provider.lower()}_client_id", None)
-    client_secret = getattr(settings, f"{provider.lower()}_client_secret", None)
-
-    if not client_id:
+    if not state:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"No client_id configured for SSO provider: {provider}",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="SSO callback is missing required parameters.",
         )
 
-    # Build redirect URI (must match the one used in initial request)
-    # For production, this would typically come from config
-    redirect_uri = f"http://localhost:3000/v1/auth/sso/{provider}/callback"
+    client_id, client_secret = _get_sso_client_credentials(provider)
+    redirect_uri = f"{_get_public_api_origin()}/v1/auth/sso/{provider.lower()}/callback"
+    state_is_valid = await consume_oauth_state(
+        session,
+        state=state,
+        flow="sso",
+        provider=provider.lower(),
+        redirect_uri=redirect_uri,
+    )
+    if not state_is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired SSO state.",
+        )
+
+    if error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="SSO provider rejected authorization.",
+        )
+    if not code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="SSO callback is missing required parameters.",
+        )
 
     try:
         # Exchange code for token with SSO provider
@@ -869,26 +1195,53 @@ async def sso_callback(
         token_payload = await verify_oauth_token(
             token=verification_token,
             provider=sso_provider,
+            domain=(
+                getattr(settings, f"{provider.lower()}_domain", None)
+                or ("https://accounts.google.com" if sso_provider.value == "google" else None)
+            ),
             client_id=client_id,
             allow_userinfo_fallback=id_token is None,
         )
-
-        # Issue MUTX JWT access token
-        mutx_access_token = create_access_token(
-            payload=token_payload,
-            secret=settings.jwt_secret,
+        if not token_payload.sub or not token_payload.email or not token_payload.email_verified:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="SSO identity is incomplete.",
+            )
+        user = await resolve_external_auth_user(
+            session,
+            provider=sso_provider.value,
+            provider_user_id=token_payload.sub,
+            email=token_payload.email,
+            email_verified=token_payload.email_verified,
+            display_name=token_payload.email.split("@", 1)[0],
+            profile={"source": "sso"},
         )
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is deactivated",
+            )
+
+        # SSO uses the same UUID-backed token as dashboard login. Persisted
+        # database roles, not provider claims, are authoritative at request time.
+        mutx_access_token, access_token_expires_at = create_dashboard_access_token(user.id)
 
         return SSOCallbackResponse(
             access_token=mutx_access_token,
             token_type="bearer",
-            expires_in=86400,
+            expires_in=_get_expires_in_seconds(access_token_expires_at),
         )
 
+    except OAuthIdentityConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="SSO account cannot be linked automatically.",
+        ) from exc
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception as exc:
+        logger.exception("Unexpected SSO callback failure", exc_info=exc)
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"SSO authentication failed: {str(e)}",
-        )
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="SSO authentication failed.",
+        ) from exc

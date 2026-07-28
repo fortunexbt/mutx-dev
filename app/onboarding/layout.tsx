@@ -3,6 +3,14 @@ import type { Metadata } from "next";
 import { appFontVariables } from "@/app/fonts/app";
 
 export const metadata: Metadata = {
+  title: "Setup handoff | MUTX",
+  description:
+    "Continue MUTX setup in the browser dashboard or use the native operator cockpit in MUTX.app.",
+  alternates: {
+    canonical: null,
+  },
+  openGraph: null,
+  twitter: null,
   robots: {
     index: false,
     follow: false,

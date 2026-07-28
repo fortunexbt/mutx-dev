@@ -39,7 +39,6 @@ export default async function LoginPage({
       mode="login"
       nextPath={nextPath}
       fallbackPath={getDefaultRedirectPathForHost(host)}
-      hostVariant="default"
       initialError={error}
       initialEmail={email}
     />

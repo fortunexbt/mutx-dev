@@ -14,22 +14,19 @@ fi
 
 cd "$DIST_DIR"
 
-artifacts=()
-for pattern in *.dmg *.zip; do
-  for artifact in $pattern; do
-    if [[ -f "$artifact" ]]; then
-      artifacts+=("$artifact")
-    fi
-  done
+artifacts=(
+  "MUTX-${VERSION}-macos-arm64.dmg"
+  "MUTX-${VERSION}-macos-x64.dmg"
+  "MUTX-${VERSION}-macos-arm64.zip"
+  "MUTX-${VERSION}-macos-x64.zip"
+)
+
+for artifact in "${artifacts[@]}"; do
+  if [[ ! -f "$artifact" || -L "$artifact" || ! -s "$artifact" ]]; then
+    echo "Required desktop artifact must be a non-empty regular file: $DIST_DIR/$artifact" >&2
+    exit 1
+  fi
 done
-
-if [[ "${#artifacts[@]}" -eq 0 ]]; then
-  echo "No desktop artifacts found in $DIST_DIR" >&2
-  exit 1
-fi
-
-IFS=$'\n' artifacts=($(printf '%s\n' "${artifacts[@]}" | sort))
-unset IFS
 
 shasum -a 256 "${artifacts[@]}" >"$OUTPUT_FILE"
 

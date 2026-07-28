@@ -60,6 +60,11 @@ DATABASE_URL=postgresql://...  # Auto-configured
 
 # JWT
 JWT_SECRET=your-secure-jwt-secret-min-32-chars
+SECRET_ENCRYPTION_KEY=your-distinct-fernet-key
+
+# Exact API hosts and Railway edge proxy trust. Never use `*` for either value.
+ALLOWED_HOSTS=api.yourdomain.com,your-api-production.up.railway.app,your-api.railway.internal
+FORWARDED_ALLOW_IPS=100.0.0.0/8
 
 # Optional startup behavior
 DATABASE_REQUIRED_ON_STARTUP=false
@@ -75,8 +80,22 @@ INTERNAL_API_URL=http://your-backend.railway.internal:8080
 # Optional public API URL if you intentionally expose the backend directly.
 NEXT_PUBLIC_API_URL=https://api.yourdomain.com
 
-# Email (optional)
+# Email verification is fail-closed in production: configure Resend or both
+# SMTP_USER and SMTP_PASSWORD whenever REQUIRE_EMAIL_VERIFICATION=true.
+REQUIRE_EMAIL_VERIFICATION=true
 RESEND_API_KEY=re_your_resend_api_key
+RESEND_FROM_EMAIL="MUTX <hello@yourdomain.com>"
+```
+
+`SECRET_ENCRYPTION_KEY` must differ from `JWT_SECRET`. Replace the generated
+Railway hostnames above with the exact domains shown by the API service. Railway
+terminates TLS at its edge; `100.0.0.0/8` is the documented private proxy range
+for Railway-hosted reverse proxies. Do not use a wildcard forwarded trust value.
+Run the Settings probe before promoting:
+
+```bash
+railway run --service <api-service-id> \
+  python -c 'from src.api.config import Settings; Settings(); print("settings ok")'
 ```
 
 ### Railway JSON Config
@@ -233,19 +252,29 @@ Set these repository secrets before using the Railway promotion workflow:
 - `RAILWAY_API_SERVICE_ID`
 - `RAILWAY_ENVIRONMENT_ID`
 
-Optional repository variables or workflow inputs:
+The reusable promotion workflow accepts these optional URL overrides from the
+authoritative release workflow:
 
-- `MUTX_SITE_URL`
-- `MUTX_APP_URL`
-- `MUTX_API_URL`
-- `MUTX_DOCS_RELEASE_URL`
+- `site_url`
+- `app_url`
+- `api_url`
+- `docs_release_url`
+- `release_identity_url`
+
+The promotion workflow cannot be dispatched directly. A manual stable promotion starts from
+`release.yml` and requires `confirm_production` to equal `PROMOTE <release-tag>`; the release
+workflow then passes an immutable tag and commit to the reusable promotion lane after its release
+gates complete.
 
 ### Promotion flow
 
-```bash
-bash scripts/promote-railway-production.sh
-bash scripts/verify-production-release.sh
-```
+The workflow validates the tag, package version, and full commit SHA before invoking
+`scripts/promote-railway-production.sh`. It installs the reviewed Railway CLI release from the
+upstream binary archive only after verifying its published SHA-256 digest. Uploads run in attached
+CI mode and must reach a successful deployment for both API and frontend. The API publishes the exact identity at
+`/release`; the frontend publishes it at `/mutx-release.json`. Promotion and final verification
+poll both endpoints and fail if either remains stale, has extra fields, or differs from the
+validated tag, version, or SHA. API health alone is not release identity proof.
 
 ### Live production note
 
@@ -275,23 +304,11 @@ The verification step should confirm:
 - `https://app.mutx.dev/dashboard`
 - `https://api.mutx.dev/health`
 - `https://api.mutx.dev/ready`
-- `https://docs.mutx.dev/docs/v1.3`
+- `https://mutx.dev/docs/releases/v1.3`
 
-Create `railway.json` for API:
-
-```json
-{
-  "name": "api",
-  "build": {
-    "builder": "DOCKERFILE",
-    "dockerfilePath": "api/Dockerfile"
-  },
-  "deploy": {
-    "numReplicas": 2,
-    "startCommand": "uvicorn src.api.main:app --host 0.0.0.0 --port 8000"
-  }
-}
-```
+The checked-in `railway-api.json` and `railway-frontend.json` are the repo-side
+manifests. The API image starts Uvicorn with `--proxy-headers` and expands
+`FORWARDED_ALLOW_IPS` from the service environment; an unset value fails startup.
 
 ## Troubleshooting
 
@@ -420,4 +437,4 @@ If Pico moves onto its own authenticated host later, register the equivalent `ht
 
 ### Database and migrations
 
-The backend Railway service already runs `alembic upgrade head` from [railway.json](../../railway.json) before startup, so the external-auth identity table is deployed alongside the API. Keep that pre-start migration step in place for the `zooming-youth` backend service.
+The backend Railway service already runs `alembic upgrade head` from the source-controlled [railway.json](https://github.com/mutx-dev/mutx-dev/blob/main/railway.json) before startup, so the external-auth identity table is deployed alongside the API. Keep that pre-start migration step in place for the `zooming-youth` backend service.

@@ -1,17 +1,22 @@
 name: CI
 
-permissions:
-  contents: read
-
 on:
   push:
     branches:
       - main
   pull_request:
+  merge_group:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # Superseded PR runs are noise. Main and merge-queue runs remain immutable evidence.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -19,150 +24,291 @@ env:
 jobs:
   changes:
     name: Detect Changed Surfaces
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
+      ci: ${{ steps.filter.outputs.ci }}
       python: ${{ steps.filter.outputs.python }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      infrastructure: ${{ steps.filter.outputs.infrastructure }}
+      compose: ${{ steps.filter.outputs.compose }}
       container: ${{ steps.filter.outputs.container }}
-      scripts: ${{ steps.filter.outputs.scripts }}
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Detect changed files
         id: filter
-        uses: dorny/paths-filter@v4
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         with:
           filters: |
+            ci:
+              - '.github/workflows/**'
+              - '.yamllint.yml'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/release.yml'
+              - '.github/workflows/railway-production-promotion.yml'
+              - 'tests/unit/python/test_ci_workflow_contract.py'
+              - 'tests/unit/python/test_ci_compose_release_gate.py'
+              - 'tests/test_release_workflow_contract.py'
+              - 'docs/ci.md'
             python:
               - 'requirements.txt'
+              - 'requirements-runtime.lock'
+              - 'requirements-ci.lock'
+              - 'test-requirements.txt'
               - 'pyproject.toml'
               - 'src/api/**'
+              - 'src/runtime/**'
               - 'src/security/**'
               - 'cli/**'
               - 'sdk/**'
               - 'tests/api/**'
               - 'tests/unit/python/**'
-              - 'tests/test_cli_*.py'
-              - 'tests/test_agentic_risk_matrix_docs.py'
-              - 'tests/test_generate_homebrew_formula.py'
-              - 'tests/test_release_soft_launch.py'
-              - 'tests/test_sdk_*.py'
-              - 'tests/test_hosted_llm_executor.py'
+              - 'tests/*.py'
+              - 'scripts/**/*.py'
+              - 'scripts/check_requirements_compat.py'
+              - 'docs/upstream-tracking.json'
+              - 'docs/legal/oss-attribution-evidence.json'
+              - 'infrastructure/helm/**/*.py'
               - 'docs/security/agentic_risk_matrix.md'
               - 'docs/gtm/competitive_notes.md'
-              - 'scripts/check_requirements_compat.py'
+              - '.github/workflows/**'
             frontend:
               - 'app/**'
               - 'components/**'
+              - 'desktop/**'
+              - 'docs/**'
+              - 'i18n/**'
               - 'lib/**'
+              - 'messages/**'
               - 'public/**'
               - 'src/api/**'
               - 'tests/unit/**'
-              - 'tests/website.spec.ts'
+              - 'tests/*.spec.ts'
+              - 'tests/release-github-fixture.cjs'
+              - 'scripts/**'
+              - 'instrumentation.ts'
+              - 'proxy.ts'
+              - 'Dockerfile'
+              - '.dockerignore'
+              - 'docker-compose*.yml'
+              - 'railway*.json'
+              - '.env.example'
+              - '.env.production.example'
               - 'package.json'
               - 'package-lock.json'
               - 'tsconfig.json'
               - 'eslint.config.mjs'
               - 'next.config.mjs'
+              - 'playwright.config.ts'
+              - 'jest.config.*'
+              - 'postcss.config.*'
+              - 'tailwind.config.*'
               - 'docs/api/openapi.json'
-              - 'scripts/verify-generated-artifacts.sh'
-            scripts:
-              - 'scripts/**'
-            container:
+              - 'app/types/api.ts'
+              - '.github/workflows/**'
+            infrastructure:
+              - 'infrastructure/**'
+              - 'infrastructure/helm/**'
+              - 'Dockerfile'
+              - '.dockerignore'
+              - 'docker-compose*.yml'
+              - 'package.json'
+              - 'package-lock.json'
               - 'requirements.txt'
+              - 'requirements-runtime.lock'
+              - 'requirements-ci.lock'
               - 'pyproject.toml'
+              - 'railway*.json'
+              - '.env.example'
+              - '.env.production.example'
+              - 'scripts/deploy*.sh'
+              - 'scripts/promote-railway-production.sh'
+              - 'scripts/smoke-compose-prod.sh'
+              - 'scripts/verify-production-*.sh'
+              - 'scripts/verify-release-http.mjs'
+              - '.github/workflows/**'
+            compose:
+              - '.github/workflows/**'
+              - 'scripts/smoke-compose-prod.sh'
+              - 'scripts/deploy-production.sh'
+              - 'scripts/deploy.sh'
+              - 'scripts/promote-railway-production.sh'
+              - 'scripts/verify-production-release.sh'
+              - 'scripts/verify-release-http.mjs'
+              - 'docker-compose*.yml'
+              - 'infrastructure/docker/docker-compose.prod.yml'
+              - 'infrastructure/docker/nginx.prod.conf'
+              - 'infrastructure/docker/Dockerfile.api.production'
+              - 'infrastructure/docker/Dockerfile.frontend'
+              - '.dockerignore'
+              - 'requirements.txt'
+              - 'requirements-runtime.lock'
+              - 'requirements-ci.lock'
+              - 'pyproject.toml'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'next.config.mjs'
+              - 'alembic.ini'
+              - 'app/**'
+              - 'components/**'
+              - 'lib/**'
+              - 'public/**'
+              - 'src/api/**'
+              - 'src/runtime/**'
+              - 'src/security/**'
+              - 'tests/unit/python/test_ci_compose_release_gate.py'
+              - 'tests/test_deploy_manifest_truth.py'
+              - 'railway*.json'
+              - '.env.example'
+              - '.env.production.example'
+            container:
+              - '.github/workflows/**'
+              - 'requirements.txt'
+              - 'requirements-runtime.lock'
+              - 'requirements-ci.lock'
+              - 'pyproject.toml'
+              - 'alembic.ini'
               - 'package.json'
               - 'package-lock.json'
               - 'next.config.mjs'
               - 'infrastructure/docker/**'
               - 'Dockerfile'
-              - '.github/workflows/ci.yml'
+              - '.dockerignore'
+              - 'docker-compose*.yml'
+              - 'railway*.json'
+              - '.env.example'
+              - '.env.production.example'
+              - 'scripts/**'
+              - 'app/**'
+              - 'components/**'
+              - 'docs/**'
+              - 'lib/**'
+              - 'public/**'
+              - 'src/api/**'
+              - 'src/runtime/**'
+              - 'src/security/**'
 
-  python-validation:
-    name: Python Validation
-    runs-on: ubuntu-latest
-    needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.python == 'true'
+  workflow-contracts:
+    name: Workflow Contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.11'
+          python-version: '3.12'
+
+      - name: Install workflow contract dependencies
+        run: python -m pip install 'pytest==9.0.3' 'PyYAML==6.0.3'
+
+      - name: Run workflow contract tests
+        run: python -m pytest tests/unit/python/test_ci_workflow_contract.py -q
+
+  python-validation:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.python == 'true' || needs.changes.outputs.ci == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: |
-            requirements.txt
+            requirements-ci.lock
             pyproject.toml
+            sdk/pyproject.toml
 
       - name: Validate dependency compatibility pins
         run: python scripts/check_requirements_compat.py
 
       - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -e ".[dev]"
+        run: >-
+          python -m pip install
+          --disable-pip-version-check
+          --require-hashes
+          --only-binary=:all:
+          --requirement requirements-ci.lock
 
       - name: Run Python lint and format checks
+        if: matrix.python-version == '3.11'
         run: |
-          ruff check src/api cli sdk src/security
-          ruff format --check src/api cli sdk src/security
+          ruff check .
+          ruff format --check .
 
       - name: Run Python compile check
-        run: python -m compileall src/api cli sdk/mutx src/security
+        run: python -m compileall -q src cli sdk/mutx scripts examples infrastructure/helm/mutx/tests
 
-      - name: Run Python validation suite
+      - name: Run full Python validation suite
         run: |
           python -m pytest \
             tests/api \
             tests/unit/python \
-            tests/test_cli_*.py \
-            tests/test_agentic_risk_matrix_docs.py \
-            tests/test_generate_homebrew_formula.py \
-            tests/test_release_soft_launch.py \
-            tests/test_sdk_*.py \
-            tests/test_hosted_llm_executor.py \
+            tests/test_*.py \
             --maxfail=1 -q
 
   frontend-validation:
     name: Frontend Validation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.frontend == 'true'
+    if: github.event_name != 'pull_request' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci == 'true'
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '24'
+          node-version: '24.15.0'
           cache: npm
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.11'
           cache: pip
           cache-dependency-path: |
-            requirements.txt
-            pyproject.toml
+            requirements-ci.lock
 
       - name: Install dependencies
         run: |
           npm ci --legacy-peer-deps
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -e ".[dev]"
+          python -m pip install \
+            --disable-pip-version-check \
+            --require-hashes \
+            --only-binary=:all: \
+            --requirement requirements-ci.lock
 
       - name: Run frontend unit tests
         run: npm run test:app
@@ -176,15 +322,102 @@ jobs:
       - name: Run frontend typecheck
         run: npm run typecheck
 
+      - name: Install Chromium for release smoke
+        run: npx playwright install --with-deps chromium
+
+      - name: Run deterministic standalone browser and release smoke suite
+        run: bash scripts/test-release-browser-contract.sh all
+
+  infrastructure-validation:
+    name: Infrastructure Validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.infrastructure == 'true' || needs.changes.outputs.ci == 'true'
+    env:
+      COMPOSE_DISABLE_ENV_FILE: '1'
+      POSTGRES_PASSWORD: testpass
+      REDIS_PASSWORD: testpass
+      JWT_SECRET: test-secret-key-that-is-long-enough-32
+      SECRET_ENCRYPTION_KEY: test-secret-encryption-key-that-is-long-enough
+      RECEIPT_SIGNING_KEY_ID: mutx-platform-ci
+      RECEIPT_SIGNING_PRIVATE_KEY: '0101010101010101010101010101010101010101010101010101010101010101'
+      RECEIPT_TRUSTED_PUBLIC_KEYS: '{"mutx-platform-ci":"8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"}'
+      NEXTAUTH_SECRET: test-secret-key-that-is-long-enough-32
+      DATABASE_URL: postgresql://mutx:testpass@postgres:5432/mutx
+      DATABASE_SSL_MODE: disable
+      ALLOWED_HOSTS: api.example.test,api,localhost,127.0.0.1
+      MUTX_API_HOST: api.example.test
+      MUTX_NETWORK_SUBNET: 10.254.250.0/24
+      FORWARDED_ALLOW_IPS: 10.254.250.0/24
+      GRAFANA_ADMIN_PASSWORD: testpass
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: '1.15.8'
+          terraform_wrapper: false
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: 'v3.21.3'
+
+      - name: Validate Terraform formatting and configuration
+        run: |
+          make -C infrastructure tf-fmt
+          make -C infrastructure tf-validate
+
+      - name: Validate Ansible playbooks
+        run: |
+          python -m pip install 'ansible-core==2.21.2' 'ansible-lint==26.6.0'
+          make -C infrastructure ansible-deps
+          make -C infrastructure ansible-lint
+
+      - name: Validate Dockerfiles
+        run: |
+          dockerfiles=(
+            Dockerfile
+            infrastructure/docker/Dockerfile.api
+            infrastructure/docker/Dockerfile.api.production
+            infrastructure/docker/Dockerfile.backend
+            infrastructure/docker/Dockerfile.frontend
+          )
+          for dockerfile in "${dockerfiles[@]}"; do
+            docker build --check -f "$dockerfile" .
+          done
+
+      - name: Validate canonical Docker Compose files
+        run: |
+          docker compose -f docker-compose.yml config --quiet
+          docker compose -f infrastructure/docker/docker-compose.yml config --quiet
+          docker compose -f infrastructure/docker/docker-compose.prod.yml config --quiet
+          docker compose -f infrastructure/docker/docker-compose.monitoring.yml config --quiet
+          docker compose -f infrastructure/docker/otel-compose.yml config --quiet
+
+      - name: Validate monitoring configuration
+        run: make -C infrastructure monitor-validate
+
+      - name: Validate Helm chart
+        run: python infrastructure/helm/mutx/tests/test_chart.py
+
   compose-smoke:
     name: Production Compose Smoke
-    runs-on: ubuntu-latest
-    needs:
-      - python-validation
-      - frontend-validation
-    # Run on main pushes and on PRs that change scripts (scripts/**, .github/workflows/ci.yml)
-    if: github.event_name == 'push' || needs.changes.outputs.scripts == 'true'
-
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.compose == 'true' || needs.changes.outputs.ci == 'true'
     env:
       POSTGRES_USER: mutx
       POSTGRES_DB: mutx
@@ -193,46 +426,136 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Run production compose smoke test
         run: bash scripts/smoke-compose-prod.sh
 
   container-scan:
-    name: Container Image Scan
-    runs-on: ubuntu-latest
+    name: Container ${{ matrix.image }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.container == 'true'
-
+    if: github.event_name != 'pull_request' || needs.changes.outputs.container == 'true' || needs.changes.outputs.ci == 'true'
     permissions:
       contents: read
       security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: frontend
+            dockerfile: infrastructure/docker/Dockerfile.frontend
+          - image: api
+            dockerfile: infrastructure/docker/Dockerfile.api.production
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build container image
-        uses: docker/build-push-action@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          context: .
-          file: infrastructure/docker/Dockerfile.frontend
-          load: true
-          tags: mutx-frontend:latest
+          persist-credentials: false
+
+      - name: Build production image
+        run: docker build --file '${{ matrix.dockerfile }}' --tag 'mutx-ci-${{ matrix.image }}:${{ github.sha }}' .
+
+      - name: Smoke standalone frontend image
+        if: matrix.image == 'frontend'
+        run: bash scripts/smoke-frontend-container.sh 'mutx-ci-frontend:${{ github.sha }}'
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: 'v0.72.0'
           scan-type: image
-          scan-ref: 'mutx-frontend:latest'
+          scan-ref: mutx-ci-${{ matrix.image }}:${{ github.sha }}
           format: sarif
           output: trivy-results.sarif
+          ignore-unfixed: true
+          severity: CRITICAL
+          limit-severities-for-sarif: true
+          exit-code: '1'
 
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles('trivy-results.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
           sarif_file: trivy-results.sarif
-          category: container-scan
+          category: container-${{ matrix.image }}
+
+  required-validation:
+    name: Required Validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: always()
+    needs:
+      - changes
+      - workflow-contracts
+      - python-validation
+      - frontend-validation
+      - infrastructure-validation
+      - compose-smoke
+      - container-scan
+
+    steps:
+      - name: Require every selected gate to pass
+        env:
+          FULL_RUN: ${{ github.event_name != 'pull_request' }}
+          CI_CHANGED: ${{ needs.changes.outputs.ci }}
+          PYTHON_CHANGED: ${{ needs.changes.outputs.python }}
+          FRONTEND_CHANGED: ${{ needs.changes.outputs.frontend }}
+          INFRASTRUCTURE_CHANGED: ${{ needs.changes.outputs.infrastructure }}
+          COMPOSE_CHANGED: ${{ needs.changes.outputs.compose }}
+          CONTAINER_CHANGED: ${{ needs.changes.outputs.container }}
+          CHANGES: ${{ needs.changes.result }}
+          WORKFLOW_CONTRACTS: ${{ needs.workflow-contracts.result }}
+          PYTHON_VALIDATION: ${{ needs.python-validation.result }}
+          FRONTEND_VALIDATION: ${{ needs.frontend-validation.result }}
+          INFRASTRUCTURE_VALIDATION: ${{ needs.infrastructure-validation.result }}
+          COMPOSE_SMOKE: ${{ needs.compose-smoke.result }}
+          CONTAINER_SCAN: ${{ needs.container-scan.result }}
+        run: |
+          failed=0
+
+          check_gate() {
+            gate="$1"
+            result="$2"
+            selected="$3"
+            if [ "$selected" = "true" ]; then
+              if [ "$result" = "success" ]; then
+                echo "$gate: $result"
+              else
+                echo "::error::$gate was selected but finished with $result"
+                failed=1
+              fi
+              return
+            fi
+
+            case "$result" in
+              success|skipped)
+                echo "$gate: $result"
+                ;;
+              *)
+                echo "::error::$gate finished with $result"
+                failed=1
+                ;;
+            esac
+          }
+
+          select_surface() {
+            if [ "$FULL_RUN" = "true" ] || [ "$CI_CHANGED" = "true" ] || [ "$1" = "true" ]; then
+              echo true
+            else
+              echo false
+            fi
+          }
+
+          check_gate CHANGES "$CHANGES" true
+          check_gate WORKFLOW_CONTRACTS "$WORKFLOW_CONTRACTS" true
+          check_gate PYTHON_VALIDATION "$PYTHON_VALIDATION" "$(select_surface "$PYTHON_CHANGED")"
+          check_gate FRONTEND_VALIDATION "$FRONTEND_VALIDATION" "$(select_surface "$FRONTEND_CHANGED")"
+          check_gate INFRASTRUCTURE_VALIDATION "$INFRASTRUCTURE_VALIDATION" "$(select_surface "$INFRASTRUCTURE_CHANGED")"
+          check_gate COMPOSE_SMOKE "$COMPOSE_SMOKE" "$(select_surface "$COMPOSE_CHANGED")"
+          check_gate CONTAINER_SCAN "$CONTAINER_SCAN" "$(select_surface "$CONTAINER_CHANGED")"
+          exit "$failed"

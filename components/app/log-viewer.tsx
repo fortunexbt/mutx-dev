@@ -1,34 +1,56 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { EmptyState } from '@/components/dashboard'
-import { normalizeCollection } from '@/components/app/http'
+import { type components } from '@/app/types/api'
+import { extractApiErrorMessage, normalizeCollection } from '@/components/app/http'
+import { EmptyState } from '@/components/dashboard/EmptyState'
 import { cn } from '@/lib/utils'
 
-interface LogEntry {
-  id: string
-  level: 'error' | 'warn' | 'info' | 'debug'
-  source: string
-  message: string
-  timestamp: number
-  session?: string
-  data?: Record<string, unknown>
-}
-
-interface Deployment {
-  id: string
-  name: string
-  status: string
-}
+type LogEntry = components['schemas']['DeploymentLogsResponse']
+type Deployment = components['schemas']['DeploymentResponse']
+type DeploymentLogsHistoryResponse = components['schemas']['DeploymentLogsHistoryResponse']
 
 interface LogFilters {
   level?: string
-  source?: string
   search?: string
   deploymentId?: string
 }
 
 const MAX_LOG_BUFFER = 500
+
+export function parseDeploymentLogs(payload: unknown): LogEntry[] {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Invalid deployment logs response')
+  }
+
+  const { items } = payload as DeploymentLogsHistoryResponse
+  if (!Array.isArray(items)) {
+    throw new Error('Invalid deployment logs response')
+  }
+
+  return items
+}
+
+export async function fetchDeploymentLogs(
+  deploymentId: string,
+  level = '',
+  request: typeof fetch = fetch,
+): Promise<LogEntry[]> {
+  const params = new URLSearchParams({ limit: '200' })
+  if (level) params.set('level', level)
+
+  const response = await request(
+    `/api/deployments/${encodeURIComponent(deploymentId)}/logs?${params}`,
+    { cache: 'no-store' },
+  )
+  const payload: unknown = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(extractApiErrorMessage(payload, 'Failed to fetch logs'))
+  }
+
+  return parseDeploymentLogs(payload)
+}
 
 function downloadFile(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime })
@@ -70,101 +92,67 @@ export function LogViewer({ className, deploymentId }: LogViewerProps) {
   const [deployments, setDeployments] = useState<Deployment[]>([])
   const [filters, setFilters] = useState<LogFilters>({
     level: '',
-    source: '',
     search: '',
     deploymentId: deploymentId || '',
   })
   const [isAutoScroll, setIsAutoScroll] = useState(true)
+  const [isDeploymentsLoading, setIsDeploymentsLoading] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [logsError, setLogsError] = useState<string | null>(null)
+  const [deploymentsError, setDeploymentsError] = useState<string | null>(null)
   const logContainerRef = useRef<HTMLDivElement>(null)
+  const loadedDeploymentIdRef = useRef<string | null>(null)
+  const requestSequenceRef = useRef(0)
+  const selectedDeploymentId = filters.deploymentId || deployments[0]?.id
 
   const fetchDeployments = useCallback(async () => {
+    setIsDeploymentsLoading(true)
     try {
+      setDeploymentsError(null)
       const res = await fetch('/api/dashboard/deployments')
-      if (!res.ok) return
-      const data = await res.json()
+      const data: unknown = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(extractApiErrorMessage(data, 'Failed to fetch deployments'))
+      }
       const deps = normalizeCollection<Deployment>(data, ['items', 'deployments', 'data'])
       setDeployments(deps)
-    } catch {
-      // silent
+    } catch (err) {
+      setDeploymentsError(err instanceof Error ? err.message : 'Failed to fetch deployments')
+    } finally {
+      setIsDeploymentsLoading(false)
     }
   }, [])
 
   const fetchLogs = useCallback(async () => {
+    const requestSequence = ++requestSequenceRef.current
     setIsLoading(true)
     try {
-      setError(null)
-      const depId = filters.deploymentId || deployments[0]?.id
-      if (!depId) {
+      setLogsError(null)
+      if (!selectedDeploymentId) {
+        loadedDeploymentIdRef.current = null
         setLogs([])
-        setIsLoading(false)
         return
       }
 
-      const params = new URLSearchParams({ limit: '200' })
-      if (filters.level) params.append('level', filters.level)
-      if (filters.search) params.append('search', filters.search)
-
-      const res = await fetch(`/api/deployments/${encodeURIComponent(depId)}/logs?${params}`)
-      if (!res.ok) throw new Error('Failed to fetch logs')
-
-      const data = await res.json()
-      let entries: Record<string, unknown>[] = []
-
-      if (Array.isArray(data)) {
-        entries = data
-      } else if (data.logs) {
-        entries = data.logs
-      } else if (data.entries) {
-        entries = data.entries
+      if (loadedDeploymentIdRef.current !== selectedDeploymentId) {
+        setLogs([])
       }
 
-      const parsed: (LogEntry & { session?: string; data?: Record<string, unknown> })[] = entries.map((entry: Record<string, unknown>, idx: number) => ({
-        id: String(entry.id || `log-${idx}`),
-        level: (entry.level as LogEntry['level']) || 'info',
-        source: String(entry.source || entry.logger || 'system'),
-        message: String(entry.message || entry.msg || ''),
-        timestamp: typeof entry.timestamp === 'number'
-          ? entry.timestamp
-          : typeof entry.timestamp === 'string'
-            ? new Date(entry.timestamp).getTime()
-            : Date.now(),
-        session: entry.session ? String(entry.session) : undefined,
-        data: entry.data as Record<string, unknown> | undefined,
-      }))
+      const entries = await fetchDeploymentLogs(selectedDeploymentId, filters.level)
+      if (requestSequence !== requestSequenceRef.current) return
 
-      if (parsed.length === 0) {
-        parsed.push({
-          id: 'demo-1',
-          level: 'info',
-          source: 'system',
-          message: 'No logs available for this deployment. Logs will appear here once the deployment starts generating events.',
-          timestamp: Date.now(),
-        })
-        parsed.push({
-          id: 'demo-2',
-          level: 'warn',
-          source: 'deployment',
-          message: 'Log streaming is active. Waiting for deployment events...',
-          timestamp: Date.now() - 30000,
-        })
-        parsed.push({
-          id: 'demo-3',
-          level: 'debug',
-          source: 'api',
-          message: 'Connected to deployment log stream endpoint',
-          timestamp: Date.now() - 60000,
-        })
-      }
-
-      setLogs(parsed.slice(0, MAX_LOG_BUFFER))
+      loadedDeploymentIdRef.current = selectedDeploymentId
+      setLogs(entries.slice(0, MAX_LOG_BUFFER))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load logs')
+      if (requestSequence !== requestSequenceRef.current) return
+
+      setLogsError(err instanceof Error ? err.message : 'Failed to load logs')
     } finally {
-      setIsLoading(false)
+      if (requestSequence === requestSequenceRef.current) {
+        setIsLoading(false)
+      }
     }
-  }, [filters.deploymentId, filters.level, filters.search, deployments])
+  }, [filters.level, selectedDeploymentId])
 
   useEffect(() => {
     fetchDeployments()
@@ -172,6 +160,9 @@ export function LogViewer({ className, deploymentId }: LogViewerProps) {
 
   useEffect(() => {
     fetchLogs()
+    return () => {
+      requestSequenceRef.current += 1
+    }
   }, [fetchLogs])
 
   useEffect(() => {
@@ -188,7 +179,6 @@ export function LogViewer({ className, deploymentId }: LogViewerProps) {
 
   const handleFilterChange = (key: keyof LogFilters, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }))
-    setTimeout(() => fetchLogs(), 100)
   }
 
   const handleScrollToBottom = () => {
@@ -200,7 +190,7 @@ export function LogViewer({ className, deploymentId }: LogViewerProps) {
   const handleExportText = () => {
     const lines = filteredLogs.map(entry => {
       const ts = new Date(entry.timestamp).toISOString()
-      return `[${ts}] [${entry.level.toUpperCase()}] [${entry.source}] ${entry.message}`
+      return `[${ts}] [${entry.level.toUpperCase()}] [agent:${entry.agent_id}] ${entry.message}`
     })
     const filename = `mutx-logs-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.log`
     downloadFile(lines.join('\n'), filename, 'text/plain')
@@ -215,12 +205,15 @@ export function LogViewer({ className, deploymentId }: LogViewerProps) {
     setLogs([])
   }
 
-  const availableSources = Array.from(new Set(logs.map(l => l.source))).sort()
-
   const filteredLogs = logs.filter(entry => {
     if (filters.level && entry.level !== filters.level) return false
-    if (filters.source && entry.source !== filters.source) return false
-    if (filters.search && !entry.message.toLowerCase().includes(filters.search.toLowerCase())) return false
+    if (filters.search) {
+      const query = filters.search.toLowerCase()
+      if (
+        !entry.message.toLowerCase().includes(query) &&
+        !entry.extra_data?.toLowerCase().includes(query)
+      ) return false
+    }
     return true
   })
 
@@ -259,7 +252,7 @@ export function LogViewer({ className, deploymentId }: LogViewerProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           <div>
             <label className="block text-2xs text-slate-500 mb-1">Deployment</label>
             <select
@@ -267,9 +260,14 @@ export function LogViewer({ className, deploymentId }: LogViewerProps) {
               onChange={e => handleFilterChange('deploymentId', e.target.value)}
               className="w-full px-2.5 py-1.5 bg-black/30 text-slate-300 text-xs rounded border border-white/10 focus:outline-none focus:border-cyan-400/50"
             >
-              <option value="">All deployments</option>
+              <option value="">Latest deployment</option>
+              {deploymentId && !deployments.some(dep => dep.id === deploymentId) ? (
+                <option value={deploymentId}>Deployment {deploymentId.slice(0, 8)}</option>
+              ) : null}
               {deployments.map(dep => (
-                <option key={dep.id} value={dep.id}>{dep.name}</option>
+                <option key={dep.id} value={dep.id}>
+                  Deployment {dep.id.slice(0, 8)} · {dep.status}
+                </option>
               ))}
             </select>
           </div>
@@ -285,19 +283,6 @@ export function LogViewer({ className, deploymentId }: LogViewerProps) {
               <option value="warn">Warning</option>
               <option value="info">Info</option>
               <option value="debug">Debug</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-2xs text-slate-500 mb-1">Source</label>
-            <select
-              value={filters.source || ''}
-              onChange={e => handleFilterChange('source', e.target.value)}
-              className="w-full px-2.5 py-1.5 bg-black/30 text-slate-300 text-xs rounded border border-white/10 focus:outline-none focus:border-cyan-400/50"
-            >
-              <option value="">All sources</option>
-              {availableSources.map(source => (
-                <option key={source} value={source}>{source}</option>
-              ))}
             </select>
           </div>
           <div>
@@ -337,10 +322,17 @@ export function LogViewer({ className, deploymentId }: LogViewerProps) {
         </div>
       </div>
 
-      {error && (
+      {deploymentsError && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-300 p-3 mx-4 mt-4 rounded-lg text-xs flex justify-between items-center">
-          <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-red-400/60 hover:text-red-400">×</button>
+          <span>Deployment list unavailable: {deploymentsError}</span>
+          <button onClick={() => setDeploymentsError(null)} className="text-red-400/60 hover:text-red-400">×</button>
+        </div>
+      )}
+
+      {logsError && logs.length > 0 && (
+        <div className="bg-red-500/10 border border-red-500/20 text-red-300 p-3 mx-4 mt-4 rounded-lg text-xs flex justify-between items-center">
+          <span>Log refresh failed: {logsError}</span>
+          <button onClick={() => setLogsError(null)} className="text-red-400/60 hover:text-red-400">×</button>
         </div>
       )}
 
@@ -365,16 +357,28 @@ export function LogViewer({ className, deploymentId }: LogViewerProps) {
         ref={logContainerRef}
         className="flex-1 overflow-auto p-4 font-mono text-sm space-y-1.5"
       >
-        {isLoading && logs.length === 0 ? (
+        {(isDeploymentsLoading || isLoading) && logs.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-slate-500">
             Loading logs...
           </div>
+        ) : logsError ? (
+          <EmptyState
+            title="Logs unavailable"
+            message={logsError}
+            className="h-40 border-red-500/20 bg-red-500/[0.03]"
+          />
+        ) : !selectedDeploymentId ? (
+          <EmptyState
+            title="No deployment selected"
+            message="Create or select a deployment to load its log records."
+            className="h-40 border-white/5 bg-white/[0.02]"
+          />
         ) : filteredLogs.length === 0 ? (
           <EmptyState
-            title={deployments.length === 0 ? 'No deployments yet' : 'No logs match your filters'}
-            message={deployments.length === 0
-              ? 'Create a deployment to start streaming logs into this viewer.'
-              : 'Try changing the deployment, level, source, or search filters.'}
+            title={filters.level || filters.search ? 'No logs match your filters' : 'No logs available'}
+            message={filters.level || filters.search
+              ? 'Try changing the level or search filters.'
+              : 'The backend returned no log records for this deployment.'}
             className="h-40 border-white/5 bg-white/[0.02]"
           />
         ) : (
@@ -395,21 +399,18 @@ export function LogViewer({ className, deploymentId }: LogViewerProps) {
                     <span className={cn('font-medium uppercase', getLogLevelColor(entry.level))}>
                       {entry.level}
                     </span>
-                    <span className="text-slate-500">[{entry.source}]</span>
-                    {entry.session && (
-                      <span className="text-slate-600">session:{entry.session}</span>
-                    )}
+                    <span className="text-slate-500">[agent:{entry.agent_id.slice(0, 8)}]</span>
                   </div>
                   <div className="mt-1 text-slate-300 break-words whitespace-pre-wrap">
                     {entry.message}
                   </div>
-                  {entry.data && Object.keys(entry.data).length > 0 && (
+                  {entry.extra_data && (
                     <details className="mt-1.5">
                       <summary className="cursor-pointer text-xs text-slate-600 hover:text-slate-400">
                         Data
                       </summary>
                       <pre className="mt-1 text-xs text-slate-600 overflow-auto max-h-24 bg-black/30 p-2 rounded">
-                        {JSON.stringify(entry.data, null, 2)}
+                        {entry.extra_data}
                       </pre>
                     </details>
                   )}

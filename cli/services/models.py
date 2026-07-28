@@ -300,6 +300,11 @@ class AssistantSkillRecord:
     category: str
     source: str
     installed: bool
+    configured: bool
+    runtime_ready: bool
+    status: str
+    reconciliation_required: bool
+    status_detail: str
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "AssistantSkillRecord":
@@ -311,6 +316,11 @@ class AssistantSkillRecord:
             category=str(payload.get("category", "")),
             source=str(payload.get("source", "")),
             installed=bool(payload.get("installed", False)),
+            configured=bool(payload.get("configured", False)),
+            runtime_ready=bool(payload.get("runtime_ready", payload.get("installed", False))),
+            status=str(payload.get("status", "available")),
+            reconciliation_required=bool(payload.get("reconciliation_required", False)),
+            status_detail=str(payload.get("status_detail", "")),
         )
 
 

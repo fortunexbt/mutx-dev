@@ -137,6 +137,42 @@ function asRecord(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
+function normalizePathArgument(value, { label, optional = false }) {
+  if (value === undefined || value === null) {
+    if (optional) {
+      return undefined;
+    }
+    throw new TypeError(`${label} must be a non-empty string.`);
+  }
+
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new TypeError(`${label} must be a non-empty string.`);
+  }
+
+  if (value.includes("\0")) {
+    throw new TypeError(`${label} contains an unsupported null character.`);
+  }
+
+  return value;
+}
+
+function requireSuccessfulAction(result, actionLabel) {
+  const record = asRecord(result);
+  if (!record || typeof record.success !== "boolean") {
+    throw new Error(`${actionLabel} returned an invalid response.`);
+  }
+
+  if (!record.success) {
+    const message =
+      typeof record.error === "string" && record.error.trim().length > 0
+        ? record.error
+        : `${actionLabel} failed.`;
+    throw new Error(message);
+  }
+
+  return record;
+}
+
 function pickString(value, keys) {
   const record = asRecord(value);
   if (!record) {
@@ -191,8 +227,8 @@ function handleResponse(response) {
 
   if (error) {
     updateBridgeState({
-      lastError: error,
-      ready: false,
+      lastError: "A desktop status source failed. The bridge will retry automatically.",
+      ready: bridgeReady,
       state: bridgeReady ? "degraded" : "error",
     });
     pending.reject(new Error(error));
@@ -240,11 +276,10 @@ function sendBridgeRequest(method, params = {}, options = {}) {
       }
 
       pendingRequests.delete(id);
-      bridgeReady = false;
       updateBridgeState({
-        ready: false,
-        state: "error",
-        lastError: `Bridge request timeout: ${method}`,
+        ready: bridgeReady,
+        state: bridgeReady ? "degraded" : "error",
+        lastError: "Desktop bridge request timed out. Retry from Desktop Settings.",
       });
       reject(new Error(`Bridge request timeout: ${method}`));
     }, timeoutMs);
@@ -261,7 +296,7 @@ function sendBridgeRequest(method, params = {}, options = {}) {
       updateBridgeState({
         ready: false,
         state: "error",
-        lastError: message,
+        lastError: "Desktop bridge could not send a request. Restart MUTX if it does not recover.",
       });
       reject(new Error(message));
     }
@@ -294,7 +329,9 @@ function attachBridgeListeners(processHandle) {
     if (!message) {
       return;
     }
-    updateBridgeState({ lastError: message });
+    updateBridgeState({
+      lastError: "Desktop bridge reported an error. Restart MUTX if it does not recover.",
+    });
     console.error("[BridgeManager] Bridge stderr:", message);
   });
 
@@ -307,7 +344,7 @@ function attachBridgeListeners(processHandle) {
     updateBridgeState({
       ready: false,
       state: "error",
-      lastError: error.message,
+      lastError: "Desktop bridge failed. Restart MUTX if it does not recover.",
     });
   });
 
@@ -387,8 +424,8 @@ function startBridge() {
         bridgeState.state === "restarting" || bridgeState.state === "degraded"
           ? "restarting"
           : "starting",
-      pythonCommand: pythonCmd,
-      scriptPath,
+      pythonCommand: path.basename(pythonCmd),
+      scriptPath: path.basename(scriptPath),
       lastError: null,
       lastExitCode: null,
     });
@@ -425,7 +462,7 @@ function startBridge() {
         updateBridgeState({
           ready: false,
           state: "error",
-          lastError: error instanceof Error ? error.message : "Bridge bootstrap failed",
+          lastError: "Desktop bridge could not start. Restart MUTX or reinstall the application.",
         });
 
         if (bridgeProcess === processHandle) {
@@ -717,11 +754,19 @@ async function governanceRestart() {
 }
 
 async function finderReveal(filePath) {
-  return callBridge("system.revealInFinder", { file_path: filePath });
+  const pathValue = normalizePathArgument(filePath, { label: "Finder path" });
+  const result = await callBridge("finder.reveal", { path: pathValue });
+  return requireSuccessfulAction(result, "Reveal in Finder");
 }
 
 async function shellOpenTerminal(cwd) {
-  return callBridge("system.openTerminal", { cwd });
+  const cwdValue = normalizePathArgument(cwd, {
+    label: "Terminal working directory",
+    optional: true,
+  });
+  const params = cwdValue === undefined ? {} : { cwd: cwdValue };
+  const result = await callBridge("shell.openTerminal", params);
+  return requireSuccessfulAction(result, "Open Terminal");
 }
 
 async function dialogChooseWorkspace() {

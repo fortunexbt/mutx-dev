@@ -15,6 +15,19 @@ from src.api.main import create_app
 from src.api.services.social_auth import OAuthProvider, OAuthUserProfile
 
 
+async def _issue_oauth_state(
+    client: AsyncClient,
+    provider: str,
+    redirect_uri: str,
+) -> str:
+    response = await client.get(
+        f"/v1/auth/oauth/{provider}/authorize",
+        params={"redirect_uri": redirect_uri},
+    )
+    assert response.status_code == 200
+    return response.json()["state"]
+
+
 @pytest.mark.asyncio
 async def test_sso_callback_prefers_id_token_for_identity_validation(monkeypatch):
     from datetime import datetime, timezone
@@ -28,6 +41,8 @@ async def test_sso_callback_prefers_id_token_for_identity_validation(monkeypatch
         SimpleNamespace(
             okta_client_id="mutx-client",
             okta_client_secret="client-secret",
+            okta_domain="https://id.example.com",
+            public_api_url="https://api.mutx.dev",
             jwt_secret="test-secret",
         ),
     )
@@ -38,25 +53,53 @@ async def test_sso_callback_prefers_id_token_for_identity_validation(monkeypatch
             "id_token": "signed-id-token",
         }
 
-    async def fake_verify(*, token, provider, client_id, allow_userinfo_fallback):
+    async def fake_verify(*, token, provider, domain, client_id, allow_userinfo_fallback):
         assert token == "signed-id-token"
         assert provider is auth_service.SSOProvider.OKTA
+        assert domain == "https://id.example.com"
         assert client_id == "mutx-client"
         assert allow_userinfo_fallback is False
         return auth_service.TokenPayload(
             sub="oidc-user",
             email="oidc@example.com",
+            email_verified=True,
             roles=["USER"],
             exp=datetime.fromtimestamp(4_102_444_800, tz=timezone.utc),
         )
 
     monkeypatch.setattr(auth_routes, "_exchange_code_for_token", fake_exchange)
+
+    async def fake_consume(*_args, **_kwargs):
+        return True
+
+    monkeypatch.setattr(auth_routes, "consume_oauth_state", fake_consume)
     monkeypatch.setattr(auth_service, "verify_oauth_token", fake_verify)
-    monkeypatch.setattr(auth_service, "create_access_token", lambda **_kwargs: "mutx-token")
+
+    async def fake_resolve_external_user(_session, **kwargs):
+        assert kwargs == {
+            "provider": "okta",
+            "provider_user_id": "oidc-user",
+            "email": "oidc@example.com",
+            "email_verified": True,
+            "display_name": "oidc",
+            "profile": {"source": "sso"},
+        }
+        return SimpleNamespace(id=uuid.uuid4(), is_active=True)
+
+    monkeypatch.setattr(auth_routes, "resolve_external_auth_user", fake_resolve_external_user)
+    monkeypatch.setattr(
+        auth_routes,
+        "create_dashboard_access_token",
+        lambda _user_id: (
+            "mutx-token",
+            datetime.now(timezone.utc).replace(year=datetime.now(timezone.utc).year + 1),
+        ),
+    )
 
     response = await auth_routes.sso_callback(
         provider="okta",
         code="authorization-code",
+        state="sso-state",
         session=None,
     )
 
@@ -79,8 +122,10 @@ class TestAuthEndpoints:
         )
         assert response.status_code == 201
         data = response.json()
-        assert "access_token" in data
-        assert "refresh_token" in data
+        assert data["requires_email_verification"] is True
+        assert data["access_token"] is None
+        assert data["refresh_token"] is None
+        assert data["expires_in"] is None
 
     @pytest.mark.asyncio
     async def test_register_uses_requested_verification_origin(
@@ -90,17 +135,19 @@ class TestAuthEndpoints:
 
         captured: dict[str, str | None] = {}
 
-        def fake_send_verification_email(
+        async def fake_send_verification_email(
             to_email: str,
             name: str,
             token: str,
             *,
             frontend_url: str | None = None,
+            return_path: str | None = None,
         ) -> bool:
             captured["to_email"] = to_email
             captured["name"] = name
             captured["token"] = token
             captured["frontend_url"] = frontend_url
+            captured["return_path"] = return_path
             return True
 
         monkeypatch.setattr(auth_routes, "send_verification_email", fake_send_verification_email)
@@ -131,6 +178,7 @@ class TestAuthEndpoints:
             password_hash=hash_password("StrongPassword123!"),
             name="Login User",
             is_active=True,
+            is_email_verified=True,
         )
         db_session.add(user)
         await db_session.commit()
@@ -248,7 +296,7 @@ class TestAuthEndpoints:
     async def test_register_duplicate_email(
         self, client_no_auth: AsyncClient, db_session: AsyncSession
     ):
-        """Test registering with an existing email fails."""
+        """Existing and new addresses receive the same registration contract."""
         from src.api.auth.password import hash_password
 
         # Create existing user
@@ -262,8 +310,7 @@ class TestAuthEndpoints:
         db_session.add(user)
         await db_session.commit()
 
-        # Try to register with same email
-        response = await client_no_auth.post(
+        existing_response = await client_no_auth.post(
             "/v1/auth/register",
             json={
                 "email": "duplicate@example.com",
@@ -271,8 +318,17 @@ class TestAuthEndpoints:
                 "name": "New User",
             },
         )
-        assert response.status_code == 400
-        assert "Email already registered" in response.json()["detail"]
+        new_response = await client_no_auth.post(
+            "/v1/auth/register",
+            json={
+                "email": "new-generic@example.com",
+                "password": "StrongPassword123!",
+                "name": "New Generic User",
+            },
+        )
+
+        assert existing_response.status_code == new_response.status_code == 201
+        assert existing_response.json() == new_response.json()
 
     @pytest.mark.asyncio
     async def test_login_invalid_password(
@@ -326,11 +382,10 @@ class TestAuthEndpoints:
         assert response.status_code == 403
 
     @pytest.mark.asyncio
-    async def test_login_can_require_verified_email(
-        self, client_no_auth: AsyncClient, db_session: AsyncSession, monkeypatch
+    async def test_login_requires_verified_email(
+        self, client_no_auth: AsyncClient, db_session: AsyncSession
     ):
         from src.api.auth.password import hash_password
-        from src.api.routes import auth as auth_routes
 
         user = User(
             id=uuid.uuid4(),
@@ -343,49 +398,79 @@ class TestAuthEndpoints:
         db_session.add(user)
         await db_session.commit()
 
-        monkeypatch.setattr(auth_routes.settings, "require_email_verification", True)
-        try:
-            response = await client_no_auth.post(
-                "/v1/auth/login",
-                json={
-                    "email": "unverified-login@example.com",
-                    "password": "StrongPassword123!",
-                },
-            )
-        finally:
-            monkeypatch.setattr(auth_routes.settings, "require_email_verification", False)
+        response = await client_no_auth.post(
+            "/v1/auth/login",
+            json={
+                "email": "unverified-login@example.com",
+                "password": "StrongPassword123!",
+            },
+        )
 
         assert response.status_code == 403
         assert "verification is required" in response.json()["detail"].lower()
 
     @pytest.mark.asyncio
-    async def test_register_token_cannot_access_me_when_email_verification_required(
-        self, client_no_auth: AsyncClient, monkeypatch
+    async def test_register_does_not_issue_tokens_before_email_verification(
+        self, client_no_auth: AsyncClient
+    ):
+        register_response = await client_no_auth.post(
+            "/v1/auth/register",
+            json={
+                "email": "unverified-register@example.com",
+                "password": "StrongPassword123!",
+                "name": "Unverified Register User",
+            },
+        )
+        assert register_response.status_code == 201
+
+        payload = register_response.json()
+
+        assert payload["requires_email_verification"] is True
+        assert payload["access_token"] is None
+        assert payload["refresh_token"] is None
+        assert payload["expires_in"] is None
+
+    @pytest.mark.asyncio
+    async def test_register_requires_separate_login_when_verification_policy_is_disabled(
+        self,
+        client_no_auth: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
     ):
         from src.api.routes import auth as auth_routes
 
-        monkeypatch.setattr(auth_routes.settings, "require_email_verification", True)
-        try:
-            register_response = await client_no_auth.post(
-                "/v1/auth/register",
-                json={
-                    "email": "unverified-register@example.com",
-                    "password": "StrongPassword123!",
-                    "name": "Unverified Register User",
-                },
-            )
-            assert register_response.status_code == 201
+        monkeypatch.setattr(auth_routes.settings, "require_email_verification", False)
 
-            token = register_response.json()["access_token"]
-            me_response = await client_no_auth.get(
-                "/v1/auth/me",
-                headers={"Authorization": f"Bearer {token}"},
-            )
-        finally:
-            monkeypatch.setattr(auth_routes.settings, "require_email_verification", False)
+        register_response = await client_no_auth.post(
+            "/v1/auth/register",
+            json={
+                "email": "verification-opt-out@example.com",
+                "password": "StrongPassword123!",
+                "name": "Verification Opt Out",
+            },
+        )
 
-        assert me_response.status_code == 403
-        assert "verification is required" in me_response.json()["detail"].lower()
+        assert register_response.status_code == 201
+        payload = register_response.json()
+        assert payload["requires_email_verification"] is False
+        assert payload["access_token"] is None
+        assert payload["refresh_token"] is None
+        assert payload["expires_in"] is None
+
+        login_response = await client_no_auth.post(
+            "/v1/auth/login",
+            json={
+                "email": "verification-opt-out@example.com",
+                "password": "StrongPassword123!",
+            },
+        )
+        assert login_response.status_code == 200
+
+        me_response = await client_no_auth.get(
+            "/v1/auth/me",
+            headers={"Authorization": f"Bearer {login_response.json()['access_token']}"},
+        )
+        assert me_response.status_code == 200
+        assert me_response.json()["is_email_verified"] is False
 
     @pytest.mark.asyncio
     async def test_register_weak_password(self, client_no_auth: AsyncClient):
@@ -450,7 +535,8 @@ class TestAuthEndpoints:
         )
         assert response.status_code == 200
         # Should return success regardless of whether email exists (to prevent enumeration)
-        assert "If an account exists" in response.json()["message"]
+        assert "provider accepted" in response.json()["message"]
+        assert "has been sent" not in response.json()["message"]
 
     @pytest.mark.asyncio
     async def test_forgot_password_uses_requested_origin(
@@ -471,15 +557,17 @@ class TestAuthEndpoints:
 
         captured: dict[str, str | None] = {}
 
-        def fake_send_password_reset_email(
+        async def fake_send_password_reset_email(
             to_email: str,
             name: str,
             token: str,
             *,
             frontend_url: str | None = None,
+            return_path: str | None = None,
         ) -> bool:
             captured["to_email"] = to_email
             captured["frontend_url"] = frontend_url
+            captured["return_path"] = return_path
             return True
 
         monkeypatch.setattr(
@@ -491,12 +579,15 @@ class TestAuthEndpoints:
             json={
                 "email": "reset-origin@example.com",
                 "email_link_origin": "https://pico.mutx.dev",
+                "return_path": "/onboarding?step=runtime",
             },
         )
 
         assert response.status_code == 200
         assert captured["to_email"] == "reset-origin@example.com"
         assert captured["frontend_url"] == "https://pico.mutx.dev"
+        assert captured["return_path"] == "/onboarding?step=runtime"
+        assert response.json()["return_path"] == "/onboarding?step=runtime"
 
     @pytest.mark.asyncio
     async def test_forgot_password_nonexistent_user(self, client_no_auth: AsyncClient):
@@ -531,7 +622,8 @@ class TestAuthEndpoints:
             json={"email": "unverified@example.com"},
         )
         assert response.status_code == 200
-        assert "If an account exists and is not verified" in response.json()["message"]
+        assert "provider accepted" in response.json()["message"]
+        assert "has been sent" not in response.json()["message"]
 
     @pytest.mark.asyncio
     async def test_resend_verification_already_verified(
@@ -556,7 +648,8 @@ class TestAuthEndpoints:
             json={"email": "verified@example.com"},
         )
         assert response.status_code == 200
-        assert "If an account exists and is not verified" in response.json()["message"]
+        assert "provider accepted" in response.json()["message"]
+        assert "has been sent" not in response.json()["message"]
 
     @pytest.mark.asyncio
     async def test_resend_verification_nonexistent_user(self, client_no_auth: AsyncClient):
@@ -574,6 +667,7 @@ class TestAuthEndpoints:
         from src.api.routes import auth as auth_routes
 
         monkeypatch.setattr(auth_routes.settings, "google_client_id", "google-client-id")
+        monkeypatch.setattr(auth_routes.settings, "google_client_secret", "google-client-secret")
         monkeypatch.setattr(
             auth_routes,
             "build_authorization_url",
@@ -589,15 +683,20 @@ class TestAuthEndpoints:
         )
 
         assert response.status_code == 200
-        assert response.json() == {
-            "authorization_url": "https://accounts.google.com/test?state=oauth-state"
-        }
+        payload = response.json()
+        assert len(payload["state"]) >= 32
+        assert payload["authorization_url"] == (
+            f"https://accounts.google.com/test?state={payload['state']}"
+        )
 
     @pytest.mark.asyncio
     async def test_oauth_exchange_creates_identity_and_verified_user(
         self, client_no_auth: AsyncClient, db_session: AsyncSession, monkeypatch
     ):
         from src.api.routes import auth as auth_routes
+
+        monkeypatch.setattr(auth_routes.settings, "google_client_id", "google-client-id")
+        monkeypatch.setattr(auth_routes.settings, "google_client_secret", "google-client-secret")
 
         async def fake_exchange_code_for_user_profile(provider, *, code, redirect_uri):
             assert provider == OAuthProvider.GOOGLE
@@ -620,11 +719,17 @@ class TestAuthEndpoints:
             fake_exchange_code_for_user_profile,
         )
 
+        state = await _issue_oauth_state(
+            client_no_auth,
+            "google",
+            "https://app.mutx.dev/api/auth/oauth/google/callback",
+        )
         response = await client_no_auth.post(
             "/v1/auth/oauth/google/exchange",
             json={
                 "code": "provider-code",
                 "redirect_uri": "https://app.mutx.dev/api/auth/oauth/google/callback",
+                "state": state,
             },
         )
 
@@ -632,6 +737,13 @@ class TestAuthEndpoints:
         payload = response.json()
         assert "access_token" in payload
         assert "refresh_token" in payload
+
+        me_response = await client_no_auth.get(
+            "/v1/auth/me",
+            headers={"Authorization": f"Bearer {payload['access_token']}"},
+        )
+        assert me_response.status_code == 200
+        assert me_response.json()["is_email_verified"] is True
 
         user_result = await db_session.execute(
             select(User).where(User.email == "oauth@example.com")
@@ -650,11 +762,14 @@ class TestAuthEndpoints:
         assert identity.user_id == user.id
 
     @pytest.mark.asyncio
-    async def test_oauth_exchange_links_existing_email_account(
+    async def test_oauth_exchange_rejects_implicit_email_linking(
         self, client_no_auth: AsyncClient, db_session: AsyncSession, monkeypatch
     ):
         from src.api.routes import auth as auth_routes
         from src.api.auth.password import hash_password
+
+        monkeypatch.setattr(auth_routes.settings, "github_client_id", "github-client-id")
+        monkeypatch.setattr(auth_routes.settings, "github_client_secret", "github-client-secret")
 
         user = User(
             id=uuid.uuid4(),
@@ -685,18 +800,24 @@ class TestAuthEndpoints:
             fake_exchange_code_for_user_profile,
         )
 
+        state = await _issue_oauth_state(
+            client_no_auth,
+            "github",
+            "https://app.mutx.dev/api/auth/oauth/github/callback",
+        )
         response = await client_no_auth.post(
             "/v1/auth/oauth/github/exchange",
             json={
                 "code": "provider-code",
                 "redirect_uri": "https://app.mutx.dev/api/auth/oauth/github/callback",
+                "state": state,
             },
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 409
 
         await db_session.refresh(user)
-        assert user.is_email_verified is True
+        assert user.is_email_verified is False
 
         identity_result = await db_session.execute(
             select(ExternalAuthIdentity).where(
@@ -704,8 +825,7 @@ class TestAuthEndpoints:
                 ExternalAuthIdentity.provider_user_id == "github-user-123",
             )
         )
-        identity = identity_result.scalar_one()
-        assert identity.user_id == user.id
+        assert identity_result.scalar_one_or_none() is None
 
     @pytest.mark.asyncio
     async def test_apple_oauth_exchange_generates_client_secret(self, monkeypatch):
@@ -791,6 +911,7 @@ class TestPasswordCompatibility:
             password_hash=hash_password("StrongPassword123!"),
             name="Sliding User",
             is_active=True,
+            is_email_verified=True,
         )
         db_session.add(user)
         await db_session.commit()
@@ -845,6 +966,7 @@ class TestPasswordCompatibility:
             password_hash=hash_password("StrongPassword123!"),
             name="Sliding Max User",
             is_active=True,
+            is_email_verified=True,
         )
         db_session.add(user)
         await db_session.commit()

@@ -39,7 +39,11 @@ function writeWorkspaceMap(nextMap: Record<string, PicoLessonWorkspaceState>) {
     return
   }
 
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextMap))
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextMap))
+  } catch {
+    // Hosted persistence must still run when storage is unavailable or full.
+  }
 }
 
 export { createDefaultLessonWorkspace, normalizeLessonWorkspace }
@@ -47,6 +51,17 @@ export { createDefaultLessonWorkspace, normalizeLessonWorkspace }
 export function readLessonWorkspace(lessonSlug: string, stepCount: number) {
   const workspaceMap = readWorkspaceMap()
   return normalizeLessonWorkspace(workspaceMap[lessonSlug], stepCount)
+}
+
+export function persistLessonWorkspace(
+  lessonSlug: string,
+  workspace: PicoLessonWorkspaceState,
+  persistRemote?: PicoLessonWorkspaceOptions['persistRemote'],
+) {
+  const workspaceMap = readWorkspaceMap()
+  workspaceMap[lessonSlug] = workspace
+  writeWorkspaceMap(workspaceMap)
+  persistRemote?.(lessonSlug, workspace)
 }
 
 function hasMeaningfulWorkspaceState(workspace: PicoLessonWorkspaceState) {
@@ -68,6 +83,7 @@ export function usePicoLessonWorkspace(
   stepCount: number,
   options?: PicoLessonWorkspaceOptions,
 ) {
+  const persistRemote = options?.persistRemote
   const persistedWorkspace = options?.progress?.lessonWorkspaces[lessonSlug]
   const resolvedWorkspace = useMemo(() => {
     if (persistedWorkspace) {
@@ -101,17 +117,13 @@ export function usePicoLessonWorkspace(
 
   const writePersistedWorkspace = useCallback(
     (nextWorkspace: PicoLessonWorkspaceState) => {
-      const workspaceMap = readWorkspaceMap()
-      workspaceMap[lessonSlug] = nextWorkspace
-      writeWorkspaceMap(workspaceMap)
-
-      options?.persistRemote?.(lessonSlug, nextWorkspace)
+      persistLessonWorkspace(lessonSlug, nextWorkspace, persistRemote)
     },
-    [lessonSlug, options],
+    [lessonSlug, persistRemote],
   )
 
   useEffect(() => {
-    if (!options?.persistRemote || persistedWorkspace) {
+    if (!persistRemote || persistedWorkspace) {
       return
     }
 
@@ -120,11 +132,11 @@ export function usePicoLessonWorkspace(
       return
     }
 
-    options.persistRemote(lessonSlug, {
+    persistRemote(lessonSlug, {
       ...legacyWorkspace,
       updatedAt: legacyWorkspace.updatedAt ?? new Date().toISOString(),
     })
-  }, [lessonSlug, options, persistedWorkspace, stepCount])
+  }, [lessonSlug, persistRemote, persistedWorkspace, stepCount])
 
   const persist = useCallback(
     (nextWorkspace: PicoLessonWorkspaceState) => {
@@ -160,12 +172,18 @@ export function usePicoLessonWorkspace(
   const completedStepCount = workspace.completedStepIndexes.length
   const progressPercent =
     stepCount > 0 ? Math.round((completedStepCount / stepCount) * 100) : 0
+  const resumeStepIndex = workspace.completedStepIndexes.includes(workspace.activeStepIndex)
+    ? Array.from({ length: stepCount }, (_, index) => index).find(
+        (index) => !workspace.completedStepIndexes.includes(index),
+      ) ?? workspace.activeStepIndex
+    : workspace.activeStepIndex
 
   return {
     ready: ready && workspaceLessonRef.current === lessonSlug,
     workspace,
     completedStepCount,
     progressPercent,
+    resumeStepIndex,
     actions: {
       setActiveStep: (index: number) =>
         touch((current) => ({

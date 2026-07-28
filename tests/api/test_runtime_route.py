@@ -4,6 +4,11 @@ import pytest
 from httpx import AsyncClient
 
 
+@pytest.fixture(autouse=True)
+def administrator_principal(test_user):
+    test_user.roles = ["ADMIN"]
+
+
 # ---------------------------------------------------------------------------
 # GET /v1/runtime/providers/{provider}  — read provider state
 # ---------------------------------------------------------------------------

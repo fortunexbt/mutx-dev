@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -26,11 +27,45 @@ from cli.runtime_registry import (
 )
 
 
-OPENCLAW_INSTALL_URL = "https://openclaw.ai/install.sh"
+OPENCLAW_VERSION = "2026.7.1"
+OPENCLAW_SOURCE_COMMIT = "2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4"
+OPENCLAW_INSTALL_URL = (
+    "https://raw.githubusercontent.com/openclaw/openclaw/"
+    f"{OPENCLAW_SOURCE_COMMIT}/scripts/install.sh"
+)
 DEFAULT_OPENCLAW_INSTALL_METHOD = "npm"
 DEFAULT_GATEWAY_PORT = 18789
 SUPPORTED_OPENCLAW_INSTALL_METHODS = ("npm", "git")
 OPENCLAW_PROVIDER_ID = "openclaw"
+
+
+def _is_supported_openclaw_node_version(version: str) -> bool:
+    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", version.strip())
+    if match is None:
+        return False
+    parsed = tuple(int(part) for part in match.groups())
+    return (
+        (22, 22, 3) <= parsed < (23, 0, 0)
+        or (24, 15, 0) <= parsed < (25, 0, 0)
+        or parsed >= (25, 9, 0)
+    )
+
+
+def _require_supported_openclaw_node() -> None:
+    node = shutil.which("node")
+    if node is None:
+        raise ValidationError("OpenClaw requires Node 24.15+ (recommended).")
+    result = subprocess.run(
+        [node, "--version"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    if result.returncode != 0 or not _is_supported_openclaw_node_version(result.stdout):
+        raise ValidationError(
+            "OpenClaw requires Node 22.22.3+, 24.15+, or 25.9+; Node 24 is recommended."
+        )
 
 
 @dataclass(slots=True)
@@ -533,14 +568,23 @@ def get_gateway_health() -> OpenClawGatewayHealth:
     )
 
 
-def install_openclaw(*, install_method: str, non_interactive: bool) -> str:
+def _build_openclaw_install_command(*, install_method: str, non_interactive: bool) -> str:
     method = normalize_install_method(install_method)
+    version = OPENCLAW_VERSION if method == "npm" else OPENCLAW_SOURCE_COMMIT
     command = (
         f"curl -fsSL --proto '=https' --tlsv1.2 {shlex.quote(OPENCLAW_INSTALL_URL)} "
-        f"| bash -s -- --install-method {shlex.quote(method)} --no-onboard"
+        f"| bash -s -- --install-method {shlex.quote(method)} "
+        f"--version {shlex.quote(version)} --no-onboard"
     )
-    if non_interactive:
-        command += " --no-prompt"
+    return f"{command} --no-prompt" if non_interactive else command
+
+
+def install_openclaw(*, install_method: str, non_interactive: bool) -> str:
+    method = normalize_install_method(install_method)
+    command = _build_openclaw_install_command(
+        install_method=method,
+        non_interactive=non_interactive,
+    )
 
     _run_bash(command)
     resolved = find_openclaw_bin()
@@ -575,22 +619,20 @@ def ensure_openclaw_installed(
             raise ValidationError(
                 "OpenClaw is required for the Personal Assistant. "
                 "Re-run with `--install-openclaw`, or install it first via "
-                "`curl -fsSL https://openclaw.ai/install.sh | bash`."
+                f"`npm install -g openclaw@{OPENCLAW_VERSION}`."
             )
         if prompt_install is None or not prompt_install():
             raise ValidationError(
                 "OpenClaw installation was declined. "
-                "Install it first with `curl -fsSL https://openclaw.ai/install.sh | bash`, "
+                f"Install it first with `npm install -g openclaw@{OPENCLAW_VERSION}`, "
                 "then rerun `mutx setup`."
             )
 
     method = normalize_install_method(install_method)
-    command = (
-        f"curl -fsSL --proto '=https' --tlsv1.2 {shlex.quote(OPENCLAW_INSTALL_URL)} "
-        f"| bash -s -- --install-method {shlex.quote(method)} --no-onboard"
+    command = _build_openclaw_install_command(
+        install_method=method,
+        non_interactive=no_input,
     )
-    if no_input:
-        command += " --no-prompt"
 
     if command_runner is not None:
         command_runner(command)

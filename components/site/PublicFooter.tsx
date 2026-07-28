@@ -49,7 +49,7 @@ export function PublicFooter({ className, showCallout = true }: PublicFooterProp
           <div className={styles.calloutAction}>
             <p>Start on your Mac, then bring the control plane to your own runtime.</p>
             <Link href="/download">
-              Download MUTX <ArrowRight aria-hidden="true" />
+              Download MUTX <ArrowRight className={styles.directionalIcon} aria-hidden="true" />
             </Link>
           </div>
         </div>

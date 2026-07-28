@@ -48,6 +48,18 @@ describe('dashboard governance route proxies', () => {
     )
   })
 
+  it('encodes decoded catch-all segments before building an upstream URL', async () => {
+    const { GET } = await import('../../app/api/dashboard/governance/credentials/[...path]/route')
+
+    await GET(mockRequest(), { params: Promise.resolve({ path: ['get', 'team/secret'] }) })
+
+    expect(proxyJson).toHaveBeenCalledWith(
+      expect.anything(),
+      'http://localhost:8000/v1/governance/credentials/get/team%2Fsecret',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
   it('proxies governance trust POST routes', async () => {
     const { POST } = await import('../../app/api/dashboard/governance/trust/[...path]/route')
     const request = {

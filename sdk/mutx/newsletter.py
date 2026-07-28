@@ -1,14 +1,14 @@
-"""Newsletter API SDK - /newsletter endpoints."""
+"""Compatibility resource for the currently unmounted newsletter router."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NoReturn
 
 import httpx
 
 
 class Newsletter:
-    """SDK resource for /newsletter endpoints."""
+    """Compatibility resource retained while newsletter is absent from public ``/v1``."""
 
     def __init__(self, client: httpx.Client | httpx.AsyncClient):
         self._client = client
@@ -25,19 +25,19 @@ class Newsletter:
                 "This async resource helper requires an async httpx.AsyncClient and an `a*` method call."
             )
 
+    @staticmethod
+    def _unavailable() -> NoReturn:
+        raise RuntimeError("Newsletter endpoints are not available in the mounted public /v1 API.")
+
     def get_count(self) -> int:
         """Get the total waitlist signup count."""
         self._require_sync_client()
-        response = self._client.get("/newsletter")
-        response.raise_for_status()
-        return response.json()["count"]
+        self._unavailable()
 
     async def acount(self) -> int:
         """Get the total waitlist signup count (async)."""
         self._require_async_client()
-        response = await self._client.get("/newsletter")
-        response.raise_for_status()
-        return response.json()["count"]
+        self._unavailable()
 
     def signup(
         self,
@@ -54,12 +54,7 @@ class Newsletter:
             Dict with 'message' and 'duplicate' fields
         """
         self._require_sync_client()
-        response = self._client.post(
-            "/newsletter",
-            json={"email": email, "source": source},
-        )
-        response.raise_for_status()
-        return response.json()
+        self._unavailable()
 
     async def asignup(
         self,
@@ -68,9 +63,4 @@ class Newsletter:
     ) -> dict[str, Any]:
         """Submit a waitlist signup (async)."""
         self._require_async_client()
-        response = await self._client.post(
-            "/newsletter",
-            json={"email": email, "source": source},
-        )
-        response.raise_for_status()
-        return response.json()
+        self._unavailable()

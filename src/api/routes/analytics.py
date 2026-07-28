@@ -4,12 +4,12 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.database import get_db
-from src.api.auth.dependencies import get_current_user
+from src.api.auth.dependencies import require_roles
 from src.api.models import Agent, AgentRun, Deployment, UsageEvent, Metrics, AgentMetric, User
 from src.api.models.schemas import (
     AnalyticsSummaryResponse,
@@ -19,10 +19,49 @@ from src.api.models.schemas import (
     CostSummaryResponse,
     BudgetResponse,
 )
+from src.api.models.numeric import require_finite_float
 from src.api.services.billing import get_current_billing_period, get_plan_credits, get_usage_credits
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 logger = logging.getLogger(__name__)
+
+BILLING_INTEGRITY_ERROR = "Billing data is unavailable because numeric integrity checks failed"
+
+
+def _nullable_metric(value: object) -> tuple[float | None, bool]:
+    if value is None:
+        return None, False
+    try:
+        return require_finite_float(value, path="$.analytics.metric"), False
+    except (TypeError, ValueError, OverflowError):
+        return None, True
+
+
+def _average_metric(
+    values: list[object],
+    *,
+    empty_value: float | None,
+) -> tuple[float | None, bool]:
+    finite_values: list[float] = []
+    for value in values:
+        if value is None:
+            continue
+        finite_value, incomplete = _nullable_metric(value)
+        if incomplete or finite_value is None:
+            return None, True
+        finite_values.append(finite_value)
+
+    if not finite_values:
+        return empty_value, False
+    return _nullable_metric(sum(finite_values) / len(finite_values))
+
+
+def _billing_value(value: object, *, path: str) -> float:
+    try:
+        return require_finite_float(value, path=path)
+    except (TypeError, ValueError, OverflowError) as exc:
+        logger.error("Rejected non-finite billing aggregate at %s", path)
+        raise HTTPException(status_code=503, detail=BILLING_INTEGRITY_ERROR) from exc
 
 
 def _parse_datetime(dt_str):
@@ -74,10 +113,10 @@ def _resolve_usage_agent_key(
 ) -> str | None:
     metadata = _decode_event_metadata(event_metadata)
     metadata_agent_id = metadata.get("agent_id")
-    if isinstance(metadata_agent_id, str) and metadata_agent_id:
+    if isinstance(metadata_agent_id, str) and metadata_agent_id in owned_agent_ids:
         return metadata_agent_id
 
-    if resource_type == "agent" and resource_id:
+    if resource_type == "agent" and resource_id in owned_agent_ids:
         return resource_id
 
     if event_type.startswith("agent_") and resource_id in owned_agent_ids:
@@ -91,7 +130,7 @@ async def get_analytics_summary(
     period_start: Optional[str] = Query(None),
     period_end: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     period_start_dt, period_end_dt = _resolve_period(period_start, period_end)
 
@@ -160,9 +199,10 @@ async def get_analytics_summary(
     )
     total_api_calls = (await db.execute(api_call_query)).scalar_one() or 0
 
-    avg_latency_ms = 0.0
+    avg_latency_ms: float | None = 0.0
+    incomplete = False
     if agent_ids:
-        latency_query = select(func.avg(Metrics.latency)).where(
+        latency_query = select(Metrics.latency).where(
             and_(
                 Metrics.agent_id.in_(agent_ids),
                 Metrics.timestamp >= period_start_dt,
@@ -170,7 +210,10 @@ async def get_analytics_summary(
             )
         )
         result = await db.execute(latency_query)
-        avg_latency_ms = result.scalar_one() or 0.0
+        avg_latency_ms, incomplete = _average_metric(
+            list(result.scalars()),
+            empty_value=0.0,
+        )
 
     return AnalyticsSummaryResponse(
         total_agents=total_agents,
@@ -181,9 +224,10 @@ async def get_analytics_summary(
         successful_runs=successful_runs,
         failed_runs=failed_runs,
         total_api_calls=total_api_calls,
-        avg_latency_ms=round(avg_latency_ms, 2),
+        avg_latency_ms=round(avg_latency_ms, 2) if avg_latency_ms is not None else None,
         period_start=period_start_dt,
         period_end=period_end_dt,
+        incomplete=incomplete,
     )
 
 
@@ -193,7 +237,7 @@ async def get_agent_metrics_summary(
     period_start: Optional[str] = Query(None),
     period_end: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     from fastapi import HTTPException
 
@@ -234,30 +278,42 @@ async def get_agent_metrics_summary(
     failed_runs = status_counts.get("failed", 0)
 
     avg_cpu_result = (
-        await db.execute(
-            select(func.avg(AgentMetric.cpu_usage)).where(
-                and_(
-                    AgentMetric.agent_id == agent_id,
-                    AgentMetric.timestamp >= period_start_dt,
-                    AgentMetric.timestamp <= period_end_dt,
+        (
+            await db.execute(
+                select(AgentMetric.cpu_usage).where(
+                    and_(
+                        AgentMetric.agent_id == agent_id,
+                        AgentMetric.timestamp >= period_start_dt,
+                        AgentMetric.timestamp <= period_end_dt,
+                    )
                 )
             )
         )
-    ).scalar_one_or_none()
-    avg_cpu = round(avg_cpu_result, 2) if avg_cpu_result else None
+        .scalars()
+        .all()
+    )
+    avg_cpu, cpu_incomplete = _average_metric(list(avg_cpu_result), empty_value=None)
+    if avg_cpu is not None:
+        avg_cpu = round(avg_cpu, 2)
 
     avg_memory_result = (
-        await db.execute(
-            select(func.avg(AgentMetric.memory_usage)).where(
-                and_(
-                    AgentMetric.agent_id == agent_id,
-                    AgentMetric.timestamp >= period_start_dt,
-                    AgentMetric.timestamp <= period_end_dt,
+        (
+            await db.execute(
+                select(AgentMetric.memory_usage).where(
+                    and_(
+                        AgentMetric.agent_id == agent_id,
+                        AgentMetric.timestamp >= period_start_dt,
+                        AgentMetric.timestamp <= period_end_dt,
+                    )
                 )
             )
         )
-    ).scalar_one_or_none()
-    avg_memory = round(avg_memory_result, 2) if avg_memory_result else None
+        .scalars()
+        .all()
+    )
+    avg_memory, memory_incomplete = _average_metric(list(avg_memory_result), empty_value=None)
+    if avg_memory is not None:
+        avg_memory = round(avg_memory, 2)
 
     total_requests = (
         await db.execute(
@@ -272,17 +328,23 @@ async def get_agent_metrics_summary(
     ).scalar_one()
 
     avg_latency_result = (
-        await db.execute(
-            select(func.avg(Metrics.latency)).where(
-                and_(
-                    Metrics.agent_id == agent_id,
-                    Metrics.timestamp >= period_start_dt,
-                    Metrics.timestamp <= period_end_dt,
+        (
+            await db.execute(
+                select(Metrics.latency).where(
+                    and_(
+                        Metrics.agent_id == agent_id,
+                        Metrics.timestamp >= period_start_dt,
+                        Metrics.timestamp <= period_end_dt,
+                    )
                 )
             )
         )
-    ).scalar_one_or_none()
-    avg_latency = round(avg_latency_result, 2) if avg_latency_result else None
+        .scalars()
+        .all()
+    )
+    avg_latency, latency_incomplete = _average_metric(list(avg_latency_result), empty_value=None)
+    if avg_latency is not None:
+        avg_latency = round(avg_latency, 2)
 
     return AgentMetricsSummary(
         agent_id=agent_id,
@@ -296,6 +358,7 @@ async def get_agent_metrics_summary(
         avg_latency_ms=avg_latency,
         period_start=period_start_dt,
         period_end=period_end_dt,
+        incomplete=cpu_incomplete or memory_incomplete or latency_incomplete,
     )
 
 
@@ -307,7 +370,7 @@ async def get_analytics_timeseries(
     period_end: Optional[str] = Query(None),
     agent_id: Optional[uuid.UUID] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     now = datetime.now(timezone.utc)
     if period_start == "24h":
@@ -321,6 +384,7 @@ async def get_analytics_timeseries(
     period_end_dt = _parse_datetime(period_end) or now
 
     data = []
+    incomplete = False
     if metric == "runs":
         q = select(
             func.date_trunc(interval, AgentRun.started_at).label("ts"), func.count().label("count")
@@ -362,28 +426,45 @@ async def get_analytics_timeseries(
                 )
             )
     elif metric == "latency":
+        latency_filter = and_(
+            Agent.user_id == current_user.id,
+            Metrics.timestamp >= period_start_dt,
+            Metrics.timestamp <= period_end_dt,
+        )
+        source_values_query = (
+            select(Metrics.latency).join(Agent, Agent.id == Metrics.agent_id).where(latency_filter)
+        )
+        if agent_id:
+            source_values_query = source_values_query.where(Metrics.agent_id == agent_id)
+        source_result = await db.execute(source_values_query)
+        if hasattr(source_result, "scalars"):
+            source_values = source_result.scalars().all()
+        else:
+            # Lightweight route-test doubles may only implement row iteration.
+            source_values = [
+                getattr(row, "latency", getattr(row, "avg", None)) for row in source_result
+            ]
+        _, source_incomplete = _average_metric(list(source_values), empty_value=None)
+        incomplete = incomplete or source_incomplete
+
         q = (
             select(
                 func.date_trunc(interval, Metrics.timestamp).label("ts"),
                 func.avg(Metrics.latency).label("avg"),
             )
             .join(Agent, Agent.id == Metrics.agent_id)
-            .where(
-                and_(
-                    Agent.user_id == current_user.id,
-                    Metrics.timestamp >= period_start_dt,
-                    Metrics.timestamp <= period_end_dt,
-                )
-            )
+            .where(latency_filter)
         )
         if agent_id:
             q = q.where(Metrics.agent_id == agent_id)
         q = q.group_by("ts").order_by("ts")
         for row in await db.execute(q):
+            value, value_incomplete = _nullable_metric(row.avg)
+            incomplete = incomplete or value_incomplete
             data.append(
                 AnalyticsTimeSeries(
                     timestamp=row.ts.replace(tzinfo=timezone.utc) if row.ts else now,
-                    value=round(row.avg, 2) if row.avg else 0,
+                    value=round(value, 2) if value is not None else None,
                 )
             )
 
@@ -393,6 +474,7 @@ async def get_analytics_timeseries(
         data=data,
         period_start=period_start_dt,
         period_end=period_end_dt,
+        incomplete=incomplete,
     )
 
 
@@ -401,22 +483,28 @@ async def get_cost_summary(
     period_start: Optional[str] = Query(None),
     period_end: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     period_start_dt, period_end_dt = _resolve_period(period_start, period_end)
 
     period_filter = and_(
         UsageEvent.user_id == current_user.id,
         UsageEvent.created_at >= period_start_dt,
-        UsageEvent.created_at <= period_end_dt,
+        UsageEvent.created_at < period_end_dt,
     )
 
-    # Total credits via SQL aggregate instead of loading all rows
-    total_credits = (
-        await db.execute(
-            select(func.coalesce(func.sum(UsageEvent.credits_used), 0.0)).where(period_filter)
+    # Billing totals validate each source row before any SQL aggregate can hide
+    # a legacy NaN as NULL or propagate Infinity.
+    try:
+        total_credits = await get_usage_credits(
+            db,
+            current_user.id,
+            period_start=period_start_dt,
+            period_end=period_end_dt,
         )
-    ).scalar_one()
+    except (TypeError, ValueError, OverflowError) as exc:
+        logger.error("Rejected non-finite cost source data for user %s", current_user.id)
+        raise HTTPException(status_code=503, detail=BILLING_INTEGRITY_ERROR) from exc
 
     # Credits grouped by event_type via SQL aggregate
     event_type_rows = (
@@ -430,7 +518,11 @@ async def get_cost_summary(
         )
     ).all()
     usage_by_event_type = {
-        (row.event_type or "unknown"): round(float(row.total), 2) for row in event_type_rows
+        (row.event_type or "unknown"): round(
+            _billing_value(row.total, path=f"$.usage_by_event_type.{row.event_type or 'unknown'}"),
+            2,
+        )
+        for row in event_type_rows
     }
 
     # Agent breakdown: select only the columns needed for _resolve_usage_agent_key
@@ -460,15 +552,17 @@ async def get_cost_summary(
             owned_agent_ids=owned_agent_ids,
         )
         if agent_key:
-            usage_by_agent[agent_key] = usage_by_agent.get(agent_key, 0.0) + float(
-                row.credits_used or 0.0
+            usage_by_agent[agent_key] = usage_by_agent.get(agent_key, 0.0) + _billing_value(
+                row.credits_used,
+                path=f"$.usage_by_agent.{agent_key}",
             )
 
     credits_total = get_plan_credits(current_user.plan)
+    finite_total_credits = _billing_value(total_credits, path="$.total_credits_used")
 
     return CostSummaryResponse(
-        total_credits_used=round(float(total_credits), 2),
-        credits_remaining=round(max(0.0, credits_total - float(total_credits)), 2),
+        total_credits_used=round(finite_total_credits, 2),
+        credits_remaining=round(max(0.0, credits_total - finite_total_credits), 2),
         credits_total=credits_total,
         usage_by_event_type=usage_by_event_type,
         usage_by_agent={key: round(value, 2) for key, value in usage_by_agent.items()},
@@ -479,15 +573,20 @@ async def get_cost_summary(
 
 @router.get("/budget", response_model=BudgetResponse)
 async def get_budget(
-    db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     billing_period_start, reset_date = get_current_billing_period()
-    credits_used = await get_usage_credits(
-        db,
-        current_user.id,
-        period_start=billing_period_start,
-        period_end=reset_date,
-    )
+    try:
+        credits_used = await get_usage_credits(
+            db,
+            current_user.id,
+            period_start=billing_period_start,
+            period_end=reset_date,
+        )
+    except (TypeError, ValueError, OverflowError) as exc:
+        logger.error("Rejected non-finite billing aggregate for user %s", current_user.id)
+        raise HTTPException(status_code=503, detail=BILLING_INTEGRITY_ERROR) from exc
     credits_total = get_plan_credits(current_user.plan)
     credits_remaining = max(0.0, credits_total - credits_used)
 
@@ -508,7 +607,7 @@ async def get_budget(
 @router.get("/revenue")
 async def get_revenue_overview(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("ADMIN")),
 ):
     """Revenue overview — MRR, active subs, payments. Internal users only."""
     from src.api.auth.dependencies import assert_internal_user
@@ -567,7 +666,7 @@ async def get_subscriptions_list(
     limit: int = Query(50, ge=1, le=200),
     status_filter: Optional[str] = Query(None, alias="status"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("ADMIN")),
 ):
     """List subscriptions with user info. Internal users only."""
     from src.api.auth.dependencies import assert_internal_user
@@ -614,7 +713,7 @@ async def get_payments_list(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("ADMIN")),
 ):
     """List recent payments. Internal users only."""
     from src.api.auth.dependencies import assert_internal_user

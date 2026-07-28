@@ -16,6 +16,8 @@ MUTX has two adjacent webhook-related surfaces:
 | `DELETE /v1/webhooks/{webhook_id}` | Delete a webhook |
 | `POST /v1/webhooks/{webhook_id}/test` | Send a test event |
 | `GET /v1/webhooks/{webhook_id}/deliveries` | List delivery attempts |
+| `POST /v1/webhooks/retry` | Retry one delivery by `delivery_id` |
+| `GET /v1/webhooks/verify-docs` | Return signature-verification instructions |
 
 ## Ingest Routes
 
@@ -24,6 +26,7 @@ MUTX has two adjacent webhook-related surfaces:
 | `POST /v1/ingest/agent-status` | Runtime status ingestion |
 | `POST /v1/ingest/deployment` | Deployment event ingestion |
 | `POST /v1/ingest/metrics` | Metrics ingestion |
+| `POST /v1/ingest/events` | Generic runtime event ingestion |
 
 ## Authentication
 
@@ -31,6 +34,10 @@ Webhook management and ingest routes accept either:
 
 - `Authorization: Bearer <access_token or mutx_live key>`
 - `X-API-Key: <mutx_live key>`
+
+Webhook reads accept the API-key owner's persisted `VIEWER` or `DEVELOPER` role;
+mutations, tests, retries, and ingest require `DEVELOPER`. `ADMIN` implicitly
+satisfies these role checks.
 
 ## Create A Webhook
 
@@ -59,6 +66,8 @@ Example response:
   "secret": null,
   "has_secret": true,
   "is_active": true,
+  "circuit_open": false,
+  "consecutive_failures": 0,
   "created_at": "2026-03-22T12:00:00Z"
 }
 ```
@@ -138,14 +147,17 @@ X-Webhook-Signature: sha256=<digest>
 
 ## Retry Behavior
 
-The current delivery service retries failed webhook deliveries after approximately:
+The current delivery service makes at most five attempts for retryable failures.
+The four waits are based on 30 seconds, 5 minutes, 30 minutes, and 2 hours, each
+with ±20% jitter. Non-retryable responses stop the sequence immediately; five
+consecutive failed deliveries open the webhook circuit breaker.
 
-- 2 seconds
-- 10 seconds
-- 30 seconds
+Webhook destinations must use HTTPS on port 443 and resolve to a public address.
+Loopback, private, link-local, documentation, multicast, and other non-public
+networks are rejected.
 
 ## Ingest Notes
 
 The ingest routes are for MUTX runtime updates entering the control plane, not for user-managed outbound webhooks.
 
-Use [`openapi.json`](./openapi.json) for the exact ingestion payloads.
+Use the source-controlled [`openapi.json`](https://github.com/mutx-dev/mutx-dev/blob/main/docs/api/openapi.json) for the exact ingestion payloads.

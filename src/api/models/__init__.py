@@ -64,6 +64,12 @@ from src.api.models.payment_schemas import (
     CustomerPortalResponse,
     PaymentResponse,
 )
+from src.api.models.approval import ApprovalNotificationOutbox, ApprovalRecord
+from src.api.models.policy import PolicyRecord
+from src.api.models.rag import RagDocument, RagIndex
+from src.api.models.scheduler import ScheduledTask
+from src.api.models.security_state import SecurityEvaluation, SecurityReceipt
+from src.api.models.telemetry_backend import TelemetryBackendConfig
 
 __all__ = [
     "User",
@@ -118,4 +124,13 @@ __all__ = [
     "CustomerPortalRequest",
     "CustomerPortalResponse",
     "PaymentResponse",
+    "ApprovalNotificationOutbox",
+    "ApprovalRecord",
+    "PolicyRecord",
+    "RagDocument",
+    "RagIndex",
+    "ScheduledTask",
+    "SecurityEvaluation",
+    "SecurityReceipt",
+    "TelemetryBackendConfig",
 ]

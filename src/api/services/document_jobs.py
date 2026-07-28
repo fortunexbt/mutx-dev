@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import hashlib
 import json
 import logging
 import os
@@ -11,9 +12,11 @@ from typing import Any
 import uuid
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from starlette.datastructures import UploadFile
 
 from src.api.metrics import (
     mutx_document_artifact_ops_total,
@@ -43,8 +46,11 @@ from src.api.services.document_engine import (
 from src.api.services.document_storage import (
     MANAGED_STORAGE_BACKENDS,
     StoredArtifactResult,
+    assert_upload_size_within_limit,
+    get_artifacts_root,
     register_artifact_reference,
     resolve_artifact_path,
+    store_prepared_artifact,
     store_uploaded_artifact,
     sync_managed_output_artifact,
 )
@@ -55,7 +61,8 @@ logger = logging.getLogger(__name__)
 
 DOCUMENT_PENDING_STATUSES = {"queued", "dispatching"}
 DOCUMENT_ACTIVE_STATUSES = {"running"}
-DOCUMENT_TERMINAL_STATUSES = {"completed", "failed"}
+DOCUMENT_TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
+DOCUMENT_IDEMPOTENT_DISPATCH_STATUSES = {"queued", "running", "completed"}
 
 
 @dataclass(frozen=True)
@@ -65,8 +72,33 @@ class ClaimedDocumentJob:
     worker_name: str
 
 
+@dataclass(frozen=True)
+class PreparedDocumentUpload:
+    role: str
+    kind: str
+    filename: str
+    content_type: str | None
+    content: bytes
+    sha256: str
+
+
+class DocumentSubmissionError(RuntimeError):
+    def __init__(self, *, job_id: uuid.UUID, phase: str, message: str):
+        super().__init__(message)
+        self.job_id = job_id
+        self.phase = phase
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _decode_run_metadata(value: str | dict[str, Any] | None) -> dict[str, Any]:
@@ -117,8 +149,8 @@ def _serialize_artifact(artifact: DocumentArtifact) -> DocumentArtifactResponse:
         size_bytes=artifact.size_bytes,
         sha256=artifact.sha256,
         metadata=artifact.extra_metadata or {},
-        created_at=artifact.created_at,
-        updated_at=artifact.updated_at,
+        created_at=_as_utc(artifact.created_at),
+        updated_at=_as_utc(artifact.updated_at),
     )
 
 
@@ -134,13 +166,13 @@ def serialize_document_job(job: DocumentJob) -> DocumentJobResponse:
         result_summary=job.result_summary or {},
         error_message=job.error_message,
         claimed_by=job.claimed_by,
-        claimed_at=job.claimed_at,
-        last_heartbeat_at=job.last_heartbeat_at,
+        claimed_at=_as_utc(job.claimed_at),
+        last_heartbeat_at=_as_utc(job.last_heartbeat_at),
         attempts=job.attempts,
-        dispatched_at=job.dispatched_at,
-        completed_at=job.completed_at,
-        created_at=job.created_at,
-        updated_at=job.updated_at,
+        dispatched_at=_as_utc(job.dispatched_at),
+        completed_at=_as_utc(job.completed_at),
+        created_at=_as_utc(job.created_at),
+        updated_at=_as_utc(job.updated_at),
         artifacts=[_serialize_artifact(item) for item in loaded_artifacts],
     )
 
@@ -185,6 +217,12 @@ def _update_run_metadata(run: AgentRun, job: DocumentJob) -> None:
     run.run_metadata = _encode_run_metadata(metadata)
 
 
+async def _rollback_preserving_user(db: AsyncSession, current_user: User) -> None:
+    """Rollback workflow mutations without leaving the request principal expired."""
+    await db.rollback()
+    await db.refresh(current_user)
+
+
 async def _get_document_job_query(
     db: AsyncSession, *, job_id: uuid.UUID, user_id: uuid.UUID
 ) -> DocumentJob | None:
@@ -194,6 +232,7 @@ async def _get_document_job_query(
             selectinload(DocumentJob.artifacts),
             selectinload(DocumentJob.run).selectinload(AgentRun.traces),
         )
+        .execution_options(populate_existing=True)
         .where(DocumentJob.id == job_id, DocumentJob.user_id == user_id)
     )
     return result.scalar_one_or_none()
@@ -229,32 +268,137 @@ def _validate_execution_mode(value: str) -> str:
     return mode
 
 
-def _required_input_names(template_id: str) -> set[str]:
+def _get_template_or_404(template_id: str):
     template = get_document_template(template_id)
     if template is None:
         raise HTTPException(status_code=404, detail="Document template not found")
-    return {field.name for field in template.inputs if field.required}
+    return template
 
 
-def validate_job_inputs(job: DocumentJob, artifacts: list[DocumentArtifact]) -> None:
-    required_names = _required_input_names(job.template_id)
-    present_names = {artifact.role for artifact in artifacts}
-    parameters = job.parameters or {}
+def validate_template_inputs(
+    *,
+    template_id: str,
+    parameters: dict[str, Any],
+    artifact_roles: list[str],
+    reject_unknown_artifact_roles: bool = False,
+) -> None:
+    template = _get_template_or_404(template_id)
+    artifact_fields = {field.name: field for field in template.inputs if field.type == "artifact"}
+    role_counts = {role: artifact_roles.count(role) for role in set(artifact_roles)}
+
+    if reject_unknown_artifact_roles:
+        unknown_roles = sorted(set(artifact_roles) - set(artifact_fields))
+        if unknown_roles:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unexpected artifact roles for template {template_id}: {', '.join(unknown_roles)}",
+            )
 
     missing: list[str] = []
-    for input_name in required_names:
-        if input_name == "redaction_policy":
-            if not str(parameters.get("redaction_policy") or "").strip():
-                missing.append(input_name)
+    for field in template.inputs:
+        if not field.required:
             continue
-        if input_name not in present_names:
-            missing.append(input_name)
+        if field.type == "artifact":
+            if role_counts.get(field.name, 0) == 0:
+                missing.append(field.name)
+            continue
+        if not str(parameters.get(field.name) or "").strip():
+            missing.append(field.name)
 
     if missing:
         raise HTTPException(
             status_code=400,
-            detail=f"Missing required inputs for template {job.template_id}: {', '.join(sorted(missing))}",
+            detail=f"Missing required inputs for template {template_id}: {', '.join(sorted(missing))}",
         )
+
+    duplicate_single_inputs = sorted(
+        name
+        for name, field in artifact_fields.items()
+        if not field.accepts_multiple and role_counts.get(name, 0) > 1
+    )
+    if duplicate_single_inputs:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Template {template_id} accepts one file for: {', '.join(duplicate_single_inputs)}"
+            ),
+        )
+
+
+def validate_job_inputs(job: DocumentJob, artifacts: list[DocumentArtifact]) -> None:
+    validate_template_inputs(
+        template_id=job.template_id,
+        parameters=job.parameters or {},
+        artifact_roles=[artifact.role for artifact in artifacts],
+    )
+
+
+async def prepare_document_submission(
+    *,
+    template_id: str,
+    parameters: dict[str, Any],
+    uploads: list[tuple[str, UploadFile]],
+) -> tuple[list[PreparedDocumentUpload], str]:
+    """Read and validate every managed input before a canonical job is created."""
+    template = _get_template_or_404(template_id)
+    if not template.supports_managed:
+        raise HTTPException(status_code=400, detail="Template does not support managed execution")
+
+    prepared: list[PreparedDocumentUpload] = []
+    for role, upload in uploads:
+        normalized_role = role.strip()
+        if upload.size is not None:
+            assert_upload_size_within_limit(upload.size)
+        content = await upload.read()
+        assert_upload_size_within_limit(len(content))
+        if not content:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Managed document input {normalized_role or 'file'} must not be empty",
+            )
+        prepared.append(
+            PreparedDocumentUpload(
+                role=normalized_role,
+                kind="file",
+                filename=Path(upload.filename or f"{normalized_role}.bin").name,
+                content_type=upload.content_type,
+                content=content,
+                sha256=hashlib.sha256(content).hexdigest(),
+            )
+        )
+
+    validate_template_inputs(
+        template_id=template_id,
+        parameters=parameters,
+        artifact_roles=[item.role for item in prepared],
+        reject_unknown_artifact_roles=True,
+    )
+
+    fingerprint_payload = {
+        "template_id": template_id,
+        "execution_mode": "managed",
+        "parameters": parameters,
+        "files": sorted(
+            (
+                {
+                    "role": item.role,
+                    "filename": item.filename,
+                    "content_type": item.content_type,
+                    "size_bytes": len(item.content),
+                    "sha256": item.sha256,
+                }
+                for item in prepared
+            ),
+            key=lambda item: (item["role"], item["filename"], item["sha256"]),
+        ),
+    }
+    encoded = json.dumps(
+        fingerprint_payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return prepared, hashlib.sha256(encoded).hexdigest()
 
 
 def validate_artifact_registration_request(request: DocumentArtifactRegistrationCreate) -> None:
@@ -304,6 +448,9 @@ async def create_document_job(
     *,
     current_user: User,
     request: DocumentJobCreate,
+    job_id: uuid.UUID | None = None,
+    initial_status: str = "created",
+    extra_run_metadata: dict[str, Any] | None = None,
 ) -> DocumentJob:
     ensure_documents_enabled()
     template = get_document_template(request.template_id)
@@ -311,17 +458,21 @@ async def create_document_job(
         raise HTTPException(status_code=404, detail="Document template not found")
 
     execution_mode = _validate_execution_mode(request.execution_mode)
-    job_id = uuid.uuid4()
+    resolved_job_id = job_id or uuid.uuid4()
+    run_metadata = _subject_metadata(
+        resolved_job_id,
+        request.template_id,
+        execution_mode,
+    )
+    run_metadata.update(extra_run_metadata or {})
     run = AgentRun(
         agent_id=None,
         user_id=current_user.id,
-        status="created",
+        status=initial_status,
         input_text=None,
         output_text=None,
         error_message=None,
-        run_metadata=_encode_run_metadata(
-            _subject_metadata(job_id, request.template_id, execution_mode)
-        ),
+        run_metadata=_encode_run_metadata(run_metadata),
         started_at=_utcnow(),
         completed_at=None,
     )
@@ -329,12 +480,12 @@ async def create_document_job(
     await db.flush()
 
     job = DocumentJob(
-        id=job_id,
+        id=resolved_job_id,
         user_id=current_user.id,
         run_id=run.id,
         template_id=request.template_id,
         execution_mode=execution_mode,
-        status="created",
+        status=initial_status,
         parameters=request.parameters or {},
         result_summary={},
     )
@@ -416,6 +567,7 @@ async def register_document_artifact(
     job: DocumentJob,
     request: DocumentArtifactRegistrationCreate,
 ) -> DocumentArtifact:
+    ensure_job_accepts_artifacts(job)
     validate_artifact_registration_request(request)
     artifact = await register_artifact_reference(
         db,
@@ -459,6 +611,7 @@ async def store_document_upload(
     kind: str,
     metadata: dict[str, Any] | None = None,
 ) -> StoredArtifactResult:
+    ensure_job_accepts_artifacts(job)
     result = await store_uploaded_artifact(
         db,
         job=job,
@@ -485,6 +638,50 @@ async def store_document_upload(
     return result
 
 
+def ensure_job_accepts_artifacts(job: DocumentJob) -> None:
+    if job.status in {"queued", "completed", "cancelled"} or (
+        job.status == "running" and job.execution_mode == "managed"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Document job in {job.status} state does not accept artifact changes",
+        )
+
+
+async def store_prepared_document_upload(
+    db: AsyncSession,
+    *,
+    job: DocumentJob,
+    upload: PreparedDocumentUpload,
+) -> StoredArtifactResult:
+    ensure_job_accepts_artifacts(job)
+    result = await store_prepared_artifact(
+        db,
+        job=job,
+        content=upload.content,
+        role=upload.role,
+        kind=upload.kind,
+        filename=upload.filename,
+        content_type=upload.content_type,
+    )
+    _record_trace(
+        db,
+        run=job.run,
+        event_type="artifact_uploaded",
+        message=f"Uploaded {upload.role} artifact {result.artifact.filename}",
+        payload={
+            "artifact_id": str(result.artifact.id),
+            "role": result.artifact.role,
+            "storage_backend": result.artifact.storage_backend,
+            "size_bytes": result.artifact.size_bytes,
+        },
+    )
+    mutx_document_artifact_ops_total.labels(operation="upload", storage_backend="managed").inc()
+    await db.commit()
+    await db.refresh(job, attribute_names=["artifacts"])
+    return result
+
+
 async def dispatch_document_job(
     db: AsyncSession,
     *,
@@ -493,24 +690,392 @@ async def dispatch_document_job(
 ) -> DocumentJob:
     ensure_documents_enabled()
     mode = _validate_execution_mode(request.mode or job.execution_mode)
+    if job.status in DOCUMENT_IDEMPOTENT_DISPATCH_STATUSES:
+        if job.execution_mode != mode:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Document job was already dispatched in {job.execution_mode} mode; "
+                    f"cannot redispatch in {mode} mode"
+                ),
+            )
+        return job
+    if job.status != "created":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Document job in {job.status} state cannot be dispatched",
+        )
+    if mode != job.execution_mode:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Document job was created for {job.execution_mode} execution and cannot be "
+                f"dispatched in {mode} mode"
+            ),
+        )
+
     validate_dispatch_mode_artifacts(mode=mode, artifacts=job.artifacts)
-    job.execution_mode = mode
-    _update_run_metadata(job.run, job)
     validate_job_inputs(job, job.artifacts)
+    dispatched_at = _utcnow()
+    result = await db.execute(
+        update(DocumentJob)
+        .where(DocumentJob.id == job.id, DocumentJob.status == "created")
+        .values(
+            execution_mode=mode,
+            status="queued",
+            dispatched_at=dispatched_at,
+            error_message=None,
+            completed_at=None,
+        )
+    )
+    if result.rowcount != 1:
+        await db.commit()
+        refreshed = await _get_document_job_query(db, job_id=job.id, user_id=job.user_id)
+        if refreshed is not None and refreshed.status in DOCUMENT_IDEMPOTENT_DISPATCH_STATUSES:
+            if refreshed.execution_mode == mode:
+                return refreshed
+        raise HTTPException(status_code=409, detail="Document job dispatch is already in progress")
+
+    job.execution_mode = mode
     job.status = "queued"
-    job.dispatched_at = _utcnow()
+    job.dispatched_at = dispatched_at
     job.error_message = None
+    job.completed_at = None
+    _update_run_metadata(job.run, job)
     job.run.status = "queued"
+    job.run.error_message = None
+    job.run.completed_at = None
     _record_trace(
         db,
         run=job.run,
-        event_type="dispatch_started",
-        message="Document job dispatched",
+        event_type="job_dispatched",
+        message="Document job accepted for managed execution",
         payload={"job_id": str(job.id), "execution_mode": job.execution_mode},
     )
     await db.commit()
+    await db.refresh(job, attribute_names=["artifacts", "run"])
     mutx_document_jobs_total.labels(template_id=job.template_id, status="queued").inc()
     return job
+
+
+def document_submission_job_id(*, user_id: uuid.UUID, idempotency_key: str) -> uuid.UUID:
+    return uuid.uuid5(user_id, f"mutx.document.submission:{idempotency_key}")
+
+
+def _submission_metadata(job: DocumentJob) -> dict[str, Any]:
+    metadata = _decode_run_metadata(job.run.run_metadata)
+    submission = metadata.get("document_submission")
+    return submission if isinstance(submission, dict) else {}
+
+
+def _remove_managed_artifact_file(*, job: DocumentJob, artifact: DocumentArtifact) -> None:
+    if artifact.storage_backend not in MANAGED_STORAGE_BACKENDS or not artifact.local_path:
+        return
+
+    path = Path(artifact.local_path).resolve()
+    expected_directory = (get_artifacts_root() / str(job.id)).resolve()
+    if path.parent != expected_directory:
+        raise RuntimeError(f"Refusing to clean artifact outside job directory: {artifact.filename}")
+    path.unlink(missing_ok=True)
+
+
+async def _purge_document_artifacts(db: AsyncSession, *, job: DocumentJob) -> list[str]:
+    errors: list[str] = []
+    removed: list[DocumentArtifact] = []
+    for artifact in list(job.artifacts):
+        try:
+            _remove_managed_artifact_file(job=job, artifact=artifact)
+            removed.append(artifact)
+        except OSError as exc:
+            errors.append(f"{artifact.filename}: {exc}")
+        except RuntimeError as exc:
+            errors.append(str(exc))
+
+    for artifact in removed:
+        await db.delete(artifact)
+    return errors
+
+
+async def _mark_document_submission_failed(
+    db: AsyncSession,
+    *,
+    job: DocumentJob,
+    phase: str,
+    error: Exception | str,
+) -> DocumentJob:
+    now = _utcnow()
+    message = f"Managed document submission failed during {phase}: {error}"
+    job.status = "failed"
+    job.error_message = message
+    job.completed_at = now
+    job.run.status = "failed"
+    job.run.error_message = message
+    job.run.completed_at = now
+    _record_trace(
+        db,
+        run=job.run,
+        event_type="submission_failed",
+        message=message,
+        payload={"phase": phase, "error": str(error), "recoverable": True},
+    )
+    await db.commit()
+    await db.refresh(job, attribute_names=["artifacts", "run"])
+    mutx_document_jobs_total.labels(template_id=job.template_id, status="failed").inc()
+    return job
+
+
+async def cleanup_document_job(
+    db: AsyncSession,
+    *,
+    job: DocumentJob,
+) -> DocumentJob:
+    ensure_documents_enabled()
+    if job.status == "cancelled":
+        return job
+    if job.status not in {"created", "uploading", "failed"}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Document job in {job.status} state cannot be cleaned up",
+        )
+
+    errors = await _purge_document_artifacts(db, job=job)
+    if errors:
+        failed = await _mark_document_submission_failed(
+            db,
+            job=job,
+            phase="cleanup",
+            error="; ".join(errors),
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Cleanup failed for document job {failed.id}; canonical state remains failed: "
+                f"{'; '.join(errors)}"
+            ),
+        )
+
+    now = _utcnow()
+    job.status = "cancelled"
+    job.error_message = "Cancelled and cleaned up by operator"
+    job.completed_at = now
+    job.run.status = "cancelled"
+    job.run.error_message = job.error_message
+    job.run.completed_at = now
+    _record_trace(
+        db,
+        run=job.run,
+        event_type="job_cancelled",
+        message=job.error_message,
+        payload={"cleanup_completed": True},
+    )
+    await db.commit()
+    await db.refresh(job, attribute_names=["artifacts", "run"])
+    return job
+
+
+async def _reset_document_submission_for_retry(
+    db: AsyncSession,
+    *,
+    job: DocumentJob,
+) -> DocumentJob:
+    previous_status = job.status
+    claim = await db.execute(
+        update(DocumentJob)
+        .where(DocumentJob.id == job.id, DocumentJob.status == previous_status)
+        .values(status="uploading")
+    )
+    if claim.rowcount != 1:
+        await db.commit()
+        raise HTTPException(
+            status_code=409, detail="Document submission retry is already in progress"
+        )
+    job.run.status = "uploading"
+    job.run.error_message = None
+    job.run.completed_at = None
+    await db.commit()
+    await db.refresh(job, attribute_names=["artifacts", "run"])
+
+    errors = await _purge_document_artifacts(db, job=job)
+    if errors:
+        failed = await _mark_document_submission_failed(
+            db,
+            job=job,
+            phase="retry cleanup",
+            error="; ".join(errors),
+        )
+        raise DocumentSubmissionError(
+            job_id=failed.id,
+            phase="retry cleanup",
+            message=failed.error_message or "Retry cleanup failed",
+        )
+
+    job.error_message = None
+    job.completed_at = None
+    job.dispatched_at = None
+    job.claimed_by = None
+    job.claim_token = None
+    job.claimed_at = None
+    job.last_heartbeat_at = None
+    job.run.status = "uploading"
+    job.run.error_message = None
+    job.run.completed_at = None
+    _record_trace(
+        db,
+        run=job.run,
+        event_type="submission_retry",
+        message="Retrying managed document submission",
+        payload={"artifacts_cleaned": True},
+    )
+    await db.commit()
+    await db.refresh(job, attribute_names=["artifacts", "run"])
+    return job
+
+
+async def submit_managed_document_job(
+    db: AsyncSession,
+    *,
+    current_user: User,
+    template_id: str,
+    parameters: dict[str, Any],
+    idempotency_key: str,
+    fingerprint: str,
+    uploads: list[PreparedDocumentUpload],
+) -> DocumentJob:
+    current_user_id = current_user.id
+    job_id = document_submission_job_id(
+        user_id=current_user_id,
+        idempotency_key=idempotency_key,
+    )
+    job = await _get_document_job_query(db, job_id=job_id, user_id=current_user_id)
+    owns_submission = False
+
+    if job is None:
+        try:
+            job = await create_document_job(
+                db,
+                current_user=current_user,
+                request=DocumentJobCreate(
+                    template_id=template_id,
+                    execution_mode="managed",
+                    parameters=parameters,
+                ),
+                job_id=job_id,
+                initial_status="uploading",
+                extra_run_metadata={
+                    "document_submission": {
+                        "idempotency_key": idempotency_key,
+                        "fingerprint": fingerprint,
+                    }
+                },
+            )
+            owns_submission = True
+        except IntegrityError:
+            await _rollback_preserving_user(db, current_user)
+            job = await _get_document_job_query(db, job_id=job_id, user_id=current_user_id)
+            if job is None:
+                raise
+        except Exception as exc:
+            await _rollback_preserving_user(db, current_user)
+            job = await _get_document_job_query(db, job_id=job_id, user_id=current_user_id)
+            if job is None:
+                raise
+            failed = await _mark_document_submission_failed(
+                db,
+                job=job,
+                phase="creation",
+                error=exc,
+            )
+            raise DocumentSubmissionError(
+                job_id=failed.id,
+                phase="creation",
+                message=failed.error_message or str(exc),
+            ) from exc
+
+    submission_metadata = _submission_metadata(job)
+    if submission_metadata.get("fingerprint") != fingerprint:
+        raise HTTPException(
+            status_code=409,
+            detail="Idempotency key was already used for a different document submission",
+        )
+
+    if job.status in DOCUMENT_IDEMPOTENT_DISPATCH_STATUSES:
+        return job
+    if job.status in {"failed", "cancelled"}:
+        job = await _reset_document_submission_for_retry(db, job=job)
+        owns_submission = True
+    elif job.status != "uploading":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Document submission is already in {job.status} state",
+        )
+    elif not owns_submission:
+        raise HTTPException(status_code=409, detail="Document submission is already in progress")
+
+    try:
+        canonical_job_id = job.id
+        for upload in uploads:
+            await store_prepared_document_upload(db, job=job, upload=upload)
+    except Exception as exc:
+        await _rollback_preserving_user(db, current_user)
+        refreshed = await _get_document_job_query(
+            db,
+            job_id=canonical_job_id,
+            user_id=current_user_id,
+        )
+        if refreshed is None:
+            raise
+        failed = await _mark_document_submission_failed(
+            db,
+            job=refreshed,
+            phase="upload",
+            error=exc,
+        )
+        raise DocumentSubmissionError(
+            job_id=failed.id,
+            phase="upload",
+            message=failed.error_message or str(exc),
+        ) from exc
+
+    job.status = "created"
+    job.run.status = "created"
+    _record_trace(
+        db,
+        run=job.run,
+        event_type="submission_staged",
+        message="All managed document inputs were uploaded",
+        payload={"artifact_count": len(job.artifacts)},
+    )
+    await db.commit()
+
+    canonical_job_id = job.id
+    try:
+        return await dispatch_document_job(
+            db,
+            job=job,
+            request=DocumentJobDispatchRequest(mode="managed"),
+        )
+    except Exception as exc:
+        await _rollback_preserving_user(db, current_user)
+        refreshed = await _get_document_job_query(
+            db,
+            job_id=canonical_job_id,
+            user_id=current_user_id,
+        )
+        if refreshed is not None and refreshed.status in DOCUMENT_IDEMPOTENT_DISPATCH_STATUSES:
+            return refreshed
+        if refreshed is None:
+            raise
+        failed = await _mark_document_submission_failed(
+            db,
+            job=refreshed,
+            phase="dispatch",
+            error=exc,
+        )
+        raise DocumentSubmissionError(
+            job_id=failed.id,
+            phase="dispatch",
+            message=failed.error_message or str(exc),
+        ) from exc
 
 
 async def build_local_launch_response(
@@ -520,7 +1085,11 @@ async def build_local_launch_response(
     output_dir: str | None,
 ) -> DocumentJobLocalLaunchResponse:
     ensure_documents_enabled()
-    job.execution_mode = "local"
+    if job.status != "created" or job.execution_mode != "local":
+        raise HTTPException(
+            status_code=409,
+            detail="Only created local document jobs can be launched locally",
+        )
     _update_run_metadata(job.run, job)
     validate_job_inputs(job, job.artifacts)
     manifest = build_document_manifest(job, job.artifacts, output_dir=output_dir)
@@ -540,6 +1109,15 @@ async def append_document_job_event(
     job: DocumentJob,
     event: DocumentJobEventCreate,
 ) -> DocumentJob:
+    if (
+        job.status in DOCUMENT_TERMINAL_STATUSES
+        and event.status is not None
+        and event.status != job.status
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Document job in terminal {job.status} state cannot transition to {event.status}",
+        )
     timestamp = event.timestamp or _utcnow()
     _record_trace(
         db,

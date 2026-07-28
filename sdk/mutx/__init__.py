@@ -1,5 +1,6 @@
 import httpx
 
+from mutx._http import DEFAULT_BASE_URL, normalize_api_base_url
 from mutx.agent_runtime import (
     AgentInfo as AgentInfo,
 )
@@ -34,6 +35,8 @@ from mutx.leads import Leads
 from mutx.newsletter import Newsletter
 from mutx.observability import Observability
 from mutx.onboarding import Onboarding
+from mutx.pagination import Page as Page
+from mutx.pagination import PageEnvelopeError as PageEnvelopeError
 from mutx.runtime import Runtime
 from mutx.scheduler import Scheduler
 from mutx.security import Security
@@ -48,20 +51,27 @@ class MutxClient:
     def __init__(
         self,
         api_key: str,
-        base_url: str = "https://api.mutx.dev",
+        base_url: str = DEFAULT_BASE_URL,
         timeout: float = 30.0,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
+        self.api_base_url = normalize_api_base_url(base_url)
         self.timeout = timeout
         self.http = httpx.Client(
-            base_url=self.base_url,
+            base_url=self.api_base_url,
             headers={"Authorization": f"Bearer {self.api_key}"},
             timeout=timeout,
         )
 
-    def close(self):
+    def close(self) -> None:
         self.http.close()
+
+    def __enter__(self) -> "MutxClient":
+        return self
+
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
+        self.close()
 
     @property
     def agents(self) -> Agents:
@@ -74,6 +84,10 @@ class MutxClient:
     @property
     def api_keys(self) -> APIKeys:
         return APIKeys(self.http)
+
+    @property
+    def approvals(self) -> Approvals:
+        return Approvals(self.http)
 
     @property
     def assistant(self) -> Assistant:

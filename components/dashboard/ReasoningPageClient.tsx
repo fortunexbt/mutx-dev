@@ -4,9 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ApiRequestError, readJson, writeJson } from "@/components/app/http";
 import {
+  dashboardRequestErrorMessage,
+  getDashboardRequestAccessFailure,
+} from "@/components/dashboard/dashboardRequestAccess";
+import {
   LiveAuthRequired,
   LiveEmptyState,
   LiveErrorState,
+  LiveForbidden,
   LiveKpiGrid,
   LiveLoading,
   LivePanel,
@@ -76,6 +81,7 @@ async function uploadContextArtifact(jobId: string, file: File) {
 export function ReasoningPageClient() {
   const [loading, setLoading] = useState(true);
   const [authRequired, setAuthRequired] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [templates, setTemplates] = useState<ReasoningTemplate[]>([]);
   const [jobs, setJobs] = useState<ReasoningJob[]>([]);
@@ -100,6 +106,7 @@ export function ReasoningPageClient() {
     setLoading(true);
     setError(null);
     setAuthRequired(false);
+    setPermissionDenied(false);
 
     try {
       const [templateResponse, jobsResponse] = await Promise.all([
@@ -111,13 +118,13 @@ export function ReasoningPageClient() {
       setSelectedTemplateId((current) => current || templateResponse[0]?.id || "autoreason_refine");
       setSelectedJobId(nextJobId ?? jobsResponse.items?.[0]?.id ?? null);
     } catch (loadError) {
-      if (
-        loadError instanceof ApiRequestError &&
-        (loadError.status === 401 || loadError.status === 403)
-      ) {
+      const accessFailure = getDashboardRequestAccessFailure(loadError);
+      if (accessFailure === "authentication") {
         setAuthRequired(true);
+      } else if (accessFailure === "permission") {
+        setPermissionDenied(true);
       } else {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load reasoning workflows");
+        setError(dashboardRequestErrorMessage(loadError, "Failed to load reasoning workflows"));
       }
     } finally {
       setLoading(false);
@@ -174,7 +181,10 @@ export function ReasoningPageClient() {
       setContextFiles([]);
       await loadData(job.id);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Failed to queue reasoning job");
+      const accessFailure = getDashboardRequestAccessFailure(submitError);
+      if (accessFailure === "authentication") setAuthRequired(true);
+      else if (accessFailure === "permission") setPermissionDenied(true);
+      else setError(dashboardRequestErrorMessage(submitError, "Failed to queue reasoning job"));
     } finally {
       setSubmitting(false);
     }
@@ -196,6 +206,9 @@ export function ReasoningPageClient() {
         message="Sign in to launch and inspect Autoreason refinement jobs."
       />
     );
+  }
+  if (permissionDenied) {
+    return <LiveForbidden title="Reasoning permission required" message="Your account cannot launch or inspect reasoning workflows. Submission controls are unavailable." />;
   }
   if (error && templates.length === 0 && jobs.length === 0) {
     return <LiveErrorState title="Reasoning workflows unavailable" message={error} />;
@@ -243,8 +256,7 @@ export function ReasoningPageClient() {
           meta={selectedTemplate?.name || "Select template"}
           action={
             <FeatureHint
-              tone="beta"
-              detail="Autoreason launch is live, but judging, artifact review, and operator follow-up are still a first-pass workflow."
+              detail="Autoreason launch creates a persisted refinement job. Judging results, artifacts, and linked runs remain visible for operator review."
             />
           }
         >

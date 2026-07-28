@@ -229,7 +229,10 @@ async function alertFailure(entry: SyncLogEntry) {
 
 function rebuildSearchIndex() {
   try {
-    execFileSync("npx", ["tsx", "scripts/build-docs-search-index.ts"], {
+    execFileSync(process.execPath, [
+      "--experimental-strip-types",
+      "scripts/build-docs-search-index.ts",
+    ], {
       encoding: "utf-8",
       timeout: 60_000,
       cwd: process.cwd(),

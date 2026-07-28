@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.models import Agent, AgentLog, User
 from src.api.models.schemas import IngestEvent
+from src.api.models.numeric import reject_non_finite_floats
 
 logger = logging.getLogger(__name__)
 
@@ -30,24 +31,25 @@ async def process_ingest_event(
     Returns a JSON-serializable dict suitable as the route response.
     """
     resolved_agent_id = event_data.agent_id
+    reject_non_finite_floats(event_data.payload, path="$.payload")
 
     # If an agent_id is provided, verify ownership and persist as AgentLog
     if resolved_agent_id is not None:
-        result = await db.execute(select(Agent).where(Agent.id == resolved_agent_id))
+        result = await db.execute(
+            select(Agent).where(
+                Agent.id == resolved_agent_id,
+                Agent.user_id == current_user.id,
+            )
+        )
         agent = result.scalar_one_or_none()
         if not agent:
             raise HTTPException(status_code=404, detail="Agent not found")
-        if agent.user_id != current_user.id:
-            raise HTTPException(
-                status_code=403,
-                detail="Not authorized to ingest events for this agent",
-            )
 
         log = AgentLog(
             agent_id=resolved_agent_id,
             level="info",
             message=f"Adapter event: {event_data.event_type}",
-            extra_data=json.dumps(event_data.payload, default=str),
+            extra_data=json.dumps(event_data.payload, default=str, allow_nan=False),
             meta_data={
                 "event_type": event_data.event_type,
                 "adapter_timestamp": event_data.timestamp,

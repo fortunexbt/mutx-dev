@@ -214,10 +214,13 @@ async def _exchange_google_code(
         raise SocialAuthError("Google did not return an email address.")
     if not profile.get("email_verified"):
         raise SocialAuthError("Google account email must be verified before continuing.")
+    provider_user_id = str(profile.get("sub", "")).strip()
+    if not provider_user_id:
+        raise SocialAuthError("Google did not return a stable account identifier.", status_code=502)
 
     return OAuthUserProfile(
         provider=OAuthProvider.GOOGLE,
-        provider_user_id=str(profile.get("sub", "")),
+        provider_user_id=provider_user_id,
         email=email.lower(),
         email_verified=bool(profile.get("email_verified")),
         display_name=str(profile.get("name") or profile.get("given_name") or email.split("@")[0]),
@@ -273,10 +276,13 @@ async def _exchange_github_code(
 
     login = profile.get("login")
     display_name = profile.get("name") or login or email["email"].split("@")[0]
+    provider_user_id = str(profile.get("id", "")).strip()
+    if not provider_user_id:
+        raise SocialAuthError("GitHub did not return a stable account identifier.", status_code=502)
 
     return OAuthUserProfile(
         provider=OAuthProvider.GITHUB,
-        provider_user_id=str(profile.get("id", "")),
+        provider_user_id=provider_user_id,
         email=email["email"].lower(),
         email_verified=True,
         display_name=str(display_name),
@@ -329,6 +335,10 @@ async def _exchange_discord_code(
         raise SocialAuthError("Discord account email must be verified before continuing.")
 
     user_id = str(profile.get("id", ""))
+    if not user_id:
+        raise SocialAuthError(
+            "Discord did not return a stable account identifier.", status_code=502
+        )
     avatar_hash = profile.get("avatar")
     avatar_url = (
         f"https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.png?size=256"
@@ -431,6 +441,8 @@ async def _exchange_apple_code(
     if isinstance(email_verified, str):
         email_verified = email_verified.lower() == "true"
     email_verified = bool(email_verified)
+    if not email_verified:
+        raise SocialAuthError("Apple account email must be verified before continuing.")
 
     display_name = str(email.split("@")[0])
 

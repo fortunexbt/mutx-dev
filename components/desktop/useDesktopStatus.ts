@@ -13,6 +13,25 @@ import {
 
 import type { DesktopStatus } from "@/components/desktop/types";
 
+const UNAVAILABLE_SOURCE = {
+  freshness: "unavailable" as const,
+  observedAt: null,
+  lastSuccessAt: null,
+  lastError: null,
+};
+const STATUS_SOURCE_STALE_AFTER_MS = 90000;
+const STATUS_SOURCE_REFRESH_MS = 30000;
+const STATUS_SOURCE_NAMES: Array<keyof DesktopStatus["sources"]> = [
+  "uiServer",
+  "bridge",
+  "context",
+  "auth",
+  "runtime",
+  "governance",
+  "sessions",
+  "controlPlane",
+];
+
 const DEFAULT_STATUS: DesktopStatus = {
   mode: "unknown",
   apiUrl: null,
@@ -37,6 +56,7 @@ const DEFAULT_STATUS: DesktopStatus = {
     lastError: null,
     lastExitCode: null,
     attempt: 0,
+    observedAt: null,
   },
   localControlPlane: {
     ready: false,
@@ -69,8 +89,41 @@ const DEFAULT_STATUS: DesktopStatus = {
   },
   cliAvailable: false,
   mutxVersion: null,
+  sources: {
+    uiServer: { ...UNAVAILABLE_SOURCE },
+    bridge: { ...UNAVAILABLE_SOURCE },
+    context: { ...UNAVAILABLE_SOURCE },
+    auth: { ...UNAVAILABLE_SOURCE },
+    runtime: { ...UNAVAILABLE_SOURCE },
+    governance: { ...UNAVAILABLE_SOURCE },
+    sessions: { ...UNAVAILABLE_SOURCE },
+    controlPlane: { ...UNAVAILABLE_SOURCE },
+  },
   lastUpdated: null,
 };
+
+export function markStaleDesktopSources(
+  status: DesktopStatus,
+  nowMs = Date.now(),
+): DesktopStatus {
+  let changed = false;
+  const sources = { ...status.sources };
+
+  STATUS_SOURCE_NAMES.forEach((sourceName) => {
+    const source = status.sources[sourceName];
+    const lastSuccessMs = source.lastSuccessAt ? Date.parse(source.lastSuccessAt) : Number.NaN;
+    if (
+      source.freshness === "fresh" &&
+      Number.isFinite(lastSuccessMs) &&
+      nowMs - lastSuccessMs > STATUS_SOURCE_STALE_AFTER_MS
+    ) {
+      sources[sourceName] = { ...source, freshness: "stale" };
+      changed = true;
+    }
+  });
+
+  return changed ? { ...status, sources } : status;
+}
 
 export interface DesktopStatusContextValue {
   status: DesktopStatus;
@@ -112,7 +165,7 @@ function useDesktopStatusState(active: boolean): DesktopStatusContextValue {
     try {
       const desktopStatus = await desktopApi.getDesktopStatus();
       if (desktopStatus) {
-        setStatus(desktopStatus as DesktopStatus);
+        setStatus(markStaleDesktopSources(desktopStatus as DesktopStatus));
       }
       setError(null);
     } catch (e) {
@@ -144,11 +197,15 @@ function useDesktopStatusState(active: boolean): DesktopStatusContextValue {
     fetchStatus();
 
     const unsubscribe = desktopApi.onDesktopStatusChanged((newStatus) => {
-      setStatus(newStatus as DesktopStatus);
+      setStatus(markStaleDesktopSources(newStatus as DesktopStatus));
     });
+    const staleInterval = window.setInterval(() => {
+      setStatus((current) => markStaleDesktopSources(current));
+    }, STATUS_SOURCE_REFRESH_MS);
 
     return () => {
       unsubscribe?.();
+      window.clearInterval(staleInterval);
     };
   }, [active, fetchStatus]);
 

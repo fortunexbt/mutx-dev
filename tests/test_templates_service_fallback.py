@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from cli.config import CLIConfig
+from cli.errors import APIRequestError
 from cli.services.assistant import TemplatesService
 
 
@@ -52,7 +55,7 @@ class DummyClient:
         return None
 
 
-def test_templates_service_falls_back_to_agent_and_deployment_routes(tmp_path: Path) -> None:
+def test_templates_service_surfaces_authoritative_deploy_failure(tmp_path: Path) -> None:
     config = CLIConfig(config_path=tmp_path / "config.json")
     config.access_token = "access-token"
     config.refresh_token = "refresh-token"
@@ -62,19 +65,16 @@ def test_templates_service_falls_back_to_agent_and_deployment_routes(tmp_path: P
         client_factory=lambda _config: DummyClient(calls),
     )
 
-    payload = service.deploy_template(
-        "personal_assistant",
-        name="Personal Assistant",
-        assistant_id="personal-assistant",
-        workspace="/tmp/openclaw/workspace-personal-assistant",
-        runtime_metadata={"install_method": "npm"},
-    )
+    with pytest.raises(APIRequestError, match="internal error") as exc_info:
+        service.deploy_template(
+            "personal_assistant",
+            name="Personal Assistant",
+            assistant_id="personal-assistant",
+            workspace="/tmp/openclaw/workspace-personal-assistant",
+            runtime_metadata={"install_method": "npm"},
+        )
 
-    assert payload["template_id"] == "personal_assistant"
-    assert payload["agent"]["id"] == "agent-pa-01"
-    assert payload["deployment"]["id"] == "dep-pa-01"
+    assert exc_info.value.status_code == 500
     assert [path for path, _payload in calls] == [
         "/v1/templates/personal_assistant/deploy",
-        "/v1/agents",
-        "/v1/deployments",
     ]

@@ -132,11 +132,11 @@ def test_get_provider_state_calls_correct_endpoint() -> None:
         captured["path"] = request.url.path
         return httpx.Response(200, json=_provider_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     runtime = Runtime(client)
     result = runtime.get_provider_state("openai")
 
-    assert captured["path"] == "/runtime/providers/openai"
+    assert captured["path"] == "/v1/runtime/providers/openai"
     assert isinstance(result, RuntimeProviderSnapshot)
     assert result.provider == "openai"
 
@@ -149,7 +149,7 @@ def test_upsert_provider_state_calls_put_endpoint() -> None:
         captured["json"] = dict(jsonlib.loads(request.content.decode()))
         return httpx.Response(200, json=_provider_payload(provider="anthropic"))
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     runtime = Runtime(client)
     result = runtime.upsert_provider_state(
         provider="anthropic",
@@ -157,7 +157,7 @@ def test_upsert_provider_state_calls_put_endpoint() -> None:
         config={"model": "claude-3"},
     )
 
-    assert captured["path"] == "/runtime/providers/anthropic"
+    assert captured["path"] == "/v1/runtime/providers/anthropic"
     assert captured["json"]["provider"] == "anthropic"
     assert captured["json"]["credentials"] == {"api_key": "sk-ant"}
     assert captured["json"]["config"] == {"model": "claude-3"}
@@ -171,7 +171,7 @@ def test_upsert_provider_state_omits_optional_fields_when_not_provided() -> None
         captured["json"] = dict(jsonlib.loads(request.content.decode()))
         return httpx.Response(200, json=_provider_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     runtime = Runtime(client)
     runtime.upsert_provider_state(provider="openai")
 
@@ -186,11 +186,11 @@ def test_get_governance_metrics_calls_correct_endpoint() -> None:
         captured["path"] = request.url.path
         return httpx.Response(200, text="governance_metric_total 42\n")
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     runtime = Runtime(client)
     result = runtime.get_governance_metrics()
 
-    assert captured["path"] == "/runtime/governance/metrics"
+    assert captured["path"] == "/v1/runtime/governance/metrics"
     assert isinstance(result, str)
     assert "governance_metric_total" in result
 
@@ -202,11 +202,11 @@ def test_get_governance_status_calls_correct_endpoint() -> None:
         captured["path"] = request.url.path
         return httpx.Response(200, json=_governance_status_payload())
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     runtime = Runtime(client)
     result = runtime.get_governance_status()
 
-    assert captured["path"] == "/runtime/governance/status"
+    assert captured["path"] == "/v1/runtime/governance/status"
     assert isinstance(result, GovernanceStatus)
     assert result.daemon_reachable is True
     assert result.decisions_total == 42
@@ -218,7 +218,7 @@ async def test_runtime_sync_methods_reject_async_client() -> None:
         return httpx.Response(200, json=_provider_payload())
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         runtime = Runtime(client)
         with pytest.raises(RuntimeError, match="sync httpx.Client"):
@@ -245,12 +245,12 @@ async def test_aget_provider_state_calls_correct_endpoint() -> None:
         return httpx.Response(200, json=_provider_payload(provider="google"))
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         runtime = Runtime(client)
         result = await runtime.aget_provider_state("google")
 
-    assert captured["path"] == "/runtime/providers/google"
+    assert captured["path"] == "/v1/runtime/providers/google"
     assert isinstance(result, RuntimeProviderSnapshot)
     assert result.provider == "google"
 
@@ -265,7 +265,7 @@ async def test_aupsert_provider_state_calls_put_endpoint() -> None:
         return httpx.Response(200, json=_provider_payload(provider="openai"))
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         runtime = Runtime(client)
         result = await runtime.aupsert_provider_state(
@@ -274,7 +274,7 @@ async def test_aupsert_provider_state_calls_put_endpoint() -> None:
             config={"model": "gpt-4o"},
         )
 
-    assert captured["path"] == "/runtime/providers/openai"
+    assert captured["path"] == "/v1/runtime/providers/openai"
     assert captured["json"]["credentials"] == {"api_key": "sk-test"}
     assert isinstance(result, RuntimeProviderSnapshot)
 
@@ -288,12 +288,12 @@ async def test_aget_governance_metrics_calls_correct_endpoint() -> None:
         return httpx.Response(200, text="metric_a 1\nmetric_b 2\n")
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         runtime = Runtime(client)
         result = await runtime.aget_governance_metrics()
 
-    assert captured["path"] == "/runtime/governance/metrics"
+    assert captured["path"] == "/v1/runtime/governance/metrics"
     assert isinstance(result, str)
     assert "metric_a" in result
 
@@ -307,19 +307,19 @@ async def test_aget_governance_status_calls_correct_endpoint() -> None:
         return httpx.Response(200, json=_governance_status_payload(version="2.0.0"))
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         runtime = Runtime(client)
         result = await runtime.aget_governance_status()
 
-    assert captured["path"] == "/runtime/governance/status"
+    assert captured["path"] == "/v1/runtime/governance/status"
     assert isinstance(result, GovernanceStatus)
     assert result.version == "2.0.0"
 
 
 @pytest.mark.asyncio
 async def test_runtime_async_methods_reject_sync_client() -> None:
-    client = httpx.Client(base_url="https://api.test")
+    client = httpx.Client(base_url="https://api.test/v1/")
     runtime = Runtime(client)
     with pytest.raises(RuntimeError, match="async httpx.AsyncClient"):
         await runtime.aget_provider_state("openai")

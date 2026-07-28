@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any
 from unittest.mock import MagicMock
@@ -10,6 +11,7 @@ import httpx
 import pytest
 
 from sdk.mutx.onboarding import Onboarding, OnboardingState, OnboardingStep
+from tests.sdk_contract_utils import assert_v1_request
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +155,8 @@ class TestOnboardingGetState:
         result = onboarding.get_state()
 
         assert isinstance(result, OnboardingState)
-        mock_client.get.assert_called_once_with("/onboarding", params={"provider": "openclaw"})
+        request = assert_v1_request(mock_client.get, "GET", "/v1/onboarding")
+        assert dict(request.url.params) == {"provider": "openclaw"}
         mock_response.raise_for_status.assert_called_once()
 
     def test_get_state_custom_provider(self):
@@ -167,7 +170,8 @@ class TestOnboardingGetState:
         result = onboarding.get_state(provider="custom")
 
         assert isinstance(result, OnboardingState)
-        mock_client.get.assert_called_once_with("/onboarding", params={"provider": "custom"})
+        request = assert_v1_request(mock_client.get, "GET", "/v1/onboarding")
+        assert dict(request.url.params) == {"provider": "custom"}
 
     def test_get_state_raises_for_status(self):
         mock_response = MagicMock()
@@ -206,12 +210,11 @@ class TestOnboardingUpdate:
         result = onboarding.update(action="complete_step", step="step-001")
 
         assert isinstance(result, OnboardingState)
-        mock_client.post.assert_called_once()
-        call_args = mock_client.post.call_args
-        assert call_args.args[0] == "/onboarding"
-        assert call_args.kwargs["json"]["action"] == "complete_step"
-        assert call_args.kwargs["json"]["step"] == "step-001"
-        assert call_args.kwargs["json"]["provider"] == "openclaw"
+        request = assert_v1_request(mock_client.post, "POST", "/v1/onboarding")
+        body = json.loads(request.content)
+        assert body["action"] == "complete_step"
+        assert body["step"] == "step-001"
+        assert body["provider"] == "openclaw"
         mock_response.raise_for_status.assert_called_once()
 
     def test_update_with_payload(self):
@@ -278,7 +281,8 @@ class TestOnboardingAsyncGetState:
         result = await onboarding.aget_state()
 
         assert isinstance(result, OnboardingState)
-        mock_client.get.assert_called_once_with("/onboarding", params={"provider": "openclaw"})
+        request = assert_v1_request(mock_client.get, "GET", "/v1/onboarding")
+        assert dict(request.url.params) == {"provider": "openclaw"}
 
     @pytest.mark.asyncio
     async def test_aget_state_raises_when_sync_client(self):
@@ -307,10 +311,10 @@ class TestOnboardingAsyncUpdate:
         result = await onboarding.aupdate(action="complete_step", step="step-001")
 
         assert isinstance(result, OnboardingState)
-        call_args = mock_client.post.call_args
-        assert call_args.args[0] == "/onboarding"
-        assert call_args.kwargs["json"]["action"] == "complete_step"
-        assert call_args.kwargs["json"]["step"] == "step-001"
+        request = assert_v1_request(mock_client.post, "POST", "/v1/onboarding")
+        body = json.loads(request.content)
+        assert body["action"] == "complete_step"
+        assert body["step"] == "step-001"
 
     @pytest.mark.asyncio
     async def test_aupdate_raises_when_sync_client(self):

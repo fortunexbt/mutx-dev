@@ -10,7 +10,9 @@ from typing import Any
 DEFAULT_REPO = "mutx-dev/mutx-dev"
 SECTION_PATTERN = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 PATH_TOKEN = re.compile(r"`([^`]+)`")
-REPO_PATH_HINT = re.compile(r"^(docs/|src/|app/|components/|lib/|sdk/|cli/|scripts/|tests/|infrastructure/|README\.md|roadmap\.md|whitepaper\.md|AGENTS\.md)")
+REPO_PATH_HINT = re.compile(
+    r"^(docs/|src/|app/|components/|lib/|sdk/|cli/|scripts/|tests/|infrastructure/|README\.md|roadmap\.md|whitepaper\.md|AGENTS\.md)"
+)
 
 AREA_LABELS = {"api", "web", "auth", "cli-sdk", "runtime", "test", "infra", "ops", "docs"}
 UNSAFE_VERIFICATION_CHARS = {";", "&", "|", "`", "$", ">", "<"}
@@ -21,20 +23,22 @@ def run_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 def load_open_issues(repo: str, limit: int) -> list[dict[str, Any]]:
-    result = run_gh([
-        "issue",
-        "list",
-        "--repo",
-        repo,
-        "--state",
-        "open",
-        "--label",
-        "autonomy:ready",
-        "--limit",
-        str(limit),
-        "--json",
-        "number,title,body,url,labels",
-    ])
+    result = run_gh(
+        [
+            "issue",
+            "list",
+            "--repo",
+            repo,
+            "--state",
+            "open",
+            "--label",
+            "autonomy:ready",
+            "--limit",
+            str(limit),
+            "--json",
+            "number,title,body,url,labels",
+        ]
+    )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "gh issue list failed")
     payload = json.loads(result.stdout or "[]")
@@ -123,7 +127,9 @@ def infer_verification(sections: dict[str, str], area: str) -> list[str]:
             continue
         if any(char in line for char in UNSAFE_VERIFICATION_CHARS):
             continue
-        if any(cmd in line for cmd in ["pytest", "npm run", "git diff --check", "python3 ", "make "]):
+        if any(
+            cmd in line for cmd in ["pytest", "npm run", "git diff --check", "python3 ", "make "]
+        ):
             verification.append(line)
     if verification:
         return verification[:4]
@@ -161,13 +167,19 @@ def normalize_issue(issue: dict[str, Any]) -> dict[str, Any] | None:
         "labels": labels,
         "allowed_paths": infer_allowed_paths(issue, sections),
         "verification": infer_verification(sections, area),
-        "constraints": ["issue-driven", "keep change bounded", "must satisfy acceptance criteria if present"],
+        "constraints": [
+            "issue-driven",
+            "keep change bounded",
+            "must satisfy acceptance criteria if present",
+        ],
         "metadata": {"issue_url": issue.get("url")},
     }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Normalize autonomy-ready GitHub issues into queue tasks")
+    parser = argparse.ArgumentParser(
+        description="Normalize autonomy-ready GitHub issues into queue tasks"
+    )
     parser.add_argument("--repo", default=DEFAULT_REPO)
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--output", required=True)
@@ -179,7 +191,9 @@ def main() -> int:
         normalized = normalize_issue(issue)
         if normalized:
             tasks.append(normalized)
-    Path(args.output).write_text(json.dumps(tasks, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    Path(args.output).write_text(
+        json.dumps(tasks, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     print(json.dumps({"count": len(tasks), "output": args.output}, indent=2))
     return 0
 

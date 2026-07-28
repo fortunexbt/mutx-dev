@@ -50,7 +50,7 @@ def test_clawhub_list_skills_parses_sync_skill_payloads() -> None:
         assert request.url.path == "/v1/clawhub/skills"
         return httpx.Response(200, json=[_skill_payload()])
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     clawhub = ClawHub(client)
 
     skills = clawhub.list_skills()
@@ -69,7 +69,7 @@ async def test_clawhub_alist_skills_parses_async_skill_payloads() -> None:
         return httpx.Response(200, json=[_skill_payload(name="async-skill")])
 
     async with httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     ) as client:
         clawhub = ClawHub(client)
@@ -86,7 +86,7 @@ def test_clawhub_list_bundles_parses_payloads() -> None:
         assert request.url.path == "/v1/clawhub/bundles"
         return httpx.Response(200, json=[_bundle_payload()])
 
-    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    client = httpx.Client(base_url="https://api.test/v1/", transport=httpx.MockTransport(handler))
     clawhub = ClawHub(client)
 
     bundles = clawhub.list_bundles()
@@ -103,7 +103,7 @@ async def test_clawhub_alist_bundles_parses_payloads() -> None:
         return httpx.Response(200, json=[_bundle_payload(name="Async Bundle")])
 
     async with httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     ) as client:
         clawhub = ClawHub(client)
@@ -123,7 +123,7 @@ async def test_clawhub_ainstall_skill_returns_json_without_awaiting_plain_dict()
         return httpx.Response(200, json={"ok": True, "agent_id": captured["json"]["agent_id"]})
 
     async with httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     ) as client:
         clawhub = ClawHub(client)
@@ -145,7 +145,7 @@ async def test_clawhub_ainstall_bundle_returns_json_without_awaiting_plain_dict(
         return httpx.Response(200, json={"ok": True, "bundle_id": captured["json"]["bundle_id"]})
 
     async with httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     ) as client:
         clawhub = ClawHub(client)
@@ -169,7 +169,7 @@ async def test_clawhub_auninstall_skill_returns_json_without_awaiting_plain_dict
         return httpx.Response(200, json={"ok": True, "skill_id": captured["json"]["skill_id"]})
 
     async with httpx.AsyncClient(
-        base_url="https://api.test",
+        base_url="https://api.test/v1/",
         transport=httpx.MockTransport(handler),
     ) as client:
         clawhub = ClawHub(client)

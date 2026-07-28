@@ -1,38 +1,43 @@
-image:
-  repository: mutx/mutx
-  tag: latest
-  pullPolicy: IfNotPresent
+api:
+  image:
+    repository: registry.example.com/mutx-api
+    tag: staging
+    pullPolicy: Always
+  existingSecret: mutx-staging-api-env
+  env:
+    ENVIRONMENT: staging
+    LOG_LEVEL: INFO
+    DATABASE_REQUIRED_ON_STARTUP: "true"
+    DATABASE_SSL_MODE: require
+    # Replace with the exact pod/source CIDR used by the ingress controller.
+    FORWARDED_ALLOW_IPS: 10.244.0.0/16
+    ALLOWED_HOSTS: mutx.staging.example.com,localhost,127.0.0.1
+    CORS_ORIGINS: https://mutx.staging.example.com
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 256Mi
 
-replicaCount: 1
+frontend:
+  image:
+    repository: registry.example.com/mutx-frontend
+    tag: staging
+    pullPolicy: Always
 
-service:
-  type: ClusterIP
-  port: 8000
+migrations:
+  enabled: true
+
+persistence:
+  enabled: true
+  size: 10Gi
 
 ingress:
   enabled: true
   className: nginx
-  host: mutx.staging.local
+  host: mutx.staging.example.com
   tls:
     enabled: true
-    secretName: mutx-tls-staging
-
-resources:
-  limits:
-    cpu: 500m
-    memory: 512Mi
-  requests:
-    cpu: 50m
-    memory: 128Mi
-
-env:
-  LOG_LEVEL: "DEBUG"
-  ENVIRONMENT: "staging"
-
-secretEnv: {}
-
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 1
-  targetCPUUtilizationPercentage: 75
+    secretName: mutx-staging-tls

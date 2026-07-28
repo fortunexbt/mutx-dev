@@ -53,7 +53,7 @@ export function FilterBar({
 
   return (
     <section
-      className={cn("dashboard-entry rounded-xl border p-3.5", className)}
+      className={cn("dashboard-entry min-w-0 rounded-[6px] border p-3.5", className)}
       style={{
         borderColor: dashboardTokens.borderSubtle,
         background: dashboardTokens.panelGradient,
@@ -62,9 +62,9 @@ export function FilterBar({
       }}
       {...props}
     >
-      <div className="flex flex-wrap items-center gap-2.5">
+      <div className="flex min-w-0 flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
         <div
-          className="flex min-h-11 min-w-[240px] flex-1 items-center gap-2 rounded-md border px-3.5"
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-[4px] border px-3.5 sm:min-w-[240px]"
           style={{
             borderColor: dashboardTokens.borderStrong,
             backgroundColor: dashboardTokens.bgInset,
@@ -88,7 +88,7 @@ export function FilterBar({
         </div>
 
         {filters.length > 0 ? (
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span
               className="inline-flex items-center gap-1 text-xs uppercase tracking-[0.14em]"
               style={{ color: dashboardTokens.textMuted }}
@@ -99,7 +99,7 @@ export function FilterBar({
             {filters.map((filter) => (
               <label
                 key={filter.id}
-                className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+                className="flex min-h-11 min-w-0 items-center gap-2 rounded-[4px] border px-3 py-2 text-sm"
                 style={{
                   borderColor: dashboardTokens.borderSubtle,
                   backgroundColor: dashboardTokens.bgInset,
@@ -131,7 +131,7 @@ export function FilterBar({
           <button
             type="button"
             onClick={onReset}
-            className="inline-flex h-11 items-center gap-1 rounded-md border px-3 text-sm"
+            className="inline-flex min-h-11 items-center gap-1 rounded-[4px] border px-3 text-sm"
             style={{
               borderColor: dashboardTokens.borderSubtle,
               backgroundColor: dashboardTokens.bgInset,
@@ -143,7 +143,7 @@ export function FilterBar({
           </button>
         ) : null}
 
-        {trailing ? <div className="ml-auto">{trailing}</div> : null}
+        {trailing ? <div className="min-w-0 sm:ms-auto">{trailing}</div> : null}
       </div>
     </section>
   );

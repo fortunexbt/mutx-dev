@@ -8,6 +8,7 @@ import { DesktopJobProvider } from "@/components/desktop/useDesktopJob";
 import { DesktopRouteListener } from "@/components/desktop/DesktopRouteListener";
 import { DesktopStatusProvider } from "@/components/desktop/useDesktopStatus";
 import { DesktopWindowProvider } from "@/components/desktop/useDesktopWindow";
+import { DashboardAuthBoundary } from "@/components/dashboard/DashboardAuthBoundary";
 import { DashboardRouteSurface } from "@/components/dashboard/DashboardRouteSurface";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { buildPageMetadata, getAppUrl } from "@/lib/seo";
@@ -17,7 +18,7 @@ export const metadata: Metadata = {
   ...buildPageMetadata({
     title: "Dashboard - MUTX",
     description: "Dashboard for agents, deployments, runs, budgets, webhooks, and governance.",
-    path: "/",
+    path: "/dashboard",
     host: getAppUrl(),
     siteName: "MUTX App",
     badge: "APP",
@@ -58,11 +59,13 @@ export default async function DashboardLayout({
             <DesktopWindowProvider>
               <DesktopJobProvider>
                 <DesktopRouteListener />
-                <DashboardShell spaShellEnabled={spaShellEnabled}>
-                  <DashboardRouteSurface spaShellEnabled={spaShellEnabled}>
-                    {children}
-                  </DashboardRouteSurface>
-                </DashboardShell>
+                <DashboardAuthBoundary>
+                  <DashboardShell spaShellEnabled={spaShellEnabled}>
+                    <DashboardRouteSurface spaShellEnabled={spaShellEnabled}>
+                      {children}
+                    </DashboardRouteSurface>
+                  </DashboardShell>
+                </DashboardAuthBoundary>
               </DesktopJobProvider>
             </DesktopWindowProvider>
           </DesktopStatusProvider>

@@ -140,9 +140,7 @@ def test_clawhub_install_hits_canonical_route(monkeypatch) -> None:
         "agent_id": agent_id,
         "skill_id": skill_id,
     }
-    assert (
-        f"Successfully initiated installation of '{skill_id}' for agent {agent_id}" in result.output
-    )
+    assert f"Configured '{skill_id}' for agent {agent_id}" in result.output
 
 
 def test_clawhub_install_agent_not_found(monkeypatch) -> None:
@@ -160,8 +158,9 @@ def test_clawhub_install_agent_not_found(monkeypatch) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["clawhub", "install", "-a", agent_id, "-s", skill_id])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert "Unknown skill or agent not found" in result.output
+    assert "Configured" not in result.output
 
 
 def test_clawhub_install_bundle_hits_canonical_route(monkeypatch) -> None:
@@ -175,7 +174,8 @@ def test_clawhub_install_bundle_hits_canonical_route(monkeypatch) -> None:
             200,
             {
                 "bundle_id": "orchestra-research-foundation",
-                "installed_skill_ids": ["langchain", "llamaindex"],
+                "configured_skill_ids": ["langchain", "llamaindex"],
+                "runtime_ready_skill_ids": ["langchain"],
                 "unavailable_skill_ids": ["0-autoresearch-skill"],
             },
         )
@@ -204,7 +204,7 @@ def test_clawhub_install_bundle_hits_canonical_route(monkeypatch) -> None:
         "agent_id": agent_id,
         "bundle_id": "orchestra-research-foundation",
     }
-    assert "2 installed, 1 unavailable" in result.output
+    assert "2 configured, 1 runtime-ready, 1 unavailable" in result.output
 
 
 def test_clawhub_uninstall_hits_canonical_route(monkeypatch) -> None:
@@ -231,7 +231,7 @@ def test_clawhub_uninstall_hits_canonical_route(monkeypatch) -> None:
         "agent_id": agent_id,
         "skill_id": skill_id,
     }
-    assert f"Successfully uninstalled '{skill_id}' from agent {agent_id}" in result.output
+    assert f"Removed configuration for '{skill_id}' from agent {agent_id}" in result.output
 
 
 def test_clawhub_uninstall_agent_not_found(monkeypatch) -> None:
@@ -249,5 +249,6 @@ def test_clawhub_uninstall_agent_not_found(monkeypatch) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["clawhub", "uninstall", "-a", agent_id, "-s", skill_id])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert f"Error: Agent {agent_id} not found" in result.output
+    assert "Removed configuration" not in result.output

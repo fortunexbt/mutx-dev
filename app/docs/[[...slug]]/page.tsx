@@ -14,138 +14,22 @@ import {
   getCanonicalUrl,
   getSiteUrl,
 } from "@/lib/seo";
-import { type DocNavItem, getPublishedDocRoutes, parseSummary } from "@/lib/docs";
+import {
+  getFrontmatterDateModified,
+  type DocNavItem,
+  parseSummary,
+  resolvePublishedDocRequest,
+} from "@/lib/docs";
+import { DOCS_HOME_MODEL } from "@/lib/docs/home";
+import { serializeJsonLd } from "@/lib/docs/jsonLd";
 
 export const dynamicParams = true;
 export const dynamic = "force-dynamic";
 
-function docsDir() {
-  return path.join(process.cwd(), "docs");
-}
-
-function isPublishedDocSlug(slugSegments: string[]): boolean {
-  if (slugSegments.length === 0 || (slugSegments.length === 1 && slugSegments[0] === "README")) {
-    return true;
-  }
-
-  const route = `/docs/${slugSegments.join("/")}`;
-  return getPublishedDocRoutes().has(route);
-}
-
-// Root-level content directories (mirrored from repo root, not inside docs/)
-const ROOT_CONTENT_DIRS = ["agents"];
-
-function isRootContent(slugSegments: string[]): boolean {
-  return slugSegments.length >= 1 && ROOT_CONTENT_DIRS.includes(slugSegments[0]);
-}
-
-function resolveRootContentSlug(slugSegments: string[]): string | null {
-  if (!isRootContent(slugSegments)) return null;
-  const dir = slugSegments[0];
-
-  // 1+ segments: /docs/agents/mission-control-orchestrator
-  // → check docs/agents/mission-control-orchestrator.md first
-  if (slugSegments.length >= 2) {
-    const subFile = path.join(process.cwd(), "docs", dir, slugSegments[1] + ".md");
-    if (fs.existsSync(subFile)) return subFile;
-    // Also try AGENT.md for agent subdirs that mirror from repo root
-    const agentFile = path.join(process.cwd(), dir, slugSegments[1], "AGENT.md");
-    if (fs.existsSync(agentFile)) return agentFile;
-  }
-
-  // Top-level: /docs/agents
-  const candidates = [
-    path.join(process.cwd(), dir, "README.md"),
-    path.join(process.cwd(), dir, "index.md"),
-    path.join(process.cwd(), "docs", dir, "README.md"),
-  ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-function resolveSlug(slugSegments: string[]): string | null {
-  // Root-level content (e.g. agents/README.md lives at /agents not /docs/agents)
-  if (isRootContent(slugSegments)) {
-    return resolveRootContentSlug(slugSegments);
-  }
-  if (hasUnsafeSlugSegment(slugSegments)) {
-    return null;
-  }
-
-  const docsRoot = path.resolve(docsDir());
-
-  if (slugSegments.length === 1 && slugSegments[0] === "README") {
-    const rootReadme = path.join(docsRoot, "README.md");
-    if (fs.existsSync(rootReadme)) return rootReadme;
-  }
-
-  if (slugSegments.length === 0) {
-    const rootReadme = path.join(docsRoot, "README.md");
-    if (fs.existsSync(rootReadme)) return rootReadme;
-  }
-
-  const candidates = [
-    path.join(...slugSegments) + ".md",
-    path.join(...slugSegments, "README.md"),
-    path.join(...slugSegments, "index.md"),
-  ];
-
-  for (const candidate of candidates) {
-    const fullPath = path.resolve(docsRoot, candidate);
-    if (!fullPath.startsWith(`${docsRoot}${path.sep}`)) {
-      continue;
-    }
-
-    if (fs.existsSync(fullPath)) {
-      return fullPath;
-    }
-  }
-
-  // GitBook maps docs/api/* → /docs/* (api/ prefix is flattened)
-  // e.g. /docs/reference → docs/api/reference.md
-  // e.g. /docs/reference/authentication → docs/api/authentication.md
-  // e.g. /docs/reference/index → docs/api/index.md (API Overview)
-  const apiSegments = slugSegments[0] === "reference" ? slugSegments.slice(1) : slugSegments;
-  const apiCandidates = [
-    ...(apiSegments.length === 0 ? [path.join("api", "reference.md"), path.join("api", "index.md")] : []),
-    path.join("api", ...apiSegments) + ".md",
-    path.join("api", ...apiSegments, "README.md"),
-    path.join("api", ...apiSegments, "index.md"),
-    // Special case: /docs/X/index → serve docs/api/index.md
-    path.join("api", slugSegments[0], "index.md"),
-  ];
-
-  for (const candidate of apiCandidates) {
-    const fullPath = path.resolve(docsRoot, candidate);
-    if (!fullPath.startsWith(`${docsRoot}${path.sep}`)) {
-      continue;
-    }
-    if (fs.existsSync(fullPath)) {
-      return fullPath;
-    }
-  }
-
-  return null;
-}
-
 function sourceSlugForDocsRenderer(filePath: string): string[] {
-  const relative = path.relative(docsDir(), filePath);
+  const relative = path.relative(path.join(process.cwd(), "docs"), filePath);
   if (relative.startsWith("..") || path.isAbsolute(relative)) return [];
   return relative.replace(/\.md$/i, "").split(path.sep);
-}
-
-function hasUnsafeSlugSegment(slugSegments: string[]): boolean {
-  return slugSegments.some(
-    (segment) =>
-      segment.length === 0 ||
-      segment === "." ||
-      segment === ".." ||
-      segment.includes("/") ||
-      segment.includes("\\") ||
-      segment.includes("\0")
-  );
 }
 
 function extractPrimaryHeading(source: string): string | null {
@@ -326,14 +210,13 @@ export async function generateMetadata({
   params: Promise<{ slug?: string[] }>;
 }): Promise<Metadata> {
   const { slug = [] } = await params;
-  if (!isPublishedDocSlug(slug)) return { title: "Not Found" };
-  const filePath = resolveSlug(slug);
-  if (!filePath) return { title: "Not Found" };
+  const request = resolvePublishedDocRequest(slug);
+  if (!request) return { title: "Not Found" };
+  const filePath = request.doc.filePath;
 
   const source = fs.readFileSync(filePath, "utf-8");
   const { data, content } = matter(source);
-  const normalizedPath =
-    slug.length === 0 ? "/docs" : `/docs/${slug.join("/")}`;
+  const normalizedPath = request.canonicalRoute;
   const seo = getDocSeoFields(data, content);
 
   return {
@@ -350,39 +233,6 @@ export async function generateMetadata({
     }),
   };
 }
-
-const FEATURED = [
-  {
-    title: "MUTX Quickstart",
-    href: "/docs/quickstart",
-    desc: "The shortest path to a working MUTX setup.",
-  },
-  {
-    title: "Deployment Quickstart",
-    href: "/docs/deployment/quickstart",
-    desc: "Clone, configure, deploy.",
-  },
-  {
-    title: "Architecture Overview",
-    href: "/docs/architecture/overview",
-    desc: "The system map.",
-  },
-  {
-    title: "API Reference",
-    href: "/docs/reference",
-    desc: "Public contracts and endpoints.",
-  },
-  {
-    title: "Python SDK",
-    href: "/sdk",
-    desc: "Build against MUTX in Python.",
-  },
-  {
-    title: "Troubleshooting",
-    href: "/docs/troubleshooting",
-    desc: "Find and clear common failures.",
-  },
-];
 
 const AREA_LABELS: Record<string, string> = {
   api: "API Reference",
@@ -404,27 +254,29 @@ function DocsHomePage() {
       <div className="docs-article-main docs-home">
         <section className="docs-home-billboard">
           <div className="docs-home-billboard-copy">
-            <p className="docs-home-kicker">Operator manual</p>
-            <h1 className="docs-home-title">Know the system.</h1>
-            <p className="docs-home-sub">Set up MUTX. Run agents. Clear failures.</p>
+            <p className="docs-home-kicker">{DOCS_HOME_MODEL.hero.kicker}</p>
+            <h1 id={DOCS_HOME_MODEL.hero.id} className="docs-home-title">
+              {DOCS_HOME_MODEL.hero.title}
+            </h1>
+            <p className="docs-home-sub">{DOCS_HOME_MODEL.hero.description}</p>
             <div className="docs-home-actions">
-              <Link href="/docs/quickstart" className="docs-home-primary">
-                Open MUTX quickstart
+              <Link href={DOCS_HOME_MODEL.hero.primaryAction.href} className="docs-home-primary">
+                {DOCS_HOME_MODEL.hero.primaryAction.label}
               </Link>
-              <Link href="/docs/reference" className="docs-home-secondary">
-                Read API reference
+              <Link href={DOCS_HOME_MODEL.hero.secondaryAction.href} className="docs-home-secondary">
+                {DOCS_HOME_MODEL.hero.secondaryAction.label}
               </Link>
             </div>
           </div>
 
           <div className="docs-home-ledger">
             <p className="docs-home-ledger-label">Start here</p>
-            {FEATURED.slice(0, 3).map((card, index) => (
+            {DOCS_HOME_MODEL.featured.slice(0, 3).map((card, index) => (
               <Link key={card.href} href={card.href} className="docs-home-ledger-item">
                 <span className="docs-home-ledger-index">{String(index + 1).padStart(2, "0")}</span>
                 <span>
                   <span className="docs-home-ledger-title">{card.title}</span>
-                  <span className="docs-home-ledger-desc">{card.desc}</span>
+                  <span className="docs-home-ledger-desc">{card.description}</span>
                 </span>
               </Link>
             ))}
@@ -433,8 +285,10 @@ function DocsHomePage() {
 
         <section className="docs-home-areas">
           <div className="docs-home-section-heading">
-            <p className="docs-home-kicker">By area</p>
-            <h2 className="docs-home-section-title">Go by surface.</h2>
+            <p className="docs-home-kicker">{DOCS_HOME_MODEL.areas.kicker}</p>
+            <h2 id={DOCS_HOME_MODEL.areas.id} className="docs-home-section-title">
+              {DOCS_HOME_MODEL.areas.title}
+            </h2>
           </div>
 
           <div className="docs-home-area-list">
@@ -465,43 +319,49 @@ export default async function DocPage({
   params: Promise<{ slug?: string[] }>;
 }) {
   const { slug = [] } = await params;
+  const request = resolvePublishedDocRequest(slug);
 
-  // Empty slug → render the homepage
-  // Also handle /docs/README which Next.js serves for docs/README.md
-  if (slug.length === 0 || (slug.length === 1 && slug[0] === "README")) {
-    return <DocsHomePage />;
-  }
-
-  if (!isPublishedDocSlug(slug)) {
-    redirect("/docs");
-  }
-
-  const filePath = resolveSlug(slug);
-
-  if (!filePath) {
+  if (!request) {
     notFound();
   }
 
+  if (request.shouldRedirect) {
+    redirect(request.canonicalRoute);
+  }
+
+  const filePath = request.doc.filePath;
   const source = fs.readFileSync(filePath, "utf-8");
   const { data, content } = matter(source);
-  const headings = extractHeadings(content);
-  const currentRoute = `/docs/${slug.join("/")}`;
+  const currentRoute = request.canonicalRoute;
   const seo = getDocSeoFields(data, content);
   const breadcrumbs = getDocBreadcrumbs(currentRoute, seo.title);
-  const lastModified = fs.statSync(filePath).mtime.toISOString();
   const structuredData = buildDocStructuredData({
     title: seo.title,
     path: currentRoute,
     description: seo.description,
     breadcrumbs,
-    dateModified: lastModified,
+    dateModified: getFrontmatterDateModified(data),
   });
+
+  if (currentRoute === "/docs") {
+    return (
+      <>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }}
+        />
+        <DocsHomePage />
+      </>
+    );
+  }
+
+  const headings = extractHeadings(content);
 
   return (
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }}
       />
       <div className="docs-article-layout">
         <div className="docs-article-main">

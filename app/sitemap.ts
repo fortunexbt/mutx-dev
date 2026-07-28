@@ -37,7 +37,6 @@ const monthlyRoutes = new Set<string>([
 ])
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const now = new Date()
   const requestHeaders = await headers()
   const requestHost = requestHeaders.get('x-forwarded-host') ?? requestHeaders.get('host')
   const surface = resolveSeoSurface(requestHost)
@@ -46,7 +45,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     return [
       {
         url: toAbsoluteUrl(getAppUrl(), '/control'),
-        lastModified: now,
         changeFrequency: 'weekly',
         priority: 0.9,
       },
@@ -57,7 +55,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     return [
       {
         url: toAbsoluteUrl(getPicoUrl(), '/'),
-        lastModified: now,
         changeFrequency: 'weekly',
         priority: 1,
       },
@@ -70,7 +67,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return routes.map((route) => ({
     url: toAbsoluteSiteUrl(route),
-    lastModified: now,
     changeFrequency: route.startsWith('/docs/') || route === '/docs'
       ? 'weekly'
       : monthlyRoutes.has(route)

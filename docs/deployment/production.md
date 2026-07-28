@@ -46,36 +46,58 @@ The production stack consists of:
 
 ### Required Environment Variables
 
-Create a `.env.production` file:
+Copy `.env.production.example` to `.env.production` and replace every
+placeholder. The bundled Compose database is on a private bridge and does not
+terminate TLS, so it explicitly uses `DATABASE_SSL_MODE=disable`; managed
+databases should use `require` or `verify-full`.
 
 ```bash
 # Database
 POSTGRES_USER=mutx
 POSTGRES_PASSWORD=<secure-random-password>
 POSTGRES_DB=mutx
-DATABASE_URL=postgresql://mutx:<password>@<host>:5432/mutx
-DATABASE_SSL_MODE=require
+DATABASE_URL=postgresql://mutx:<password>@postgres:5432/mutx
+DATABASE_SSL_MODE=disable
 
-# JWT (generate with: openssl rand -base64 32)
+# Independent secrets (generate each separately)
 JWT_SECRET=<minimum-32-character-secret>
+SECRET_ENCRYPTION_KEY=<different-minimum-32-character-secret>
 
-# Email (get from https://resend.com)
+# Password-account verification and transactional email
+REQUIRE_EMAIL_VERIFICATION=true
 RESEND_API_KEY=re_xxxxxxxxxxxx
 
-# URLs (replace with your production domain)
+# Public waitlist abuse protection
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=<turnstile-site-key>
+TURNSTILE_SECRET_KEY=<turnstile-secret-key>
+
+# Canonical hosts
 NEXT_PUBLIC_API_URL=https://api.yourdomain.com
 NEXT_PUBLIC_SITE_URL=https://yourdomain.com
-
-# CORS (comma-separated list of allowed origins)
-CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
+FRONTEND_URL=https://app.yourdomain.com
+PUBLIC_API_URL=https://api.yourdomain.com
+CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com,https://pico.yourdomain.com
+AUTH_REDIRECT_ORIGINS=https://yourdomain.com,https://app.yourdomain.com,https://pico.yourdomain.com
+ALLOWED_HOSTS=api.yourdomain.com,api,localhost,127.0.0.1
+MUTX_API_HOST=api.yourdomain.com
+MUTX_NETWORK_SUBNET=172.30.40.0/24
+FORWARDED_ALLOW_IPS=172.30.40.0/24
+MUTX_EDGE_BIND_ADDRESS=0.0.0.0
 ```
 
 ### Security Checklist
 
 - [ ] Use strong, randomly generated passwords (16+ characters)
 - [ ] JWT_SECRET is unique and not shared with other deployments
-- [ ] DATABASE_SSL_MODE is set to "require"
+- [ ] `DATABASE_SSL_MODE=disable` only for bundled private Postgres; managed endpoints require TLS
+- [ ] `JWT_SECRET` and `SECRET_ENCRYPTION_KEY` are distinct
+- [ ] the certificate covers marketing, www, app, Pico, and API hostnames
+- [ ] email verification has a working Resend or SMTP provider
+- [ ] both Turnstile keys are configured for public waitlist submissions
 - [ ] CORS_ORIGINS explicitly lists only your production domains
+- [ ] `MUTX_API_HOST` matches the hostname in both API URLs and is included exactly in `ALLOWED_HOSTS`
+- [ ] `FORWARDED_ALLOW_IPS` equals this deployment's private Compose bridge CIDR, never `*`
+- [ ] host firewall exposes the configurable nginx edge bind on ports 80 and 443
 - [ ] No debug or development settings enabled
 
 ---
@@ -93,12 +115,21 @@ cd mutx
 cp .env.production.example .env.production
 # Edit .env.production with your values
 
-# Start production stack
-docker compose -f infrastructure/docker/docker-compose.production.yml up -d
+# First installation only: explicitly initialize the empty external volumes.
+bash scripts/bootstrap-production-volumes.sh
+
+# Validate secrets, TLS/SAN coverage, persistent-volume identity, migrations,
+# health, monitor activity, and then start the production stack.
+bash scripts/deploy-production.sh
 
 # Verify services
-docker compose -f infrastructure/docker/docker-compose.production.yml ps
+docker compose --project-name docker --env-file .env.production \
+  -f infrastructure/docker/docker-compose.prod.yml ps
 ```
+
+Do not run the bootstrap script against an existing installation. It refuses
+non-empty volumes. The deployment script also refuses missing or empty volumes,
+which prevents a project-name change from silently selecting a fresh database.
 
 ### Option 2: DigitalOcean with Terraform
 
@@ -123,56 +154,71 @@ Key production values overrides (set in `values.prod.yaml` or via `--set`):
 
 ```yaml
 # values.prod.yaml highlights
-image:
-  repository: mutx/mutx
-  tag: "1.4.0"
-  pullPolicy: Always
+api:
+  replicaCount: 1
+  image:
+    repository: registry.example.com/mutx-api
+    tag: "1.4.0"
+  existingSecret: mutx-prod-api-env
+  env:
+    ENVIRONMENT: production
+    ALLOWED_HOSTS: mutx.example.com,localhost,127.0.0.1
+    FORWARDED_ALLOW_IPS: 10.244.0.0/16 # replace with the ingress source/pod CIDR
 
-replicaCount: 3
+frontend:
+  replicaCount: 2
+  image:
+    repository: registry.example.com/mutx-frontend
+    tag: "1.4.0"
+  autoscaling:
+    enabled: false
 
-resources:
-  limits:
-    cpu: 2000m
-    memory: 2Gi
-  requests:
-    cpu: 500m
-    memory: 1Gi
-
-autoscaling:
+migrations:
   enabled: true
-  minReplicas: 3
-  maxReplicas: 20
-  targetCPUUtilizationPercentage: 70
-
-env:
-  DATABASE_URL: "postgresql://user:***@postgres-host:5432/mutx"
-  REDIS_URL: "redis://redis-host:6379/0"
-  JWT_SECRET: "<your-jwt-secret>"
-  LOG_LEVEL: "WARNING"
-  ENVIRONMENT: "production"
 ```
+
+The chart does not install PostgreSQL. The migration hook and API currently consume
+the same `api.existingSecret`, so its `DATABASE_URL` role must be able to run Alembic
+DDL as well as normal application queries; the chart does not yet model a separate
+least-privilege migration role.
 
 #### RBAC Configuration
 
-Set the following environment variables to enable RBAC role enforcement:
+RBAC role enforcement is part of protected route dependencies and needs no
+feature flag. If using the mounted Okta SSO flow, configure its provider
+credentials and public callback origin:
 
 ```yaml
-env:
-  OIDC_ISSUER: "https://your-org.okta.com"
-  OIDC_CLIENT_ID: "your-client-id"
-  OIDC_JWKS_URI: "https://your-org.okta.com/oauth2/v1/keys"
+api:
+  existingSecret: mutx-api-env
+  env:
+    PUBLIC_API_URL: "https://api.example.com"
+    OKTA_DOMAIN: "https://your-org.okta.com"
+    OKTA_CLIENT_ID: "your-client-id"
 ```
 
-Tokens validated against the OIDC provider will include role claims that are checked by `require_role` dependencies. See [Security Architecture](../architecture/security.md#rbac-enforcement) for role definitions.
+Store `OKTA_CLIENT_SECRET` in `mutx-api-env`, alongside the other API secrets.
 
-#### OIDC Environment Variables
+The SSO callback validates and links the external identity. Route dependencies then reload the
+local user and check persisted `users.roles`; provider role claims do not grant
+MUTX privileges. See [Security Architecture](../architecture/security.md#rbac-enforcement)
+for role definitions.
+
+#### Generic OIDC Validator Environment Variables
 
 ```yaml
-env:
-  OIDC_ISSUER: "https://your-idp.example.com"
-  OIDC_CLIENT_ID: "mutx-production"
-  OIDC_JWKS_URI: "https://your-idp.example.com/.well-known/jwks.json"
+api:
+  existingSecret: mutx-api-env
+  env:
+    OIDC_ISSUER: "https://your-idp.example.com"
+    OIDC_CLIENT_ID: "mutx-production"
+    OIDC_JWKS_URI: "https://your-idp.example.com/.well-known/jwks.json"
 ```
+
+These values configure the library-level `validate_oidc_token(...)` helper. No
+mounted protected route automatically accepts an arbitrary provider bearer
+token; interactive SSO requires the provider-specific credentials described
+above.
 
 See [Authentication](../api/authentication.md#oidc-token-validation) for the full OIDC validation flow.
 
@@ -189,20 +235,24 @@ For Docker deployments, use the nginx-ssl setup:
 mkdir -p infrastructure/docker/ssl
 
 # Using Certbot
-certbot --nginx -d yourdomain.com -d api.yourdomain.com
+certbot certonly --standalone \
+  -d yourdomain.com \
+  -d www.yourdomain.com \
+  -d app.yourdomain.com \
+  -d pico.yourdomain.com \
+  -d api.yourdomain.com
 
 # Copy certificates
 cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem infrastructure/docker/ssl/cert.pem
 cp /etc/letsencrypt/live/yourdomain.com/privkey.pem infrastructure/docker/ssl/key.pem
 
-# Update nginx.conf to enable SSL (uncomment the SSL server block)
-# Then restart nginx
-docker compose -f infrastructure/docker/docker-compose.production.yml restart nginx
+# The canonical nginx.prod.conf already requires TLS 1.2 or TLS 1.3.
+docker compose -f infrastructure/docker/docker-compose.prod.yml restart nginx
 ```
 
 ### Manual SSL Configuration
 
-Update `nginx.conf` with your certificate paths:
+Update `infrastructure/docker/nginx.prod.conf` only when your certificate mount or domains differ:
 
 ```nginx
 ssl_certificate /etc/nginx/ssl/cert.pem;
@@ -229,7 +279,8 @@ curl https://api.yourdomain.com/health
 # Check readiness
 curl https://api.yourdomain.com/ready
 
-# Expected response: {"status":"ok"}
+# /health: {"status":"healthy","database":"ready",...}
+# /ready:  {"status":"ready","database":"ready",...}
 ```
 
 ### Prometheus Metrics
@@ -266,8 +317,8 @@ Access Grafana at `http://localhost:3001` (default credentials: admin/admin).
 On first deployment, run database migrations:
 
 ```bash
-# Run migrations via API container
-docker compose -f infrastructure/docker/docker-compose.production.yml exec api python -m alembic upgrade head
+# The one-shot migrate service runs before the API. Verify the database is at head:
+docker compose -f infrastructure/docker/docker-compose.prod.yml exec api alembic current
 ```
 
 ### Backup Configuration
@@ -326,7 +377,7 @@ apt install fail2ban
 
 ### Vertical Scaling
 
-Adjust resource limits in `docker-compose.production.yml`:
+Add or adjust per-service resource limits in `infrastructure/docker/docker-compose.prod.yml`:
 
 ```yaml
 deploy:
@@ -367,7 +418,7 @@ work_mem = 16MB
 
 | Issue | Solution |
 |-------|----------|
-| 502 Bad Gateway | Check nginx logs: `docker logs mutx-nginx-prod` |
+| 502 Bad Gateway | Check nginx logs: `docker compose -f infrastructure/docker/docker-compose.prod.yml logs nginx` |
 | Database connection failure | Verify DATABASE_URL and SSL settings |
 | JWT errors | Ensure JWT_SECRET matches across restarts |
 | CORS errors | Verify CORS_ORIGINS includes your domain |
@@ -376,20 +427,20 @@ work_mem = 16MB
 
 ```bash
 # All services
-docker compose -f infrastructure/docker/docker-compose.production.yml logs
+docker compose -f infrastructure/docker/docker-compose.prod.yml logs
 
 # Specific service
-docker compose -f infrastructure/docker/docker-compose.production.yml logs -f api
+docker compose -f infrastructure/docker/docker-compose.prod.yml logs -f api
 ```
 
 ### Restart Procedure
 
 ```bash
 # Full restart
-docker compose -f infrastructure/docker/docker-compose.production.yml restart
+docker compose -f infrastructure/docker/docker-compose.prod.yml restart
 
 # Or rebuild and restart
-docker compose -f infrastructure/docker/docker-compose.production.yml up -d --build
+docker compose -f infrastructure/docker/docker-compose.prod.yml up -d --build
 ```
 
 ---
@@ -410,7 +461,7 @@ docker compose -f infrastructure/docker/docker-compose.production.yml up -d --bu
 git pull origin main
 
 # Rebuild and restart
-docker compose -f infrastructure/docker/docker-compose.production.yml up -d --build
+docker compose -f infrastructure/docker/docker-compose.prod.yml up -d --build
 ```
 
 ---

@@ -141,7 +141,7 @@
 }
 
 .releaseVersion {
-  margin-left: 0.12em;
+  margin-inline-start: 0.12em;
   color: #ff4d00;
   white-space: nowrap;
 }
@@ -342,7 +342,7 @@
 
 .input::placeholder,
 .textarea::placeholder {
-  color: #77736c;
+  color: #6b675f;
   opacity: 1;
 }
 
@@ -515,7 +515,7 @@
 .routeArtifactPanel {
   --marketing-text: #0a0a09;
   --marketing-text-soft: #5f5b53;
-  --marketing-text-muted: #7c776d;
+  --marketing-text-muted: #5f5b53;
   --marketing-border: #b8b2a6;
   --marketing-border-strong: #0a0a09;
   border: 1px solid #f3f0e8;
@@ -531,7 +531,7 @@
 .routeReleaseSignalGrid {
   display: grid;
   align-content: stretch;
-  border-left: 1px solid #0a0a09;
+  border-inline-start: 1px solid #0a0a09;
 }
 
 .surfaceListItem {
@@ -793,7 +793,7 @@
 
   .routeReleaseSignalGrid {
     border-top: 1px solid #0a0a09;
-    border-left: 0;
+    border-inline-start: 0;
   }
 
   .routeMetaPanel {

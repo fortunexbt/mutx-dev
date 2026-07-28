@@ -7,7 +7,7 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def enable_reasoning_workflows(monkeypatch, tmp_path):
+def enable_reasoning_workflows(monkeypatch, tmp_path, test_user):
     from src.api.config import get_settings
 
     settings = get_settings()
@@ -15,6 +15,7 @@ def enable_reasoning_workflows(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "artifacts_dir", str(tmp_path / "artifacts"))
     monkeypatch.setattr(settings, "reasoning_max_upload_mb", 10)
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
+    test_user.roles = ["DEVELOPER"]
     yield
 
 

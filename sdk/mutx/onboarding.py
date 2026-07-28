@@ -66,7 +66,7 @@ class Onboarding:
     ) -> OnboardingState:
         """Get the current onboarding state."""
         self._require_sync_client()
-        response = self._client.get("/onboarding", params={"provider": provider})
+        response = self._client.get("onboarding", params={"provider": provider})
         response.raise_for_status()
         return OnboardingState(response.json())
 
@@ -76,7 +76,7 @@ class Onboarding:
     ) -> OnboardingState:
         """Get the current onboarding state (async)."""
         self._require_async_client()
-        response = await self._client.get("/onboarding", params={"provider": provider})
+        response = await self._client.get("onboarding", params={"provider": provider})
         response.raise_for_status()
         return OnboardingState(response.json())
 
@@ -105,7 +105,7 @@ class Onboarding:
         if payload:
             request_payload["payload"] = payload
 
-        response = self._client.post("/onboarding", json=request_payload)
+        response = self._client.post("onboarding", json=request_payload)
         response.raise_for_status()
         return OnboardingState(response.json())
 
@@ -127,6 +127,6 @@ class Onboarding:
         if payload:
             request_payload["payload"] = payload
 
-        response = await self._client.post("/onboarding", json=request_payload)
+        response = await self._client.post("onboarding", json=request_payload)
         response.raise_for_status()
         return OnboardingState(response.json())

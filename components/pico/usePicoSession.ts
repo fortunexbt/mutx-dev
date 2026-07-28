@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 type PicoSessionUser = {
   email?: string | null
@@ -10,18 +10,32 @@ type PicoSessionUser = {
   isEmailVerified?: boolean | null
 }
 
-export type PicoSessionState =
+type PicoSessionCoreState =
   | { status: 'loading'; user: null; error: null }
   | { status: 'authenticated'; user: PicoSessionUser; error: null }
   | { status: 'unauthenticated'; user: null; error: null }
   | { status: 'error'; user: null; error: string }
 
+export type PicoSessionState = PicoSessionCoreState & {
+  retry: () => void
+}
+
+export function hasPicoPackagePlan(plan: string | null | undefined) {
+  return ['STARTER', 'PRO', 'ENTERPRISE'].includes((plan ?? '').trim().toUpperCase())
+}
+
 export function usePicoSession() {
-  const [session, setSession] = useState<PicoSessionState>({
+  const [session, setSession] = useState<PicoSessionCoreState>({
     status: 'loading',
     user: null,
     error: null,
   })
+  const [requestVersion, setRequestVersion] = useState(0)
+
+  const retry = useCallback(() => {
+    setSession({ status: 'loading', user: null, error: null })
+    setRequestVersion((version) => version + 1)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -50,6 +64,8 @@ export function usePicoSession() {
             error:
               typeof payload?.detail === 'string' && payload.detail
                 ? payload.detail
+                : typeof payload?.error?.message === 'string' && payload.error.message
+                  ? payload.error.message
                 : 'Failed to load Pico session',
           })
           return
@@ -92,7 +108,7 @@ export function usePicoSession() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [requestVersion])
 
-  return session
+  return { ...session, retry } as PicoSessionState
 }

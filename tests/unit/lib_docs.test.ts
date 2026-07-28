@@ -5,7 +5,23 @@
  * and a smoke test that SUMMARY.md is well-formed.
  */
 
-import { parseSummary, flatNav, getDocSitemapRoutes, getPublishedDocRoutes, type DocNavItem } from '../../lib/docs'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+
+import {
+  getDocsPublicationManifest,
+  docsFileToCanonicalRoute,
+  parseSummary,
+  flatNav,
+  getFrontmatterDateModified,
+  getDocSitemapRoutes,
+  getPublishedDocs,
+  getPublishedDocRoutes,
+  invalidateDocsPublicationManifest,
+  resolvePublishedDocRequest,
+  type DocNavItem,
+} from '../../lib/docs'
 import { resolveDocHref } from '../../lib/docsLinks'
 
 // -----------------------------------------------------------------------------
@@ -192,6 +208,70 @@ describe('parseSummary integration', () => {
     expect(routes.has('/docs/deployment/cli-release')).toBe(false)
     expect(routes.has('/docs/deployment/release-v0.1')).toBe(false)
   })
+
+  it('excludes the legacy webhook compatibility source from every publication surface', () => {
+    const docs = getPublishedDocs()
+    const routes = getDocSitemapRoutes()
+
+    expect(docs.some((doc) => doc.sourcePath === 'docs/contracts/api/webhooks.md')).toBe(false)
+    expect(docs.some((doc) => doc.route === '/docs/contracts/api/webhooks')).toBe(false)
+    expect(routes).not.toContain('/docs/contracts/api/webhooks')
+    expect(docsFileToCanonicalRoute(
+      path.join(process.cwd(), 'docs/contracts/api/webhooks.md')
+    )).toBeNull()
+    expect(resolvePublishedDocRequest(['contracts', 'api', 'webhooks'])).toBeNull()
+  })
+
+  it('publishes one canonical route per source-backed document', () => {
+    const docs = getPublishedDocs()
+    const routes = docs.map((doc) => doc.route)
+
+    expect(routes).toContain('/sdk')
+    expect(routes).toContain('/support')
+    expect(routes).not.toContain('/docs/api')
+    expect(routes).not.toContain('/docs/sdk')
+    expect(routes).not.toContain('/docs/README')
+    expect(new Set(routes).size).toBe(routes.length)
+  })
+
+  it('publishes the API agents guide at its canonical reference route', () => {
+    const agentsDoc = getPublishedDocs().find((doc) => doc.route === '/docs/reference/agents')
+
+    expect(agentsDoc?.sourcePath).toBe('docs/api/agents.md')
+    expect(resolvePublishedDocRequest(['reference', 'agents'])).toMatchObject({
+      canonicalRoute: '/docs/reference/agents',
+      shouldRedirect: false,
+    })
+  })
+
+  it('distinguishes canonical aliases from unpublished and invalid routes', () => {
+    expect(resolvePublishedDocRequest(['README'])).toMatchObject({
+      canonicalRoute: '/docs',
+      shouldRedirect: true,
+    })
+    expect(resolvePublishedDocRequest(['api', 'authentication'])).toMatchObject({
+      canonicalRoute: '/docs/reference/authentication',
+      shouldRedirect: true,
+    })
+    expect(resolvePublishedDocRequest(['architecture', 'README'])).toMatchObject({
+      canonicalRoute: '/docs/architecture',
+      shouldRedirect: true,
+    })
+    expect(resolvePublishedDocRequest(['agents', 'qa-reliability-engineer'])).toBeNull()
+    expect(resolvePublishedDocRequest(['does-not-exist'])).toBeNull()
+    expect(resolvePublishedDocRequest(['..', 'README'])).toBeNull()
+  })
+})
+
+describe('documentation frontmatter dates', () => {
+  it('accepts only explicit, valid dateModified values', () => {
+    expect(getFrontmatterDateModified({})).toBeUndefined()
+    expect(getFrontmatterDateModified({ dateModified: 'not-a-date' })).toBeUndefined()
+    expect(getFrontmatterDateModified({ dateModified: ' 2026-07-28 ' })).toBe('2026-07-28')
+    expect(getFrontmatterDateModified({
+      dateModified: new Date('2026-07-28T12:00:00.000Z'),
+    })).toBe('2026-07-28T12:00:00.000Z')
+  })
 })
 
 describe('resolveDocHref', () => {
@@ -202,5 +282,83 @@ describe('resolveDocHref', () => {
 
   it('preserves API reference routing for source files under docs/api', () => {
     expect(resolveDocHref('./leads.md', ['api', 'reference'])).toBe('/docs/reference/leads')
+  })
+
+  it('rewrites source artifacts and unpublished Markdown instead of inventing routes', () => {
+    expect(resolveDocHref('./openapi.json', ['api', 'reference'])).toBe(
+      'https://github.com/mutx-dev/mutx-dev/blob/main/docs/api/openapi.json'
+    )
+    expect(resolveDocHref('../../infrastructure/helm/mutx/README.md', ['deployment', 'kubernetes'])).toBe(
+      'https://github.com/mutx-dev/mutx-dev/blob/main/infrastructure/helm/mutx/README.md'
+    )
+    expect(resolveDocHref('../../railway.json', ['deployment', 'railway'])).toBe(
+      'https://github.com/mutx-dev/mutx-dev/blob/main/railway.json'
+    )
+    expect(resolveDocHref('cli-release.md', ['deployment', 'README'])).toBe(
+      'https://github.com/mutx-dev/mutx-dev/blob/main/docs/deployment/cli-release.md'
+    )
+  })
+
+  it('normalizes repo-relative surfaces links to the published canonical route', () => {
+    expect(resolveDocHref('../docs/surfaces.md', ['project-status'])).toBe('/docs/surfaces')
+  })
+})
+
+describe('documentation publication manifest caching', () => {
+  const originalNodeEnv = process.env.NODE_ENV
+
+  function setNodeEnv(value: string | undefined) {
+    if (value === undefined) {
+      Reflect.deleteProperty(process.env, 'NODE_ENV')
+      return
+    }
+    Object.defineProperty(process.env, 'NODE_ENV', {
+      configurable: true,
+      enumerable: true,
+      value,
+      writable: true,
+    })
+  }
+
+  afterEach(() => {
+    setNodeEnv(originalNodeEnv)
+    invalidateDocsPublicationManifest()
+  })
+
+  it('reuses one stable manifest instead of rescanning the publication graph', () => {
+    invalidateDocsPublicationManifest()
+
+    const first = getDocsPublicationManifest()
+    const second = getDocsPublicationManifest()
+
+    expect(second).toBe(first)
+    expect(second.byRoute.get('/docs')?.sourcePath).toBe('docs/README.md')
+  })
+
+  it('invalidates the development manifest when a known source changes', () => {
+    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mutx-docs-manifest-'))
+    const docsRoot = path.join(fixtureRoot, 'docs')
+    fs.mkdirSync(docsRoot, { recursive: true })
+    fs.writeFileSync(
+      path.join(fixtureRoot, 'SUMMARY.md'),
+      '# Summary\n\n* [Home](docs/README.md)\n',
+      'utf-8'
+    )
+    const readmePath = path.join(docsRoot, 'README.md')
+    fs.writeFileSync(readmePath, '# Fixture docs\n', 'utf-8')
+
+    try {
+      setNodeEnv('development')
+      invalidateDocsPublicationManifest()
+      const first = getDocsPublicationManifest(fixtureRoot)
+
+      fs.appendFileSync(readmePath, '\nChanged source content.\n', 'utf-8')
+      const second = getDocsPublicationManifest(fixtureRoot)
+
+      expect(second).not.toBe(first)
+      expect(second.docs.map((doc) => doc.route)).toEqual(['/docs'])
+    } finally {
+      fs.rmSync(fixtureRoot, { recursive: true, force: true })
+    }
   })
 })

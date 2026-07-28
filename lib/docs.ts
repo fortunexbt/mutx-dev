@@ -37,7 +37,11 @@ function normalizeSummaryHrefToSlug(href: string): string {
  * Read frontmatter from a doc file to extract the `icon` field.
  * Returns undefined if the file doesn't exist or has no icon.
  */
-function getDocIcon(href: string): string | undefined {
+function getDocIcon(
+  href: string,
+  repoRoot: string,
+  watchPaths?: Set<string>,
+): string | undefined {
   // Build the file path from the SUMMARY href
   // e.g. "manifesto.md"         → docs/manifesto.md
   // e.g. "whitepaper.md"        → docs/whitepaper.md
@@ -45,15 +49,16 @@ function getDocIcon(href: string): string | undefined {
   // e.g. "agents/README.md"     → agents/README.md
   const candidates: string[] = [];
   if (href.startsWith("docs/")) {
-    candidates.push(path.join(/* turbopackIgnore: true */ process.cwd(), href));
+    candidates.push(path.join(/* turbopackIgnore: true */ repoRoot, href));
   } else if (href.startsWith("agents/") || href.startsWith("contributing/")) {
-    candidates.push(path.join(/* turbopackIgnore: true */ process.cwd(), href));
+    candidates.push(path.join(/* turbopackIgnore: true */ repoRoot, href));
   } else {
-    candidates.push(path.join(/* turbopackIgnore: true */ process.cwd(), "docs", href));
-    candidates.push(path.join(/* turbopackIgnore: true */ process.cwd(), href)); // root-level fallback
+    candidates.push(path.join(/* turbopackIgnore: true */ repoRoot, "docs", href));
+    candidates.push(path.join(/* turbopackIgnore: true */ repoRoot, href)); // root-level fallback
   }
 
   for (const filePath of candidates) {
+    watchPaths?.add(path.resolve(filePath));
     try {
       const raw = fs.readFileSync(filePath, "utf-8");
       const { data } = matter(raw);
@@ -72,8 +77,9 @@ function parseLine(line: string): { title: string; href: string; slug: string } 
   return { title, href, slug: normalizeSummaryHrefToSlug(href) };
 }
 
-export function parseSummary(): DocNavItem[] {
-  const summaryPath = path.join(/* turbopackIgnore: true */ process.cwd(), "SUMMARY.md");
+function readSummary(repoRoot: string, watchPaths?: Set<string>): DocNavItem[] {
+  const summaryPath = path.join(/* turbopackIgnore: true */ repoRoot, "SUMMARY.md");
+  watchPaths?.add(path.resolve(summaryPath));
   const content = fs.readFileSync(summaryPath, "utf-8");
   const lines = content.split("\n");
 
@@ -94,7 +100,7 @@ export function parseSummary(): DocNavItem[] {
       route: summaryHrefToDocsRoute(parsed.href) ?? `/docs/${parsed.slug}`,
       children: [],
       depth,
-      icon: getDocIcon(parsed.href),
+      icon: getDocIcon(parsed.href, repoRoot, watchPaths),
     };
 
     // Find where to insert
@@ -112,6 +118,10 @@ export function parseSummary(): DocNavItem[] {
   }
 
   return root;
+}
+
+export function parseSummary(): DocNavItem[] {
+  return getDocsPublicationManifest().nav;
 }
 
 export function flatNav(items: DocNavItem[]): DocNavItem[] {
@@ -159,31 +169,77 @@ export function getDocSitemapRoutes(): string[] {
   return Array.from(getPublishedDocRoutes());
 }
 
+export interface PublishedDoc {
+  route: string;
+  filePath: string;
+  sourcePath: string;
+}
+
+export interface DocsPublicationManifest {
+  repoRoot: string;
+  nav: DocNavItem[];
+  docs: readonly PublishedDoc[];
+  byRoute: ReadonlyMap<string, PublishedDoc>;
+  bySourcePath: ReadonlyMap<string, PublishedDoc>;
+  docRoutes: ReadonlySet<string>;
+}
+
 const INTERNAL_PUBLIC_DOC_PATTERNS = [
   /(^|\/)AGENTS?\.md$/i,
   /(^|\/)(?:runbooks?|internal)(\/|$)/i,
   /claim-to-reality-gap-matrix/i,
   /mutation-testing/i,
   /deployment\/(?:cli-release|release-v0\.1)\.md$/i,
+  /(^|\/)contracts\/api\/webhooks\.md$/i,
 ];
+
+const PUBLIC_DOC_PATH_EXCEPTIONS = new Set([
+  "api/agents.md",
+]);
 
 function isSafePublicDocPath(filePath: string, docsRoot: string): boolean {
   const resolved = path.resolve(filePath);
-  const relative = path.relative(docsRoot, resolved);
+  const relative = path.relative(docsRoot, resolved).replace(/\\/g, "/");
+  const isExplicitPublicDoc = PUBLIC_DOC_PATH_EXCEPTIONS.has(relative.toLowerCase());
   return Boolean(relative) &&
     !relative.startsWith("..") &&
     !path.isAbsolute(relative) &&
     relative.endsWith(".md") &&
-    !INTERNAL_PUBLIC_DOC_PATTERNS.some((pattern) => pattern.test(relative));
+    (isExplicitPublicDoc || !INTERNAL_PUBLIC_DOC_PATTERNS.some((pattern) => pattern.test(relative)));
 }
 
-function docsFileToRoute(filePath: string, docsRoot: string): string {
+export function getFrontmatterDateModified(data: Record<string, unknown>): string | undefined {
+  const value = data.dateModified;
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
+  }
+
+  if (typeof value !== "string") return undefined;
+
+  const dateModified = value.trim();
+  return dateModified && !Number.isNaN(Date.parse(dateModified)) ? dateModified : undefined;
+}
+
+export function docsFileToCanonicalRoute(
+  filePath: string,
+  docsRoot = path.resolve(process.cwd(), "docs"),
+  repoRoot = path.dirname(docsRoot),
+): string | null {
+  repoRoot = path.resolve(repoRoot);
+  const repoRelative = path.relative(repoRoot, filePath).replace(/\\/g, "/");
+  if (repoRelative.toLowerCase() === "docs/contracts/api/webhooks.md") return null;
+  if (repoRelative === "support.md") return "/support";
+
   let relative = path.relative(docsRoot, filePath).replace(/\\/g, "/");
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
+  if (relative.toLowerCase() === "sdk.md") return "/sdk";
+
   relative = relative.replace(/\.md$/i, "");
-  relative = relative.replace(/\/(README|index)$/i, "");
-  relative = relative.replace(/^(README|index)$/i, "");
   if (relative === "api/reference" || relative === "api/index") return "/docs/reference";
   if (relative.startsWith("api/")) relative = `reference/${relative.slice(4)}`;
+  relative = relative.replace(/\/(README|index)$/i, "");
+  relative = relative.replace(/^(README|index)$/i, "");
   return relative ? `/docs/${relative}` : "/docs";
 }
 
@@ -194,12 +250,22 @@ function linkedMarkdownPaths(source: string): string[] {
   return Array.from(hrefs);
 }
 
-function resolveLinkedDocPath(href: string, fromFile: string, docsRoot: string): string | null {
+function resolveLinkedDocPath(
+  href: string,
+  fromFile: string,
+  docsRoot: string,
+  repoRoot: string,
+  watchPaths: Set<string>,
+): string | null {
   const clean = href.split("#", 1)[0].split("?", 1)[0].trim();
   if (!clean || /^[a-z][a-z0-9+.-]*:/i.test(clean) || clean.startsWith("//")) return null;
 
   let candidate: string;
-  if (clean.startsWith("/docs/")) {
+  if (clean === "/support") {
+    candidate = path.resolve(repoRoot, "support.md");
+  } else if (clean === "/sdk") {
+    candidate = path.join(docsRoot, "sdk.md");
+  } else if (clean.startsWith("/docs/")) {
     let routePath = clean.slice("/docs/".length);
     if (routePath === "reference") routePath = "api/reference";
     else if (routePath.startsWith("reference/")) routePath = `api/${routePath.slice("reference/".length)}`;
@@ -213,40 +279,207 @@ function resolveLinkedDocPath(href: string, fromFile: string, docsRoot: string):
   const candidates = /\.md$/i.test(candidate)
     ? [candidate]
     : [`${candidate}.md`, path.join(candidate, "README.md"), path.join(candidate, "index.md")];
-  return candidates.find((filePath) => fs.existsSync(filePath) && isSafePublicDocPath(filePath, docsRoot)) ?? null;
+  return candidates.find((filePath) => {
+    watchPaths.add(path.resolve(filePath));
+    if (!fs.existsSync(filePath)) return false;
+    if (path.resolve(filePath) === path.resolve(repoRoot, "support.md")) return true;
+    return isSafePublicDocPath(filePath, docsRoot);
+  }) ?? null;
 }
 
 /**
  * Public docs are the curated SUMMARY tree plus safe Markdown pages linked from
- * that tree. This keeps internal repo material hidden without turning valid
- * links in published docs into redirect dead ends.
+ * that tree. The route/source map is the publication contract shared by the
+ * renderer and search index; first-party SUMMARY entries win route collisions.
  */
-export function getPublishedDocRoutes(): Set<string> {
-  const docsRoot = path.resolve(process.cwd(), "docs");
-  const routes = new Set<string>(["/docs"]);
+function buildDocsPublicationManifest(repoRoot: string): {
+  manifest: DocsPublicationManifest;
+  watchPaths: string[];
+} {
+  repoRoot = path.resolve(repoRoot);
+  const docsRoot = path.resolve(repoRoot, "docs");
+  const watchPaths = new Set<string>();
+  const nav = readSummary(repoRoot, watchPaths);
+  const published = new Map<string, PublishedDoc>();
   const queue: string[] = [];
   const visited = new Set<string>();
 
-  for (const item of flatNav(parseSummary())) {
-    const route = summaryHrefToDocsRoute(item.href);
-    if (route?.startsWith("/docs")) routes.add(route);
-    if (!item.href.startsWith("docs/")) continue;
-    const filePath = path.resolve(process.cwd(), item.href);
-    if (fs.existsSync(filePath) && isSafePublicDocPath(filePath, docsRoot)) queue.push(filePath);
+  function addSource(filePath: string) {
+    const resolved = path.resolve(filePath);
+    watchPaths.add(resolved);
+    const route = docsFileToCanonicalRoute(resolved, docsRoot, repoRoot);
+    if (!route) return;
+
+    if (!published.has(route)) {
+      published.set(route, {
+        route,
+        filePath: resolved,
+        sourcePath: path.relative(repoRoot, resolved).replace(/\\/g, "/"),
+      });
+    }
+    if (!visited.has(resolved) && !queue.includes(resolved)) queue.push(resolved);
+  }
+
+  const rootReadme = path.join(docsRoot, "README.md");
+  watchPaths.add(path.resolve(rootReadme));
+  if (fs.existsSync(rootReadme)) addSource(rootReadme);
+
+  for (const item of flatNav(nav)) {
+    const candidates = item.href.startsWith("docs/")
+      ? [path.resolve(repoRoot, item.href)]
+      : [path.resolve(docsRoot, item.href), path.resolve(repoRoot, item.href)];
+    candidates.forEach((candidate) => watchPaths.add(candidate));
+    const filePath = candidates.find((candidate) => fs.existsSync(candidate));
+    if (!filePath) continue;
+    if (filePath !== path.resolve(repoRoot, "support.md") && !isSafePublicDocPath(filePath, docsRoot)) {
+      continue;
+    }
+    addSource(filePath);
   }
 
   while (queue.length > 0) {
     const filePath = queue.shift()!;
     if (visited.has(filePath)) continue;
     visited.add(filePath);
-    routes.add(docsFileToRoute(filePath, docsRoot));
+    addSource(filePath);
 
     const source = fs.readFileSync(filePath, "utf-8");
     for (const href of linkedMarkdownPaths(source)) {
-      const linkedPath = resolveLinkedDocPath(href, filePath, docsRoot);
-      if (linkedPath && !visited.has(linkedPath)) queue.push(linkedPath);
+      const linkedPath = resolveLinkedDocPath(href, filePath, docsRoot, repoRoot, watchPaths);
+      if (linkedPath) addSource(linkedPath);
     }
   }
 
-  return routes;
+  const docs = Array.from(published.values()).sort((a, b) => {
+    if (a.route === "/docs") return -1;
+    if (b.route === "/docs") return 1;
+    return a.route.localeCompare(b.route);
+  });
+  const byRoute = new Map(docs.map((doc) => [doc.route, doc]));
+  const bySourcePath = new Map(docs.map((doc) => [doc.sourcePath, doc]));
+  const docRoutes = new Set(
+    docs
+      .map((doc) => doc.route)
+      .filter((route) => route === "/docs" || route.startsWith("/docs/")),
+  );
+
+  return {
+    manifest: {
+      repoRoot,
+      nav,
+      docs,
+      byRoute,
+      bySourcePath,
+      docRoutes,
+    },
+    watchPaths: Array.from(watchPaths).sort(),
+  };
+}
+
+interface CachedDocsPublicationManifest {
+  manifest: DocsPublicationManifest;
+  watchPaths: string[];
+  sourceSignature: string;
+}
+
+let cachedDocsPublicationManifest: CachedDocsPublicationManifest | null = null;
+
+function getSourceSignature(filePaths: string[]): string {
+  return filePaths.map((filePath) => {
+    try {
+      const stat = fs.statSync(filePath, { bigint: true });
+      return `${filePath}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
+    } catch {
+      return `${filePath}:missing`;
+    }
+  }).join("|");
+}
+
+/**
+ * Return the canonical route/source manifest. Production keeps one
+ * process-lifetime snapshot; development checks only known source metadata and
+ * rebuilds the graph when SUMMARY or a linked source changes.
+ */
+export function getDocsPublicationManifest(
+  repoRoot = process.cwd(),
+): DocsPublicationManifest {
+  const resolvedRoot = path.resolve(repoRoot);
+  const cached = cachedDocsPublicationManifest;
+
+  if (cached?.manifest.repoRoot === resolvedRoot) {
+    if (process.env.NODE_ENV !== "development") return cached.manifest;
+    if (getSourceSignature(cached.watchPaths) === cached.sourceSignature) {
+      return cached.manifest;
+    }
+  }
+
+  const built = buildDocsPublicationManifest(resolvedRoot);
+  cachedDocsPublicationManifest = {
+    ...built,
+    sourceSignature: getSourceSignature(built.watchPaths),
+  };
+  return built.manifest;
+}
+
+export function invalidateDocsPublicationManifest(): void {
+  cachedDocsPublicationManifest = null;
+}
+
+export function getPublishedDocs(): PublishedDoc[] {
+  return [...getDocsPublicationManifest().docs];
+}
+
+export function getPublishedDocRoutes(): Set<string> {
+  return new Set(getDocsPublicationManifest().docRoutes);
+}
+
+export function getPublishedDoc(route: string): PublishedDoc | null {
+  return getDocsPublicationManifest().byRoute.get(route) ?? null;
+}
+
+export function canonicalizeDocsRoute(route: string): string {
+  if (route === "/docs") return route;
+
+  const segments = route.replace(/^\/docs\/?/, "").split("/").filter(Boolean);
+  while (segments.length > 0 && /^(README|index)$/i.test(segments[segments.length - 1])) {
+    segments.pop();
+  }
+
+  if (segments[0]?.toLowerCase() === "api") {
+    segments.splice(0, 1, "reference");
+  }
+  if (segments.join("/").toLowerCase() === "reference/reference") {
+    segments.pop();
+  }
+  if (segments.join("/").toLowerCase() === "sdk") return "/sdk";
+
+  return segments.length > 0 ? `/docs/${segments.join("/")}` : "/docs";
+}
+
+export interface PublishedDocRequest {
+  requestedRoute: string;
+  canonicalRoute: string;
+  doc: PublishedDoc;
+  shouldRedirect: boolean;
+}
+
+export function resolvePublishedDocRequest(slugSegments: string[]): PublishedDocRequest | null {
+  if (slugSegments.some((segment) => (
+    !segment || segment === "." || segment === ".." || segment.includes("/") ||
+    segment.includes("\\") || segment.includes("\0")
+  ))) return null;
+
+  const requestedRoute = slugSegments.length > 0
+    ? `/docs/${slugSegments.join("/")}`
+    : "/docs";
+  const canonicalRoute = canonicalizeDocsRoute(requestedRoute);
+  const doc = getPublishedDoc(canonicalRoute);
+  if (!doc) return null;
+
+  return {
+    requestedRoute,
+    canonicalRoute,
+    doc,
+    shouldRedirect: requestedRoute !== canonicalRoute,
+  };
 }

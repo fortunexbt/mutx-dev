@@ -7,7 +7,7 @@ import { proxyJson } from '@/app/api/_lib/proxy'
 export const dynamic = 'force-dynamic'
 
 function buildTargetUrl(path: string[], search = '') {
-  const suffix = path.length > 0 ? `/${path.join('/')}` : ''
+  const suffix = path.length > 0 ? `/${path.map(encodeURIComponent).join('/')}` : ''
   return `${getApiBaseUrl()}/v1/governance/discovery${suffix}${search}`
 }
 

@@ -5,7 +5,7 @@
     "nixpacksVersion": "v0.39.0"
   },
   "deploy": {
-    "startCommand": "pip install psycopg2-binary alembic && alembic upgrade head && uvicorn src.api.main:app --host 0.0.0.0 --port 8000",
+    "startCommand": "sh -c 'pip install psycopg2-binary alembic && alembic upgrade head && uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=\"${FORWARDED_ALLOW_IPS:?FORWARDED_ALLOW_IPS must be set}\"'",
     "numReplicas": 1,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10

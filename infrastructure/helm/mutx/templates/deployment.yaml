@@ -1,33 +1,256 @@
+{{- include "mutx.validateValues" . }}
+{{- $apiSecret := include "mutx.apiSecretName" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "mutx.fullname" . }}
+  name: {{ include "mutx.fullname" . }}-api
   labels:
     {{- include "mutx.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.api.replicaCount }}
+  {{- if and .Values.persistence.enabled (not (has "ReadWriteMany" .Values.persistence.accessModes)) }}
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
-      {{- include "mutx.selectorLabels" . | nindent 6 }}
+      {{- include "mutx.componentSelectorLabels" (dict "root" . "component" "api") | nindent 6 }}
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if and (not .Values.api.existingSecret) .Values.api.secretEnv }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
-        {{- include "mutx.selectorLabels" . | nindent 8 }}
+        {{- include "mutx.componentSelectorLabels" (dict "root" . "component" "api") | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
+      serviceAccountName: {{ include "mutx.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "mutx.imagePullSecrets" . | nindent 6 }}
       containers:
-        - name: {{ .Chart.Name }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+        - name: api
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          command: ["python", "-c"]
+          args:
+            - |
+              import os
+              import uvicorn
+              from src.api.main import create_app
+
+              application = create_app(
+                  background_monitor_enabled=False,
+                  document_worker_enabled={{ ternary "True" "False" (and .Values.features.documents (not .Values.workers.document.enabled)) }},
+                  reasoning_worker_enabled={{ ternary "True" "False" (and .Values.features.reasoning (not .Values.workers.reasoning.enabled)) }},
+              )
+              uvicorn.run(
+                  application,
+                  host="0.0.0.0",
+                  port=int(os.environ["API_PORT"]),
+                  log_level=os.environ.get("LOG_LEVEL", "info").lower(),
+                  proxy_headers=True,
+                  forwarded_allow_ips=os.environ.get("FORWARDED_ALLOW_IPS", "127.0.0.1"),
+              )
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          workingDir: {{ .Values.persistence.mountPath }}
           ports:
             - name: http
-              containerPort: {{ .Values.service.port }}
+              containerPort: {{ .Values.api.port }}
               protocol: TCP
+          env:
+            - name: API_PORT
+              value: {{ .Values.api.port | quote }}
+            - name: BACKGROUND_MONITOR_ENABLED
+              value: "false"
+            - name: MUTX_DOCUMENTS_ENABLED
+              value: {{ .Values.features.documents | quote }}
+            - name: MUTX_REASONING_ENABLED
+              value: {{ .Values.features.reasoning | quote }}
+            - name: MUTX_HOME
+              value: {{ printf "%s/home" .Values.persistence.mountPath | quote }}
+            - name: MUTX_ARTIFACTS_DIR
+              value: {{ printf "%s/artifacts" .Values.persistence.mountPath | quote }}
+            - name: PYTHONPATH
+              value: /app
           envFrom:
-            - configMapRef:
-                name: {{ include "mutx.fullname" . }}-env
-            {{- if .Values.secretEnv }}
+            {{- if $apiSecret }}
             - secretRef:
-                name: {{ include "mutx.fullname" . }}-env
+                name: {{ $apiSecret }}
             {{- end }}
+            - configMapRef:
+                name: {{ include "mutx.fullname" . }}-api-env
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            failureThreshold: {{ .Values.api.probes.startup.failureThreshold }}
+            periodSeconds: {{ .Values.api.probes.startup.periodSeconds }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ .Values.api.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.api.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.api.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.api.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: {{ .Values.api.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.api.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.api.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.api.probes.readiness.failureThreshold }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "mutx.persistenceClaimName" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+{{- $frontendSecret := include "mutx.frontendSecretName" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mutx.fullname" . }}-frontend
+  labels:
+    {{- include "mutx.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  {{- if not .Values.frontend.autoscaling.enabled }}
+  replicas: {{ .Values.frontend.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "mutx.componentSelectorLabels" (dict "root" . "component" "frontend") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if and (not .Values.frontend.existingSecret) .Values.frontend.secretEnv }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "mutx.componentSelectorLabels" (dict "root" . "component" "frontend") | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "mutx.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "mutx.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: frontend
+          image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
+          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.frontend.port }}
+              protocol: TCP
+          env:
+            - name: PORT
+              value: {{ .Values.frontend.port | quote }}
+            - name: HOSTNAME
+              value: 0.0.0.0
+            - name: INTERNAL_API_URL
+              value: {{ printf "http://%s-api:%v" (include "mutx.fullname" .) .Values.api.service.port | quote }}
+          envFrom:
+            {{- if $frontendSecret }}
+            - secretRef:
+                name: {{ $frontendSecret }}
+            {{- end }}
+            - configMapRef:
+                name: {{ include "mutx.fullname" . }}-frontend-env
+          startupProbe:
+            tcpSocket:
+              port: http
+            failureThreshold: {{ .Values.frontend.probes.startup.failureThreshold }}
+            periodSeconds: {{ .Values.frontend.probes.startup.periodSeconds }}
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: {{ .Values.frontend.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.frontend.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.frontend.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.frontend.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: {{ .Values.frontend.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.frontend.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.frontend.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.frontend.probes.readiness.failureThreshold }}
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}
+          volumeMounts:
+            - name: next-cache
+              mountPath: /app/.next/cache
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: next-cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -48,7 +48,7 @@ export default function manifest(): MetadataRoute.Manifest {
         src: `${siteUrl}/landing/webp/docs-surface.webp`,
         sizes: '1536x1024',
         type: 'image/webp',
-        label: 'MUTX app preview',
+        label: 'MUTX operator workspace',
       },
     ],
   }

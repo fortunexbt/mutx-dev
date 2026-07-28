@@ -90,14 +90,14 @@
           community.postgresql.postgresql_user:
             name: agent_user
             password: "{{ postgres_password }}"
-            db: agent_db
+            login_db: agent_db
             state: present
 
         - name: Grant application user privileges
           become: true
           become_user: postgres
           community.postgresql.postgresql_privs:
-            db: agent_db
+            login_db: agent_db
             privs: ALL
             roles: agent_user
             type: database

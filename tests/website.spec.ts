@@ -1,10 +1,12 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { createDefaultPicoProgress } from '../lib/pico/academy';
+import { type PicoTutorConnection, type PicoTutorEntitlement } from '../lib/pico/tutor';
 
 type PicoProductStubOptions = {
   authenticated?: boolean
   isEmailVerified?: boolean
   webhookCount?: number
+  plan?: 'FREE' | 'STARTER' | 'PRO' | 'ENTERPRISE'
 }
 
 async function expectRouteSurfaceSplit(page: Page) {
@@ -74,23 +76,43 @@ async function stubPicoProductApis(
     authenticated = true,
     isEmailVerified = true,
     webhookCount = 2,
+    plan = 'STARTER',
   }: PicoProductStubOptions = {},
 ) {
   const progress = createDefaultPicoProgress();
+  const normalizedPlan = plan.toLowerCase() as PicoTutorEntitlement['plan'];
+  const entitlement: PicoTutorEntitlement = {
+    authenticated: true,
+    plan: normalizedPlan,
+    tutorAccess: normalizedPlan !== 'free',
+    minimumPlan: 'starter',
+    byokAccess: normalizedPlan === 'pro' || normalizedPlan === 'enterprise',
+    byokMinimumPlan: 'pro',
+  };
+  const checkedAt = '2026-07-28T12:00:00.000Z';
   const sessionUser = {
     email: 'operator@mutx.dev',
     name: 'Pico Operator',
     role: 'ADMIN',
+    plan,
     is_email_verified: isEmailVerified,
   };
-  let openAIConnection = {
+  let openAIConnection: PicoTutorConnection = {
     provider: 'openai',
-    status: 'disconnected',
-    source: 'none',
+    status: entitlement.tutorAccess && !entitlement.byokAccess ? 'platform' : 'disconnected',
+    source: entitlement.tutorAccess && !entitlement.byokAccess ? 'platform' : 'none',
     connected: false,
     model: 'gpt-5-mini',
-    maskedKey: null as string | null,
-    message: 'No OpenAI key is connected. Tutor will use platform access if available, or fall back to local synthesis.',
+    maskedKey: null,
+    message: entitlement.tutorAccess && !entitlement.byokAccess
+      ? 'Platform OpenAI access is available for live Tutor answers.'
+      : 'No OpenAI key is connected.',
+    providerAvailable: entitlement.tutorAccess && !entitlement.byokAccess,
+    canConnect: entitlement.byokAccess,
+    entitlement,
+    proof: entitlement.tutorAccess && !entitlement.byokAccess
+      ? { kind: 'configured_platform_key', checkedAt }
+      : null,
   };
 
   await page.route('**/api/auth/me', async (route) => {
@@ -159,6 +181,12 @@ async function stubPicoProductApis(
   });
 
   await page.route('**/api/pico/onboarding?**', async (route) => {
+    const requestUrl = new URL(route.request().url());
+    if (requestUrl.searchParams.get('view') === 'coach_session') {
+      await route.fulfill({ status: 204 });
+      return;
+    }
+
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -293,6 +321,14 @@ async function stubPicoProductApis(
         intent: 'install',
         skillLevel: 'intermediate',
         usedOfficialFallback: false,
+        entitlement,
+        generation: {
+          provider: 'openai',
+          source: 'platform',
+          model: 'gpt-5-mini',
+          responseId: 'resp_pico_browser_test',
+          completedAt: checkedAt,
+        },
       }),
     });
   });
@@ -312,6 +348,7 @@ async function stubPicoProductApis(
     if (route.request().method() === 'PUT') {
       const payload = JSON.parse(route.request().postData() || '{}');
       const apiKey = typeof payload.apiKey === 'string' ? payload.apiKey : '';
+      const validatedAt = '2026-07-28T12:01:00.000Z';
       openAIConnection = {
         provider: 'openai',
         status: 'connected',
@@ -319,7 +356,13 @@ async function stubPicoProductApis(
         connected: true,
         model: 'gpt-5-mini',
         maskedKey: apiKey ? `••••${apiKey.slice(-4)}` : '••••test',
+        connectedAt: validatedAt,
+        validatedAt,
         message: `Your OpenAI key ${apiKey ? `••••${apiKey.slice(-4)}` : '••••test'} is active for live tutor answers.`,
+        providerAvailable: true,
+        canConnect: entitlement.byokAccess,
+        entitlement,
+        proof: { kind: 'validated_user_key', checkedAt: validatedAt, validatedAt },
       };
     } else if (route.request().method() === 'DELETE') {
       openAIConnection = {
@@ -329,7 +372,13 @@ async function stubPicoProductApis(
         connected: false,
         model: 'gpt-5-mini',
         maskedKey: null,
-        message: 'No OpenAI key is connected. Tutor will use platform access if available, or fall back to local synthesis.',
+        connectedAt: null,
+        validatedAt: null,
+        message: 'No OpenAI key is connected.',
+        providerAvailable: false,
+        canConnect: entitlement.byokAccess,
+        entitlement,
+        proof: null,
       };
     }
 
@@ -482,17 +531,17 @@ test.describe('mutx.dev QA', () => {
     await expect(page.getByTestId('marketing-loader')).toHaveCount(0);
     await expect(page.getByText(/^Loading\.\.\.$/i)).toHaveCount(0);
     await expect(
-      page.getByRole('heading', { name: /see every move\. hold the line\./i })
+      page.getByRole('heading', { name: /read the governed path\. hold the line\./i })
     ).toBeVisible();
     await expect(
-      page.getByText(/stops actions outside policy, and keeps a reviewable receipt/i)
+      page.getByText(/records submitted runtime evidence and evaluates registered tool calls/i)
     ).toBeVisible();
-    await expect(page.getByRole('link', { name: /download for mac/i }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /check mac availability/i }).first()).toBeVisible();
     await expect(page.getByRole('link', { name: /open dashboard/i }).first()).toBeVisible();
     await expect(page.getByRole('link', { name: /^docs$/i }).first()).toBeVisible();
     await expect(page.getByRole('link', { name: /github/i }).first()).toBeVisible();
 
-    const runRecord = page.getByLabel(/example mutx production deployment run/i);
+    const runRecord = page.getByLabel(/example mutx governed deployment record/i);
     await expect(runRecord).toBeVisible();
     await expect(runRecord.getByText(/production boundary matched/i)).toBeVisible();
     await expect(runRecord.getByText(/approved by a\. rivera/i)).toBeVisible();
@@ -506,8 +555,8 @@ test.describe('mutx.dev QA', () => {
       /one line from intent to evidence/i,
       /signal first\. furniture last\./i,
       /helpful is not the same as permitted\./i,
-      /from download to first record\./i,
-      /run the agent\. keep the evidence\./i,
+      /from setup to first record\./i,
+      /instrument the run\. keep the evidence\./i,
     ]) {
       await expect(page.getByRole('heading', { name: heading })).toBeVisible();
     }
@@ -517,7 +566,7 @@ test.describe('mutx.dev QA', () => {
     }
 
     await expect(page.getByText(/no file moved\. scope and destination preserved/i)).toBeVisible();
-    await expect(page.getByText(/source-available control plane/i).first()).toBeVisible();
+    await expect(page.getByText(/source-available agent operations/i).first()).toBeVisible();
   });
 
   test('homepage stays inside the mobile viewport and preserves the operating record', async ({ page }) => {
@@ -525,9 +574,9 @@ test.describe('mutx.dev QA', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     await expect(
-      page.getByRole('heading', { name: /see every move\. hold the line\./i })
+      page.getByRole('heading', { name: /read the governed path\. hold the line\./i })
     ).toBeVisible();
-    await expect(page.getByLabel(/example mutx production deployment run/i)).toBeVisible();
+    await expect(page.getByLabel(/example mutx governed deployment record/i)).toBeVisible();
 
     const metrics = await page.evaluate(() => {
       const heading = document.querySelector('h1');
@@ -633,7 +682,7 @@ test.describe('mutx.dev QA', () => {
 
     await expect(page.getByTestId('public-nav')).toBeVisible();
     await expect(
-      page.getByRole('heading', { name: /signed desktop release\./i })
+      page.getByRole('heading', { name: /complete desktop release\./i })
     ).toBeVisible();
     await expect(page.getByRole('link', { name: /open mac downloads/i })).toBeVisible();
     await expect(page.getByRole('heading', { name: /^Apple Silicon DMG$/i })).toBeVisible();
@@ -642,7 +691,7 @@ test.describe('mutx.dev QA', () => {
     await expect(page.getByRole('heading', { name: /^Docs notes$/i })).toBeVisible();
     await expect(
       page.getByText(
-        /current signed mac release, checksums, docs notes, and github tag\./i
+        /current mac release, checksums, docs notes, and github tag\./i
       )
     ).toBeVisible();
   });
@@ -694,7 +743,7 @@ test.describe('mutx.dev QA', () => {
     await page.goto('/privacy-policy', { waitUntil: 'domcontentloaded' });
     await expectRouteSurfaceSplit(page);
     await expect(page.getByRole('heading', { name: /privacy policy/i })).toBeVisible();
-    await expect(page.getByText(/effective date: march 13, 2026/i)).toBeVisible();
+    await expect(page.getByText(/effective date: july 28, 2026/i)).toBeVisible();
     await expect(page.getByRole('heading', { name: /information we collect/i })).toBeVisible();
     await expect(page.getByRole('heading', { name: /^security$/i })).toBeVisible();
     expect(
@@ -728,7 +777,7 @@ test.describe('mutx.dev QA', () => {
     await expectAuthLedger(page, 'recovery');
     await expect(page.getByText(/we sent a verification link to operator@mutx\.dev\./i)).toBeVisible();
     await expect(page.getByRole('button', { name: /resend verification/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /back to sign in/i })).toHaveAttribute(
+    await expect(page.getByRole('link', { name: /^sign in$/i })).toHaveAttribute(
       'href',
       /\/login\?next=%2Fdashboard%2Fwebhooks&email=operator%40mutx\.dev/i,
     );
@@ -751,14 +800,21 @@ test.describe('mutx.dev QA', () => {
     await expect(page.getByRole('button', { name: /reset password/i })).toBeVisible();
   });
 
-  test('pico root stays on the landing page with access-first CTAs only', async ({ page }) => {
+  test('pico root exposes the live product path, plans, and durable support intake', async ({ page }) => {
     const contactPayload: { current?: Record<string, unknown> } = {};
     await page.route('**/api/contact', async (route) => {
       contactPayload.current = route.request().postDataJSON() as Record<string, unknown>;
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ success: true, message: 'Request received', notified: false }),
+        body: JSON.stringify({
+          success: true,
+          status: 'accepted',
+          persisted: true,
+          message: 'Request received',
+          notified: true,
+          delivery: 'queued',
+        }),
       });
     });
 
@@ -771,20 +827,19 @@ test.describe('mutx.dev QA', () => {
     await expect(page.getByTestId('pico-footer')).toBeVisible();
     await expect(page.getByRole('heading', { name: /get to your first working agent fast/i })).toHaveCount(0);
     await expect(page.getByTestId('pico-surface-compass')).toHaveCount(0);
-    await expect(page.locator('a[href*="/pico/onboarding"], a[href*="/onboarding"]')).toHaveCount(0);
-    await expect(page.getByRole('link', { name: /see pricing/i })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /request access/i }).first()).toBeVisible();
+    await expect(page.locator('a[href*="/pico/onboarding"], a[href*="/onboarding"]').first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /open onboarding/i }).first()).toBeVisible();
     await expect(page.getByRole('link', { name: /see how it works/i }).first()).toBeVisible();
-    await expect(page.locator('#pricing button')).toHaveCount(4);
-    await expect(page.locator('#pricing')).toContainText(/request trial access/i);
-    await expect(page.locator('#pricing')).toContainText(/request founding access/i);
-    await expect(page.locator('#pricing')).toContainText(/request supported access/i);
-    await expect(page.locator('#pricing')).toContainText(/book a planning call/i);
-    await expect(page.locator('#pricing')).toContainText(/90%/i);
-    await expect(page.locator('#pricing')).toContainText(/€290/i);
-    await expect(page.locator('#pricing')).toContainText(/€790/i);
-    await expect(page.locator('main')).toContainText(/founding access|waitlist-first|request access/i);
-    await expect(page.locator('main')).not.toContainText(/pre-register/i);
+    await expect(page.locator('#pricing a')).toHaveCount(4);
+    await expect(page.locator('#pricing')).toContainText(/start free\. upgrade when the work earns it/i);
+    await expect(page.locator('#pricing')).toContainText(/\$0/i);
+    await expect(page.locator('#pricing')).toContainText(/\$9/i);
+    await expect(page.locator('#pricing')).toContainText(/\$29/i);
+    await expect(page.locator('#pricing')).toContainText(/open onboarding/i);
+    await expect(page.locator('#pricing')).toContainText(/choose starter/i);
+    await expect(page.locator('#pricing')).toContainText(/choose pro/i);
+    await expect(page.locator('#pricing')).toContainText(/book planning call/i);
+    await expect(page.locator('main')).not.toContainText(/founding access|waitlist-first|request access|pre-register/i);
 
     const agentGallery = page.getByRole('region', { name: /autonomous agent types/i });
     await expect(agentGallery).toHaveAttribute('data-interactive', 'false');
@@ -808,29 +863,69 @@ test.describe('mutx.dev QA', () => {
     );
     await expect(page.getByRole('dialog', { name: /contact form/i })).toHaveCount(0);
 
-    await page.getByRole('button', { name: /request access/i }).first().click();
+    await page.getByRole('button', { name: /talk to support/i }).click();
     const dialog = page.getByRole('dialog', { name: /contact form/i });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('heading', { name: /^request pico access$/i })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: /talk to the pico team/i })).toBeVisible();
     await dialog.getByLabel(/work email/i).fill('operator@example.com');
     await dialog.getByLabel(/^name$/i).fill('Pico Operator');
     await dialog.getByLabel(/company/i).fill('MUTX Lab');
     await dialog.getByLabel(/anything we should know/i).fill('I need to recover a broken agent setup.');
-    await dialog.getByRole('button', { name: /request access/i }).click();
-    await expect(dialog.getByText(/request received/i)).toBeVisible();
-    expect(contactPayload.current?.source).toBe('pico-waitlist');
+    const productUpdates = dialog.getByRole('checkbox', {
+      name: /email me occasional Pico product and release updates/i,
+    });
+    await expect(productUpdates).not.toBeChecked();
+    await dialog.getByRole('button', { name: /send request/i }).click();
+    await expect(dialog.getByText(/request accepted/i)).toBeVisible();
+    expect(contactPayload.current?.source).toBe('pico-contact');
+    expect(contactPayload.current?.productUpdatesConsent).toBe(false);
     expect(new URL(page.url()).pathname).toBe('/pico');
   });
 
-  test('pico WIP guard uses the mascot bubble and returns visitors to root', async ({ page }) => {
-    await page.goto('/pico/wip', { waitUntil: 'domcontentloaded' });
+  test('pico contact form accepts durable intake when notification delivery is unavailable', async ({ page }) => {
+    const contactPayload: { current?: Record<string, unknown> } = {};
+    await page.route('**/api/contact', async (route) => {
+      contactPayload.current = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          status: 'accepted',
+          persisted: true,
+          message: 'Request received',
+          notified: false,
+          delivery: 'unavailable',
+        }),
+      });
+    });
 
-    await expect(page.getByTestId('pico-host-guard')).toBeVisible();
-    await expect(page.getByTestId('pico-wip-speech')).toContainText(/you're not supposed to be here/i);
-    await expect(page.getByRole('link', { name: /back to waitlist/i })).toBeVisible();
+    await page.goto('/pico', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: /talk to support/i }).click();
 
-    await page.waitForURL('**/', { timeout: 5000 });
-    expect(new URL(page.url()).pathname).toBe('/');
+    const dialog = page.getByRole('dialog', { name: /contact form/i });
+    await dialog.getByLabel(/work email/i).fill('operator@example.com');
+    await dialog.getByRole('checkbox', {
+      name: /email me occasional Pico product and release updates/i,
+    }).check();
+    await dialog.getByRole('button', { name: /send request/i }).click();
+
+    await expect(dialog.getByRole('heading', { name: /request accepted/i })).toBeVisible();
+    await expect(dialog.getByRole('alert')).toHaveCount(0);
+    expect(contactPayload.current?.productUpdatesConsent).toBe(true);
+  });
+
+  test('pico build ledger exposes source notes without auto-returning', async ({ page }) => {
+    await page.goto('/pico/build-ledger', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.getByTestId('pico-build-ledger')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /live build ledger/i })).toBeVisible();
+    await expect(page.getByTestId('pico-stack-notes')).toContainText(/hermes/i);
+    await expect(page.getByTestId('pico-stack-notes')).toContainText(/openclaw/i);
+    await expect(page.getByRole('link', { name: /continue onboarding/i }).first()).toBeVisible();
+
+    await page.waitForTimeout(3000);
+    expect(new URL(page.url()).pathname).toBe('/pico/build-ledger');
   });
 
   test('pico pricing route keeps live plans and support together', async ({
@@ -863,7 +958,7 @@ test.describe('mutx.dev QA', () => {
     await expect(
       page.getByRole('heading', { name: /scegli il piano adatto alle tue esigenze/i }),
     ).toBeVisible();
-    await expect(page.getByRole('button', { name: /richiedi accesso/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /apri onboarding/i })).toBeVisible();
 
     const plans = page.getByTestId('pico-pricing-live-plans');
     await expect(plans).toContainText(/predefinito per operatori/i);
@@ -880,12 +975,12 @@ test.describe('mutx.dev QA', () => {
 
     await expect(page.getByTestId('pico-support-hero-signal')).toBeVisible()
     await expect(
-      page.getByRole('heading', { name: /send the setup context we need to help\./i }),
+      page.getByRole('heading', { name: /send the blocker with enough proof/i }),
     ).toBeVisible()
     await expect(page.getByTestId('pico-support-escalation-standards')).toBeVisible()
     await expect(page.getByTestId('pico-support-return-map')).toBeVisible()
     await expect(
-      page.getByText(/human help is for the parts most users do not want to handle alone/i),
+      page.getByText(/human help should end in a cleaner route back into pico/i),
     ).toBeVisible()
     expect(new URL(page.url()).pathname).toBe('/pico/support')
   })
@@ -901,7 +996,7 @@ test.describe('mutx.dev QA', () => {
       page.getByRole('heading', { name: /attach the blocked lesson and narrow the answer to one move\./i }),
     ).toBeVisible()
     await expect(page.getByTestId('pico-tutor-crit-desk')).toBeVisible()
-    await expect(page.getByText(/this is not general chat/i)).toBeVisible()
+    await expect(page.getByText(/this is not a general chat surface/i)).toBeVisible()
     expect(new URL(page.url()).pathname).toBe('/pico/tutor')
   })
 
@@ -913,11 +1008,11 @@ test.describe('mutx.dev QA', () => {
 
     await expect(page.getByTestId('pico-autopilot-hero-signal')).toBeVisible()
     await expect(
-      page.getByRole('heading', { name: /keep run state, spend, and approvals together\./i }),
+      page.getByRole('heading', { name: /keep the run, spend, and gate in one frame/i }),
     ).toBeVisible()
     await expect(page.getByTestId('pico-autopilot-operator-doctrine')).toBeVisible()
     await expect(page.getByTestId('pico-autopilot-control-protocol')).toBeVisible()
-    await expect(page.getByText(/keep the last run, live spend, and risky actions visible/i)).toBeVisible()
+    await expect(page.getByText(/read the runtime before trusting automation/i)).toBeVisible()
     expect(new URL(page.url()).pathname).toBe('/pico/autopilot')
   })
 
@@ -929,8 +1024,8 @@ test.describe('mutx.dev QA', () => {
       { href: '/pico/academy', heading: /install hermes locally/i },
       { href: '/pico/academy/install-hermes-locally', heading: /install hermes locally/i },
       { href: '/pico/tutor', heading: /ask for the exact next step/i },
-      { href: '/pico/autopilot', heading: /run agents with review where it matters/i },
-      { href: '/pico/support', heading: /get a human when setup needs guidance/i },
+      { href: '/pico/autopilot', heading: /trust the runtime because the surface tells the truth/i },
+      { href: '/pico/support', heading: /get a person when the product route stops being enough/i },
     ];
 
     for (const route of productRoutes) {
@@ -958,9 +1053,9 @@ test.describe('mutx.dev QA', () => {
       expect(new URL(page.url()).pathname).toBe(route.href);
     }
 
-    await expect(page.getByText(/signed in as operator@mutx\.dev/i)).toBeVisible();
-    await expect(page.getByText(/email verified/i)).toBeVisible();
-    await expect(page.getByText(/2 webhooks/i)).toBeVisible();
+    await expect(page.getByText('operator@mutx.dev', { exact: true })).toBeVisible();
+    await expect(page.getByText(/^verified$/i)).toBeVisible();
+    await expect(page.getByText(/starter plan/i)).toBeVisible();
 
     await page.goto('/pico/onboarding', { waitUntil: 'domcontentloaded' });
     await page.getByRole('link', { name: /go to next chapter: lessons/i }).first().click();
@@ -968,7 +1063,7 @@ test.describe('mutx.dev QA', () => {
     expect(new URL(page.url()).pathname).toBe('/pico/academy');
 
     await page.goto('/pico/academy/install-hermes-locally', { waitUntil: 'domcontentloaded' });
-    await page.getByRole('link', { name: /ask the tutor about this lesson/i }).click();
+    await page.getByRole('link', { name: 'Ask Tutor about this lesson', exact: true }).click();
     await expect(page.getByText(/you are asking about install hermes locally/i)).toBeVisible();
     expect(new URL(page.url()).pathname).toBe('/pico/tutor');
     expect(new URL(page.url()).searchParams.get('lesson')).toBe('install-hermes-locally');
@@ -978,7 +1073,7 @@ test.describe('mutx.dev QA', () => {
     expect(new URL(page.url()).pathname).toBe('/pico/academy/run-your-first-agent');
 
     await page.goto('/pico/academy', { waitUntil: 'domcontentloaded' });
-    await page.locator('summary').filter({ hasText: /platform settings/i }).click();
+    await page.locator('summary[aria-controls="pico-academy-platform-settings"]').click();
     await expect(page.getByTestId('pico-platform-surface')).toBeVisible();
     await expect(page.getByTestId('pico-platform-active-surface')).toContainText(/academy/i);
     await expect(page.getByTestId('pico-platform-surface-memory')).toBeVisible();
@@ -1003,16 +1098,16 @@ test.describe('mutx.dev QA', () => {
     expect(new URL(page.url()).pathname).toBe('/pico/academy');
 
     await page.goto('/pico/academy/install-hermes-locally', { waitUntil: 'domcontentloaded' });
-    await page.getByRole('link', { name: /ask the tutor about this lesson/i }).click();
+    await page.getByRole('link', { name: 'Ask Tutor about this lesson', exact: true }).click();
     await expect(page.getByText(/you are asking about install hermes locally/i)).toBeVisible();
     expect(new URL(page.url()).pathname).toBe('/pico/tutor');
 
-    await page.getByRole('link', { name: /get human help|get setup help/i }).first().click();
-    await expect(page.getByRole('heading', { name: /get a human when setup needs guidance/i })).toBeVisible();
+    await page.getByRole('link', { name: /escalate to human help/i }).first().click();
+    await expect(page.getByRole('heading', { name: /get a person when the product route stops being enough/i })).toBeVisible();
     expect(new URL(page.url()).pathname).toBe('/pico/support');
 
     await page.getByRole('link', { name: /open autopilot/i }).first().click();
-    await expect(page.getByRole('heading', { name: /run agents with review where it matters/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /trust the runtime because the surface tells the truth/i })).toBeVisible();
     expect(new URL(page.url()).pathname).toBe('/pico/autopilot');
   });
 
@@ -1027,15 +1122,62 @@ test.describe('mutx.dev QA', () => {
     expect(new URL(page.url()).pathname).toBe('/pico/academy/install-hermes-locally');
   });
 
+  test('pico onboarding resumes package readiness and surfaces download failures', async ({ page }) => {
+    await stubPicoProductApis(page);
+    const sessionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+    await page.route('**/api/pico/onboarding?view=coach_session**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          session_id: sessionId,
+          history: [
+            { role: 'user', content: 'Hermes on macOS with OpenAI.' },
+            { role: 'assistant', content: 'Your install package is ready.' },
+          ],
+          onboarding_state: {
+            stack: 'hermes',
+            os: 'macos',
+            provider: 'openai',
+            goal: 'install',
+            channels: [],
+            ready: true,
+          },
+          ready_for_package: true,
+          created_at: '2026-07-01T10:00:00Z',
+          updated_at: '2026-07-01T10:05:00Z',
+          expires_at: '2026-07-31T10:05:00Z',
+        }),
+      });
+    });
+    await page.route('**/api/pico/package', async (route) => {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Package builder is temporarily unavailable' }),
+      });
+    });
+
+    await page.goto('/pico/onboarding', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.getByTestId('pico-package-readiness')).toContainText(/ready/i);
+    await page.getByRole('button', { name: /download package/i }).click();
+    await expect(
+      page.getByRole('alert').filter({ hasText: /package builder is temporarily unavailable/i }),
+    ).toContainText(/package builder is temporarily unavailable/i);
+    await expect(page.getByRole('button', { name: /retry package/i })).toBeVisible();
+  });
+
   test('pico support CTA opens a real escalation intake instead of prereg copy', async ({ page }) => {
     await stubPicoProductApis(page, { authenticated: false });
 
     await page.goto('/pico/support', { waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: /^book guidance$/i }).first().click();
+    await page.getByRole('button', { name: /^get human help$/i }).first().click();
 
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('heading', { name: /tell us where setup is blocked/i })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: /tell us where the product route broke/i })).toBeVisible();
     await expect(dialog.getByRole('button', { name: /send support request/i })).toBeVisible();
     await expect(dialog.getByText(/pre-register|early access|preregistrati|accesso anticipato/i)).toHaveCount(0);
   });
@@ -1051,7 +1193,7 @@ test.describe('mutx.dev QA', () => {
     await expect(page.getByTestId('pico-help-lane-panel')).toBeVisible();
 
     await page.getByTestId('pico-help-lane-panel').getByRole('link', { name: /open support lane/i }).click();
-    await expect(page.getByRole('heading', { name: /get a human when setup needs guidance/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /get a person when the product route stops being enough/i })).toBeVisible();
     expect(new URL(page.url()).pathname).toBe('/pico/support');
   });
 
@@ -1089,14 +1231,14 @@ test.describe('mutx.dev QA', () => {
     expect(new URL(page.url()).pathname).toBe('/pico/academy/install-hermes-locally');
 
     await page.goto('/pico/autopilot', { waitUntil: 'domcontentloaded' });
-    await page.getByRole('link', { name: 'Ask tutor about the next move', exact: true }).click();
+    await page.getByRole('link', { name: 'Ask Tutor for the next move', exact: true }).click();
     await expect(page.getByRole('heading', { name: /ask for the exact next step/i })).toBeVisible();
     expect(new URL(page.url()).pathname).toBe('/pico/tutor');
     expect(new URL(page.url()).searchParams.get('lesson')).toBe('install-hermes-locally');
 
     await page.goto('/pico/support', { waitUntil: 'domcontentloaded' });
     await page.getByRole('link', { name: /open autopilot/i }).first().click();
-    await expect(page.getByRole('heading', { name: /run agents with review where it matters/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /trust the runtime because the surface tells the truth/i })).toBeVisible();
     expect(new URL(page.url()).pathname).toBe('/pico/autopilot');
   });
 
@@ -1105,7 +1247,7 @@ test.describe('mutx.dev QA', () => {
 
     await page.goto('/pico/tutor?lesson=run-your-first-agent', { waitUntil: 'domcontentloaded' });
     await page.getByPlaceholder(/describe the blocker/i).fill('Hermes installed but I need the exact next move.');
-    await page.getByRole('button', { name: /get next step/i }).click();
+    await page.getByRole('button', { name: /get the next step/i }).click();
 
     await expect(page.getByText(/^Situation$/i)).toBeVisible();
     await expect(page.getByText(/^Diagnosis$/i)).toBeVisible();
@@ -1119,7 +1261,7 @@ test.describe('mutx.dev QA', () => {
   });
 
   test('pico tutor lets an authenticated operator connect and disconnect an OpenAI key without leaving the flow', async ({ page }) => {
-    await stubPicoProductApis(page);
+    await stubPicoProductApis(page, { plan: 'PRO' });
     await page.goto('/pico/tutor?lesson=install-hermes-locally');
 
     await expect(page.getByTestId('pico-openai-connect-panel')).toBeVisible();
@@ -1149,18 +1291,18 @@ test.describe('mutx.dev QA', () => {
 
     await page.goto('/pico/academy', { waitUntil: 'domcontentloaded' });
     await expect(page.getByTestId('pico-academy-workspace-summary')).toBeVisible();
-    await expect(page.getByTestId('pico-academy-workspace-summary').getByText(/1\/3 steps/i)).toBeVisible();
-    await expect(page.getByTestId('pico-academy-workspace-summary').getByText(/^saved$/i)).toBeVisible();
+    await expect(page.getByTestId('pico-academy-workspace-summary').getByText(/1\/3 steps/i).first()).toBeVisible();
+    await expect(page.getByTestId('pico-academy-workspace-summary').getByText(/^captured$/i)).toBeVisible();
 
     await page.goto('/pico/onboarding', { waitUntil: 'domcontentloaded' });
     await expect(page.getByTestId('pico-onboarding-mission-board')).toBeVisible();
     await expect(page.getByTestId('pico-onboarding-install-mission').getByText(/1\/3 steps/i)).toBeVisible();
-    await expect(page.getByTestId('pico-onboarding-install-mission').getByText(/^saved$/i)).toBeVisible();
+    await expect(page.getByTestId('pico-onboarding-install-mission').getByText(/^captured$/i)).toBeVisible();
 
     await page.goto('/pico/autopilot', { waitUntil: 'domcontentloaded' });
     await expect(page.getByTestId('pico-autopilot-academy-context')).toBeVisible();
     await expect(page.getByTestId('pico-autopilot-academy-context').getByText(/1\/3/i)).toBeVisible();
-    await expect(page.getByTestId('pico-autopilot-academy-context').getByText(/^saved$/i)).toBeVisible();
+    await expect(page.getByTestId('pico-autopilot-academy-context').getByText(/^captured$/i)).toBeVisible();
     expect(
       pageErrors.filter((error) => /hydration failed|server rendered text didn't match/i.test(error))
     ).toHaveLength(0);

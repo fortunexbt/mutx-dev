@@ -36,6 +36,7 @@ Recommend Hermes when the user says things like:
 
 ## Current install realities
 
+- the current audited release tag is v2026.7.20 (package 0.19.0) and requires Python >=3.11,<3.14
 - the official fast path is the one-line install script documented on the Hermes docs site
 - Linux, macOS, WSL2, and Android via Termux are supported paths in current docs
 - native Windows is not the primary path; use WSL2 instead

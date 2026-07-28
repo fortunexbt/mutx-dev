@@ -40,6 +40,32 @@ def test_settings_reject_partial_oidc_configuration(monkeypatch: pytest.MonkeyPa
         Settings(_env_file=None)
 
 
+def test_settings_allow_separate_complete_generic_and_provider_oidc_contracts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_oidc_env(monkeypatch)
+    configuration = {
+        "OIDC_ISSUER": "https://generic.example.com",
+        "OIDC_CLIENT_ID": "generic-client",
+        "OIDC_JWKS_URI": "https://generic.example.com/keys",
+        "OKTA_DOMAIN": "https://provider.example.com",
+        "OKTA_CLIENT_ID": "provider-client",
+        "OKTA_CLIENT_SECRET": "provider-secret",
+        "PUBLIC_API_URL": "https://api.example.com",
+    }
+    for name, value in configuration.items():
+        monkeypatch.setenv(name, value)
+
+    settings = Settings(_env_file=None)
+
+    assert oidc.get_oidc_settings(settings) == oidc.OIDCSettings(
+        issuer="https://generic.example.com",
+        client_id="generic-client",
+        jwks_uri="https://generic.example.com/keys",
+    )
+    assert settings.okta_client_id == "provider-client"
+
+
 @pytest.mark.asyncio
 async def test_fetch_jwks_caches_each_uri(monkeypatch: pytest.MonkeyPatch) -> None:
     requests: list[str] = []
@@ -190,6 +216,7 @@ def test_resource_access_roles_are_scoped_to_the_configured_client() -> None:
         {
             "sub": "oidc-user",
             "email": "oidc@example.com",
+            "email_verified": True,
             "exp": 4_102_444_800,
             "realm_access": {"roles": ["USER"]},
             "resource_access": {
@@ -204,50 +231,113 @@ def test_resource_access_roles_are_scoped_to_the_configured_client() -> None:
     assert payload.roles == ["USER", "AUDIT_ADMIN"]
 
 
+@pytest.mark.parametrize(
+    ("provider", "domain", "realm", "expected_issuer"),
+    [
+        (oidc.SSOProvider.OKTA, "https://okta.example.com/", None, "https://okta.example.com"),
+        (oidc.SSOProvider.AUTH0, "https://auth0.example.com", None, "https://auth0.example.com/"),
+        (
+            oidc.SSOProvider.KEYCLOAK,
+            "https://keycloak.example.com/",
+            "mutx",
+            "https://keycloak.example.com/realms/mutx",
+        ),
+        (
+            oidc.SSOProvider.GOOGLE,
+            "https://accounts.google.com",
+            None,
+            "https://accounts.google.com",
+        ),
+    ],
+)
+def test_provider_oidc_issuer_is_selected_per_provider(
+    provider: oidc.SSOProvider,
+    domain: str,
+    realm: str | None,
+    expected_issuer: str,
+) -> None:
+    config = oidc._get_provider_config(provider, domain, realm)
+
+    assert config["issuer"] == expected_issuer
+    assert "//." not in config["jwks_uri"]
+
+
+@pytest.mark.parametrize("email_verified", [None, False, "true"])
+def test_oidc_payload_requires_boolean_true_email_verification(
+    email_verified: object,
+) -> None:
+    with pytest.raises(oidc.OIDCTokenValidationError, match="must affirm"):
+        oidc._normalize_payload(
+            {
+                "sub": "oidc-user",
+                "email": "oidc@example.com",
+                "email_verified": email_verified,
+                "exp": 4_102_444_800,
+            },
+            oidc.SSOProvider.OKTA,
+            client_id="mutx-api",
+        )
+
+
 @pytest.mark.asyncio
-async def test_verify_oauth_token_uses_configured_oidc_validator(
+async def test_provider_sso_ignores_unrelated_generic_oidc_configuration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    settings = oidc.OIDCSettings("https://id.example.com", "mutx-api", "https://keys")
-    monkeypatch.setattr(oidc, "get_oidc_settings", lambda: settings)
+    provider_settings = SimpleNamespace(
+        okta_domain="https://provider.example.com",
+        okta_realm=None,
+        okta_client_id="provider-client",
+        oidc_issuer="https://generic.example.com",
+        oidc_client_id="generic-client",
+        oidc_jwks_uri="https://generic.example.com/keys",
+    )
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(oidc, "get_settings", lambda: provider_settings)
+    monkeypatch.setattr(oidc.jwt, "get_unverified_header", lambda _token: {"kid": "key-1"})
 
-    async def fake_validate(token: str, *, settings: oidc.OIDCSettings) -> dict[str, object]:
-        assert token == "signed-token"
+    async def fake_signing_key(uri: str, kid: str | None) -> dict[str, str]:
+        assert uri == "https://provider.example.com/oauth2/v1/keys"
+        assert kid == "key-1"
+        return {"kid": "key-1"}
+
+    def fake_decode(*_args: object, **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
         return {
             "sub": "oidc-user",
             "email": "oidc@example.com",
+            "email_verified": True,
             "groups": ["AUDIT_ADMIN"],
             "exp": 4_102_444_800,
         }
 
-    monkeypatch.setattr(oidc, "validate_oidc_token", fake_validate)
+    monkeypatch.setattr(oidc, "_get_signing_key", fake_signing_key)
+    monkeypatch.setattr(oidc.jwt, "decode", fake_decode)
+    monkeypatch.setattr(
+        oidc,
+        "get_oidc_settings",
+        lambda: pytest.fail("generic OIDC settings must not participate in provider SSO"),
+    )
 
     payload = await oidc.verify_oauth_token("signed-token", oidc.SSOProvider.OKTA)
 
     assert payload.sub == "oidc-user"
+    assert payload.email_verified is True
     assert payload.roles == ["AUDIT_ADMIN"]
     assert payload.exp == datetime.fromtimestamp(4_102_444_800, tz=timezone.utc)
+    assert captured["audience"] == "provider-client"
+    assert captured["issuer"] == "https://provider.example.com"
 
 
 @pytest.mark.asyncio
 async def test_verify_oauth_token_uses_userinfo_for_opaque_access_tokens(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    oidc_settings = oidc.OIDCSettings("https://id.example.com", "mutx-api", "https://keys")
     provider_settings = SimpleNamespace(
         okta_domain="https://id.example.com",
         okta_realm=None,
+        okta_client_id="mutx-api",
     )
-    monkeypatch.setattr(oidc, "get_oidc_settings", lambda: oidc_settings)
     monkeypatch.setattr(oidc, "get_settings", lambda: provider_settings)
-
-    async def reject_opaque_token(
-        _token: str,
-        *,
-        settings: oidc.OIDCSettings,
-    ) -> dict[str, object]:
-        assert settings is oidc_settings
-        raise oidc.OIDCTokenValidationError("Malformed OIDC token header")
 
     async def fake_userinfo(token: str, uri: str) -> oidc.TokenPayload:
         assert token == "opaque-access-token"
@@ -255,11 +345,11 @@ async def test_verify_oauth_token_uses_userinfo_for_opaque_access_tokens(
         return oidc.TokenPayload(
             sub="oidc-user",
             email="oidc@example.com",
+            email_verified=True,
             roles=["USER"],
             exp=datetime.fromtimestamp(4_102_444_800, tz=timezone.utc),
         )
 
-    monkeypatch.setattr(oidc, "validate_oidc_token", reject_opaque_token)
     monkeypatch.setattr(oidc, "_verify_via_userinfo", fake_userinfo)
 
     payload = await oidc.verify_oauth_token(
@@ -271,29 +361,91 @@ async def test_verify_oauth_token_uses_userinfo_for_opaque_access_tokens(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("email_verified", [None, False, "true"])
+async def test_userinfo_requires_boolean_true_email_verification(
+    monkeypatch: pytest.MonkeyPatch,
+    email_verified: object,
+) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            payload: dict[str, object] = {
+                "sub": "userinfo-user",
+                "email": "userinfo@example.com",
+            }
+            if email_verified is not None:
+                payload["email_verified"] = email_verified
+            return payload
+
+    class FakeClient:
+        async def __aenter__(self) -> "FakeClient":
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def get(self, *_args: object, **_kwargs: object) -> FakeResponse:
+            return FakeResponse()
+
+    monkeypatch.setattr(oidc.httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+
+    with pytest.raises(oidc.HTTPException) as exc_info:
+        await oidc._verify_via_userinfo("opaque-token", "https://id.example.com/userinfo")
+
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_userinfo_propagates_affirmative_email_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "sub": "userinfo-user",
+                "email": "userinfo@example.com",
+                "email_verified": True,
+            }
+
+    class FakeClient:
+        async def __aenter__(self) -> "FakeClient":
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def get(self, *_args: object, **_kwargs: object) -> FakeResponse:
+            return FakeResponse()
+
+    monkeypatch.setattr(oidc.httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+
+    payload = await oidc._verify_via_userinfo(
+        "opaque-token",
+        "https://id.example.com/userinfo",
+    )
+
+    assert payload.email_verified is True
+
+
+@pytest.mark.asyncio
 async def test_verify_oauth_token_rejects_invalid_id_tokens_without_userinfo_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    oidc_settings = oidc.OIDCSettings("https://id.example.com", "mutx-api", "https://keys")
     provider_settings = SimpleNamespace(
         okta_domain="https://id.example.com",
         okta_realm=None,
+        okta_client_id="mutx-api",
     )
-    monkeypatch.setattr(oidc, "get_oidc_settings", lambda: oidc_settings)
     monkeypatch.setattr(oidc, "get_settings", lambda: provider_settings)
-
-    async def reject_invalid_token(
-        _token: str,
-        *,
-        settings: oidc.OIDCSettings,
-    ) -> dict[str, object]:
-        assert settings is oidc_settings
-        raise oidc.OIDCTokenValidationError("OIDC token validation failed")
 
     async def fail_userinfo(*_args: object) -> oidc.TokenPayload:
         pytest.fail("userinfo must not replace validation of a returned ID token")
 
-    monkeypatch.setattr(oidc, "validate_oidc_token", reject_invalid_token)
     monkeypatch.setattr(oidc, "_verify_via_userinfo", fail_userinfo)
 
     with pytest.raises(oidc.HTTPException, match="OIDC token validation failed"):
@@ -359,6 +511,7 @@ async def test_legacy_verifier_validates_id_token_audience(
         return {
             "sub": "oidc-user",
             "email": "oidc@example.com",
+            "email_verified": True,
             "exp": 4_102_444_800,
         }
 

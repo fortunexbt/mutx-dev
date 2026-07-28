@@ -6,6 +6,8 @@ from typing import Any, Optional
 
 import httpx
 
+from mutx._http import api_path
+
 
 class AssistantTemplate:
     """Represents an assistant template."""
@@ -56,14 +58,14 @@ class Templates:
     def list(self) -> list[AssistantTemplate]:
         """List all available assistant templates."""
         self._require_sync_client()
-        response = self._client.get("/templates")
+        response = self._client.get("templates")
         response.raise_for_status()
         return [AssistantTemplate(d) for d in response.json()]
 
     async def alist(self) -> list[AssistantTemplate]:
         """List all available assistant templates (async)."""
         self._require_async_client()
-        response = await self._client.get("/templates")
+        response = await self._client.get("templates")
         response.raise_for_status()
         return [AssistantTemplate(d) for d in response.json()]
 
@@ -111,7 +113,9 @@ class Templates:
         if runtime_metadata:
             payload["runtime_metadata"] = runtime_metadata
 
-        response = self._client.post(f"/templates/{template_id}/deploy", json=payload)
+        response = self._client.post(
+            api_path("templates/{template_id}/deploy", template_id=template_id), json=payload
+        )
         response.raise_for_status()
         return TemplateDeployResponse(response.json())
 
@@ -146,6 +150,8 @@ class Templates:
         if runtime_metadata:
             payload["runtime_metadata"] = runtime_metadata
 
-        response = await self._client.post(f"/templates/{template_id}/deploy", json=payload)
+        response = await self._client.post(
+            api_path("templates/{template_id}/deploy", template_id=template_id), json=payload
+        )
         response.raise_for_status()
         return TemplateDeployResponse(response.json())

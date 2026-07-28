@@ -24,9 +24,10 @@ def _guess_content_type(path: Path) -> str | None:
 
 class ReasoningService(APIService):
     def list_templates(self) -> list[ReasoningTemplateRecord]:
-        response = self._request("get", "/v1/reasoning/templates")
+        response = self._request("get", "/v1/reasoning/templates", require_auth=False)
         self._expect_status(response, {200})
-        return [ReasoningTemplateRecord.from_payload(item) for item in response.json()]
+        payload = self._decode_json(response, expected_type=list)
+        return [ReasoningTemplateRecord.from_payload(item) for item in payload]
 
     def create_job(
         self,
@@ -45,7 +46,7 @@ class ReasoningService(APIService):
             },
         )
         self._expect_status(response, {201}, invalid_message="Unable to create reasoning job")
-        return ReasoningJobRecord.from_payload(response.json())
+        return ReasoningJobRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def list_jobs(
         self,
@@ -62,12 +63,14 @@ class ReasoningService(APIService):
             params["template_id"] = template_id
         response = self._request("get", "/v1/reasoning/jobs", params=params)
         self._expect_status(response, {200})
-        return ReasoningJobHistoryRecord.from_payload(response.json())
+        return ReasoningJobHistoryRecord.from_payload(
+            self._decode_json(response, expected_type=dict)
+        )
 
     def get_job(self, job_id: str) -> ReasoningJobRecord:
         response = self._request("get", f"/v1/reasoning/jobs/{job_id}")
         self._expect_status(response, {200}, not_found_message="Reasoning job not found")
-        return ReasoningJobRecord.from_payload(response.json())
+        return ReasoningJobRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def register_artifact_reference(
         self,
@@ -96,7 +99,7 @@ class ReasoningService(APIService):
         self._expect_status(
             response, {201}, invalid_message="Unable to register reasoning artifact"
         )
-        return ReasoningArtifactRecord.from_payload(response.json())
+        return ReasoningArtifactRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def upload_artifact(
         self,
@@ -127,7 +130,7 @@ class ReasoningService(APIService):
                 data=data,
             )
         self._expect_status(response, {201}, invalid_message="Unable to upload reasoning artifact")
-        return ReasoningArtifactRecord.from_payload(response.json())
+        return ReasoningArtifactRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def dispatch_job(self, *, job_id: str, mode: str) -> ReasoningJobRecord:
         response = self._request(
@@ -136,7 +139,7 @@ class ReasoningService(APIService):
             json={"mode": mode},
         )
         self._expect_status(response, {200}, invalid_message="Unable to dispatch reasoning job")
-        return ReasoningJobRecord.from_payload(response.json())
+        return ReasoningJobRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def launch_local(
         self, *, job_id: str, output_dir: str | None = None
@@ -149,7 +152,9 @@ class ReasoningService(APIService):
         self._expect_status(
             response, {200}, invalid_message="Unable to launch reasoning job locally"
         )
-        return ReasoningLocalLaunchRecord.from_payload(response.json())
+        return ReasoningLocalLaunchRecord.from_payload(
+            self._decode_json(response, expected_type=dict)
+        )
 
     def submit_event(
         self,
@@ -174,7 +179,7 @@ class ReasoningService(APIService):
         }
         response = self._request("post", f"/v1/reasoning/jobs/{job_id}/events", json=body)
         self._expect_status(response, {200}, invalid_message="Unable to submit reasoning job event")
-        return ReasoningJobRecord.from_payload(response.json())
+        return ReasoningJobRecord.from_payload(self._decode_json(response, expected_type=dict))
 
     def download_artifact(
         self,

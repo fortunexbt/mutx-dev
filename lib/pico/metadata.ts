@@ -31,7 +31,7 @@ export async function buildPicoPageMetadata(
     title,
     description,
     robots:
-      pathname === '/wip'
+      pathname === '/build-ledger' || pathname === '/wip'
         ? {
             index: false,
             follow: false,

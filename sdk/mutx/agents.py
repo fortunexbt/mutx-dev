@@ -7,6 +7,9 @@ from uuid import UUID
 
 import httpx
 
+from mutx._http import api_path
+from mutx.pagination import Page, parse_page
+
 
 class Agent:
     def __init__(self, data: dict[str, Any]):
@@ -167,7 +170,7 @@ class Agents:
     ) -> Agent:
         self._require_sync_client()
         response = self._client.post(
-            "/v1/agents",
+            "agents",
             json={
                 "name": name,
                 "description": description,
@@ -187,7 +190,7 @@ class Agents:
     ) -> Agent:
         self._require_async_client()
         response = await self._client.post(
-            "/v1/agents",
+            "agents",
             json={
                 "name": name,
                 "description": description,
@@ -202,71 +205,83 @@ class Agents:
         self,
         skip: int = 0,
         limit: int = 50,
-    ) -> list[Agent]:
+    ) -> Page[Agent]:
         self._require_sync_client()
         response = self._client.get(
-            "/v1/agents",
+            "agents",
             params={"skip": skip, "limit": limit},
         )
         response.raise_for_status()
-        return [Agent(data) for data in response.json()]
+        return parse_page(
+            response.json(),
+            Agent,
+            requested_skip=skip,
+            requested_limit=limit,
+            require_has_more=True,
+        )
 
     async def alist(
         self,
         skip: int = 0,
         limit: int = 50,
-    ) -> list[Agent]:
+    ) -> Page[Agent]:
         self._require_async_client()
         response = await self._client.get(
-            "/v1/agents",
+            "agents",
             params={"skip": skip, "limit": limit},
         )
         response.raise_for_status()
-        return [Agent(data) for data in response.json()]
+        return parse_page(
+            response.json(),
+            Agent,
+            requested_skip=skip,
+            requested_limit=limit,
+            require_has_more=True,
+        )
 
     def get(self, agent_id: UUID | str) -> AgentDetail:
         self._require_sync_client()
-        response = self._client.get(f"/v1/agents/{agent_id}")
+        response = self._client.get(api_path("agents/{agent_id}", agent_id=agent_id))
         response.raise_for_status()
         return AgentDetail(response.json())
 
     async def aget(self, agent_id: UUID | str) -> AgentDetail:
         self._require_async_client()
-        response = await self._client.get(f"/v1/agents/{agent_id}")
+        response = await self._client.get(api_path("agents/{agent_id}", agent_id=agent_id))
         response.raise_for_status()
         return AgentDetail(response.json())
 
     def delete(self, agent_id: UUID | str) -> None:
         self._require_sync_client()
-        response = self._client.delete(f"/v1/agents/{agent_id}")
+        response = self._client.delete(api_path("agents/{agent_id}", agent_id=agent_id))
         response.raise_for_status()
 
     async def adelete(self, agent_id: UUID | str) -> None:
         self._require_async_client()
-        response = await self._client.delete(f"/v1/agents/{agent_id}")
+        response = await self._client.delete(api_path("agents/{agent_id}", agent_id=agent_id))
         response.raise_for_status()
 
     def deploy(self, agent_id: UUID | str) -> dict[str, Any]:
         self._require_sync_client()
-        response = self._client.post(f"/v1/agents/{agent_id}/deploy")
+        response = self._client.post(api_path("agents/{agent_id}/deploy", agent_id=agent_id))
         response.raise_for_status()
         return response.json()
 
     async def adeploy(self, agent_id: UUID | str) -> dict[str, Any]:
         self._require_async_client()
-        response = await self._client.post(f"/v1/agents/{agent_id}/deploy")
+        response = await self._client.post(api_path("agents/{agent_id}/deploy", agent_id=agent_id))
         response.raise_for_status()
         return response.json()
 
     def stop(self, agent_id: UUID | str) -> dict[str, Any]:
         self._require_sync_client()
-        response = self._client.post(f"/v1/agents/{agent_id}/stop")
+        response = self._client.post(api_path("agents/{agent_id}/stop", agent_id=agent_id))
         response.raise_for_status()
         return response.json()
 
     async def astop(self, agent_id: UUID | str) -> dict[str, Any]:
         self._require_async_client()
-        response = await self._client.post(f"/v1/agents/{agent_id}/stop")
+        response = await self._client.post(api_path("agents/{agent_id}/stop", agent_id=agent_id))
         response.raise_for_status()
         return response.json()
 
@@ -278,9 +293,12 @@ class Agents:
         level: Optional[str] = None,
     ) -> list[AgentLog]:
         self._require_sync_client()
+        params: dict[str, Any] = {"skip": skip, "limit": limit}
+        if level is not None:
+            params["level"] = level
         response = self._client.get(
-            f"/v1/agents/{agent_id}/logs",
-            params={"skip": skip, "limit": limit, "level": level},
+            api_path("agents/{agent_id}/logs", agent_id=agent_id),
+            params=params,
         )
         response.raise_for_status()
         return [AgentLog(data) for data in response.json()["items"]]
@@ -293,9 +311,12 @@ class Agents:
         level: Optional[str] = None,
     ) -> list[AgentLog]:
         self._require_async_client()
+        params: dict[str, Any] = {"skip": skip, "limit": limit}
+        if level is not None:
+            params["level"] = level
         response = await self._client.get(
-            f"/v1/agents/{agent_id}/logs",
-            params={"skip": skip, "limit": limit, "level": level},
+            api_path("agents/{agent_id}/logs", agent_id=agent_id),
+            params=params,
         )
         response.raise_for_status()
         return [AgentLog(data) for data in response.json()["items"]]
@@ -308,7 +329,7 @@ class Agents:
     ) -> list[AgentMetric]:
         self._require_sync_client()
         response = self._client.get(
-            f"/v1/agents/{agent_id}/metrics",
+            api_path("agents/{agent_id}/metrics", agent_id=agent_id),
             params={"skip": skip, "limit": limit},
         )
         response.raise_for_status()
@@ -322,7 +343,7 @@ class Agents:
     ) -> list[AgentMetric]:
         self._require_async_client()
         response = await self._client.get(
-            f"/v1/agents/{agent_id}/metrics",
+            api_path("agents/{agent_id}/metrics", agent_id=agent_id),
             params={"skip": skip, "limit": limit},
         )
         response.raise_for_status()
@@ -342,7 +363,7 @@ class Agents:
         self._require_sync_client()
         payload = {"config": config if isinstance(config, str) else json.dumps(config)}
         response = self._client.patch(
-            f"/v1/agents/{agent_id}/config",
+            api_path("agents/{agent_id}/config", agent_id=agent_id),
             json=payload,
         )
         response.raise_for_status()
@@ -362,7 +383,7 @@ class Agents:
         self._require_async_client()
         payload = {"config": config if isinstance(config, str) else json.dumps(config)}
         response = await self._client.patch(
-            f"/v1/agents/{agent_id}/config",
+            api_path("agents/{agent_id}/config", agent_id=agent_id),
             json=payload,
         )
         response.raise_for_status()
@@ -375,7 +396,7 @@ class Agents:
             agent_id: The agent UUID
         """
         self._require_sync_client()
-        response = self._client.get(f"/v1/agents/{agent_id}/config")
+        response = self._client.get(api_path("agents/{agent_id}/config", agent_id=agent_id))
         response.raise_for_status()
         return AgentConfig(response.json())
 
@@ -386,7 +407,7 @@ class Agents:
             agent_id: The agent UUID
         """
         self._require_async_client()
-        response = await self._client.get(f"/v1/agents/{agent_id}/config")
+        response = await self._client.get(api_path("agents/{agent_id}/config", agent_id=agent_id))
         response.raise_for_status()
         return AgentConfig(response.json())
 
@@ -408,7 +429,7 @@ class Agents:
         """
         self._require_sync_client()
         response = self._client.get(
-            f"/v1/agents/{agent_id}/versions",
+            api_path("agents/{agent_id}/versions", agent_id=agent_id),
             params={"skip": skip, "limit": limit},
         )
         response.raise_for_status()
@@ -432,7 +453,7 @@ class Agents:
         """
         self._require_async_client()
         response = await self._client.get(
-            f"/v1/agents/{agent_id}/versions",
+            api_path("agents/{agent_id}/versions", agent_id=agent_id),
             params={"skip": skip, "limit": limit},
         )
         response.raise_for_status()
@@ -450,7 +471,7 @@ class Agents:
         """
         self._require_sync_client()
         response = self._client.post(
-            f"/v1/agents/{agent_id}/rollback",
+            api_path("agents/{agent_id}/rollback", agent_id=agent_id),
             json={"version": version},
         )
         response.raise_for_status()
@@ -465,7 +486,7 @@ class Agents:
         """
         self._require_async_client()
         response = await self._client.post(
-            f"/v1/agents/{agent_id}/rollback",
+            api_path("agents/{agent_id}/rollback", agent_id=agent_id),
             json={"version": version},
         )
         response.raise_for_status()
@@ -515,7 +536,7 @@ class Agents:
         if period_end is not None:
             payload["period_end"] = period_end
         response = self._client.post(
-            f"/v1/agents/{agent_id}/resource-usage",
+            api_path("agents/{agent_id}/resource-usage", agent_id=agent_id),
             json=payload,
         )
         response.raise_for_status()
@@ -552,7 +573,7 @@ class Agents:
         if period_end is not None:
             payload["period_end"] = period_end
         response = await self._client.post(
-            f"/v1/agents/{agent_id}/resource-usage",
+            api_path("agents/{agent_id}/resource-usage", agent_id=agent_id),
             json=payload,
         )
         response.raise_for_status()
@@ -576,7 +597,7 @@ class Agents:
         """
         self._require_sync_client()
         response = self._client.get(
-            f"/v1/agents/{agent_id}/resource-usage",
+            api_path("agents/{agent_id}/resource-usage", agent_id=agent_id),
             params={"skip": skip, "limit": limit},
         )
         response.raise_for_status()
@@ -612,7 +633,7 @@ class Agents:
         """
         self._require_async_client()
         response = await self._client.get(
-            f"/v1/agents/{agent_id}/resource-usage",
+            api_path("agents/{agent_id}/resource-usage", agent_id=agent_id),
             params={"skip": skip, "limit": limit},
         )
         response.raise_for_status()

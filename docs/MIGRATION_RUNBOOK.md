@@ -250,11 +250,15 @@ For large tables, consider:
 
 ### RBAC Enforcement
 
-v1.4 enforces RBAC on all routes. All routes now require role-based authorization:
+v1.4 adds persisted-role checks to protected control-plane routes:
 
-- Routes previously accessible with any valid JWT now check the user's role.
-- If you have scripts or integrations using service tokens, ensure those tokens carry the required roles.
-- Review `src/api/security.py` for the enforcement layer and role mappings.
+- Protected routes declare authentication, ownership, plan, internal-user, or role
+  dependencies in `src/api/routes/`.
+- Public probes, account-entry routes, and lead capture remain anonymous by design.
+- Managed API keys resolve their owning database user; they do not carry an
+  independent role set.
+- Review `src/api/auth/dependencies.py` and `src/api/services/auth.py` for the
+  enforcement layer and role semantics.
 
 ### OIDC Token Validation
 

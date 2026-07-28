@@ -85,7 +85,6 @@ function indexValues<T>(values: readonly T[]) {
 export function getPicoDefaultMessages() {
   const landing = PICO_GENERATED_CONTENT.landing
   const pricing = PICO_GENERATED_CONTENT.pricing
-  const wip = PICO_GENERATED_CONTENT.wip
 
   return {
     pico: {
@@ -112,10 +111,6 @@ export function getPicoDefaultMessages() {
         ...landing.beforeAfter,
         items: indexValues(landing.beforeAfter.items),
       },
-      earlyAccess: {
-        ...landing.earlyAccess,
-        benefits: indexValues(landing.earlyAccess.benefits),
-      },
       faq: {
         ...landing.faq,
         items: indexValues(landing.faq.items),
@@ -124,6 +119,7 @@ export function getPicoDefaultMessages() {
       localeSwitcher: {
         currentLanguage: 'Current language',
         listLabel: 'Choose interface language',
+        changedTo: 'Language changed to {language}',
       },
       footer: {
         brand: 'PicoMUTX',
@@ -183,17 +179,6 @@ export function getPicoDefaultMessages() {
             description: 'Get help and support for PicoMUTX.',
           },
         },
-        wip: {
-          meta: {
-            title: wip.meta.title,
-            description: wip.meta.description,
-          },
-          title: wip.title,
-          subtitle: wip.subtitle,
-          backToPico: 'Back to Pico',
-          mutxPlatform: 'MUTX Platform',
-          imageAlt: 'PicoMUTX robot inspecting live stack briefings',
-        },
       },
       pricing: {
         eyebrow: 'Plans',
@@ -206,7 +191,7 @@ export function getPicoDefaultMessages() {
             description: pricing.planDescriptions.free,
             features: [
               '100 monthly credits',
-              'Limited tutor access',
+              'Read-only Academy guidance',
               'Academy lessons (basic)',
               'Community support',
             ],
@@ -247,6 +232,27 @@ export function getPicoDefaultMessages() {
         primaryCta: 'Request priority access',
         secondaryCta: 'Talk to support',
         returnToLanding: 'Return to landing',
+        navigation: {
+          homeLabel: 'Pico home',
+          label: 'Pico pricing navigation',
+        },
+        checkout: {
+          confirming: 'Confirming your {plan} plan…',
+          confirmingShort: 'Confirming plan…',
+          signInAgain: 'Sign in again to confirm your checkout and refresh your plan.',
+          signIn: 'Sign in',
+          billingForbidden: 'This account does not have access to billing or plan entitlements.',
+          refreshFailed: 'We could not refresh your plan. Your checkout has not been marked as failed.',
+          retryRefresh: 'Retry plan refresh',
+          active: 'Your {plan} plan is active.',
+          stillSyncing: 'Checkout returned successfully. Your plan is still syncing.',
+          refreshPlan: 'Refresh plan',
+          canceled: 'Checkout was canceled. Your current plan has not changed.',
+          incompleteReturn: 'The checkout return link is incomplete. Your plan has not been changed here.',
+          forbidden: 'This account does not have access to checkout.',
+          unavailable: 'This plan is temporarily unavailable. Please try again.',
+          retryCheckout: 'Retry checkout',
+        },
         routeState: {
           label: 'Access state',
           title: 'Start with setup. Choose a plan when you need support.',
@@ -419,40 +425,40 @@ export function getPicoDefaultMessages() {
         finalSecondary: 'Return to landing',
       },
       auth: {
-        eyebrow: 'Pico host auth',
+        eyebrow: 'PicoMUTX account',
         orUseEmail: 'Or use email',
         forgotPassword: 'Forgot password?',
         fields: {
           name: {
             label: 'Name',
-            placeholder: 'Jane Smith',
+            placeholder: 'Your name',
           },
           email: {
-            label: 'Email',
+            label: 'Email address',
             placeholder: 'you@company.com',
           },
           password: {
             label: 'Password',
-            placeholder: 'Enter your password',
+            placeholder: 'Enter at least 8 characters',
           },
           confirmPassword: {
             label: 'Confirm password',
-            placeholder: 'Confirm your password',
+            placeholder: 'Enter at least 8 characters',
           },
         },
         modes: {
           login: {
-            title: 'Enter the current Pico build',
-            subtitle: 'Use a provider or email to open the preview and save your place.',
-            submit: 'Enter Pico',
-            loading: 'Opening...',
-            toggleQuestion: 'Need access?',
-            toggleAction: 'Create one',
+            title: 'Sign in to PicoMUTX',
+            subtitle: 'Use a provider or email to resume your saved progress.',
+            submit: 'Sign in',
+            loading: 'Signing in...',
+            toggleQuestion: 'Need an account?',
+            toggleAction: 'Create account',
           },
           register: {
-            title: 'Create your Pico preview account',
-            subtitle: 'Sign up once, save your place, and keep following the product as it improves.',
-            submit: 'Create preview account',
+            title: 'Create your PicoMUTX account',
+            subtitle: 'Create an account to save your progress and return to PicoMUTX anytime.',
+            submit: 'Create account',
             loading: 'Creating...',
             toggleQuestion: 'Already have an account?',
             toggleAction: 'Sign in',
@@ -498,6 +504,7 @@ export function getPicoDefaultMessages() {
           emailPlaceholder: 'you@company.com',
           sending: 'Sending...',
           sendLink: 'Send reset link',
+          sendFailed: 'Could not send the reset link',
         },
         resetPassword: {
           eyebrow: 'Reset password',
@@ -560,6 +567,223 @@ export function getPicoDefaultMessages() {
           resendFailure: 'Failed to resend verification email',
           verificationFailed: 'Verification failed',
           verificationFailedBody: 'If the token expired, request another message from the address that owns the account.',
+        },
+      },
+      sessionBanner: {
+        errors: {
+          loadWebhookRoutes: 'Could not load webhook routes',
+          sessionUnavailable: 'Hosted session unavailable',
+        },
+        authenticated: {
+          chips: {
+            sessionAttached: 'hosted session live',
+            plan: '{plan} plan',
+            planUnknown: 'plan unknown',
+            verificationPending: 'verification pending',
+            emailVerified: 'email verified',
+            emailStatusUnknown: 'email status unknown',
+            loadingWebhooks: 'checking webhooks',
+            webhookCount: '{count} webhook{pluralSuffix}',
+            webhooksUnavailable: 'webhooks unavailable',
+          },
+          body: 'Signed in as {identity}. Progress sync and runtime reads are attached.',
+          rails: {
+            operator: 'operator',
+            emailState: 'Email',
+            pending: 'pending',
+            verified: 'verified',
+          },
+          productTruth: {
+            progressSync: 'Sync',
+            runtimeTruth: 'Runtime',
+            live: 'live',
+            checking: 'checking',
+            usable: 'available',
+            partial: 'partial',
+          },
+          finishEmailVerification: 'Finish verification',
+        },
+        loading: {
+          label: 'Hosted session',
+          body: 'Checking whether a PicoMUTX account session is available.',
+        },
+        anonymous: {
+          chips: {
+            sessionRequired: 'hosted session required',
+            picoHostAuth: 'PicoMUTX account',
+          },
+          body: 'Sign in to persist progress, read live runtime state, and use hosted approvals on this Pico domain.',
+          rails: {
+            progress: 'Progress',
+            runtimeTruth: 'Runtime',
+            approvals: 'Approvals',
+            limited: 'limited',
+          },
+          withoutSession: {
+            localOnly: 'local',
+            blocked: 'blocked',
+            signIn: 'Sign in',
+            createAccount: 'Create account',
+            continueWithProvider: 'Continue with {provider}',
+          },
+        },
+      },
+      platformSurface: {
+        syncState: {
+          hydrating: 'hydrating',
+          live: 'live',
+          saving: 'saving',
+          localOnly: 'local only',
+        },
+        shared: { notRecorded: 'not recorded' },
+        surfaceOptions: {
+          onboarding: { label: 'Onboarding', note: 'Launch bay memory' },
+          academy: { label: 'Academy', note: 'Primary learning spine' },
+          lesson: { label: 'Lesson', note: 'Active step memory' },
+          tutor: { label: 'Tutor', note: 'Grounded next-step help' },
+          autopilot: { label: 'Autopilot', note: 'Runtime review' },
+          support: { label: 'Support', note: 'Human setup help' },
+          activeNow: 'active now',
+          setRoute: 'set page',
+        },
+        header: {
+          label: 'Platform desk',
+          title: 'Identity, page memory, and limits in one place',
+          body: 'Review plan limits, your last workspace, and the display settings that keep Pico focused on the work in front of you.',
+        },
+        summary: {
+          plan: 'Plan',
+          verification: 'Verification',
+          workspaceSaves: 'Workspace saves',
+          verificationState: {
+            pending: 'pending',
+            verified: 'verified',
+            unknown: 'unknown',
+            signIn: 'sign in',
+          },
+        },
+        routeMemory: {
+          label: 'Page memory',
+          body: 'Keep this aligned with the page you are actually using.',
+          currentSurface: {
+            label: 'Current page',
+            body: 'Page memory should follow you through Pico instead of resetting every time the page changes.',
+          },
+          lastLessonContext: {
+            label: 'Last lesson context',
+            body: 'This is the recovery point when you need to re-enter the lesson flow.',
+          },
+        },
+        toggles: {
+          collapseRail: {
+            label: 'Collapse rail',
+            body: 'Use a tighter layout when you already know the page and need more room.',
+          },
+          keepHelpLaneOpen: {
+            label: 'Keep help panel open',
+            body: 'Keep guidance visible while the setup path is still unfamiliar.',
+          },
+        },
+        actions: {
+          resumeLastLesson: 'Resume last lesson',
+          openAcademy: 'Open Academy',
+          clearLessonMemory: 'Clear lesson memory',
+          resetPlatformMemory: 'Reset platform memory',
+          openLiveControlRoom: 'Open Autopilot',
+        },
+        entitlements: {
+          label: 'Entitlements',
+          featureLabels: {
+            academy: 'Academy',
+            tutor: 'Tutor',
+            project_limit: 'Project limit',
+            monitored_agents: 'Monitored agents',
+            alerts: 'Alerts',
+            approvals: 'Approvals',
+            retention: 'Retention',
+          },
+        },
+        routeLedger: {
+          label: 'Page record',
+          currentPath: 'Current path',
+          platformStateUpdated: 'Platform state updated',
+          syncConfidence: 'Sync confidence',
+        },
+        operatorTruth: {
+          label: 'Stored page state',
+          body: 'Pico remembers the current page, last lesson, rail state, and help panel so setup can resume without asking you to rebuild context.',
+        },
+      },
+      shell: {
+        nav: {
+          onboarding: { label: 'Start', note: 'first visible win' },
+          academy: { label: 'Lessons', note: 'the working path' },
+          tutor: { label: 'Tutor', note: 'one grounded answer' },
+          autopilot: { label: 'Autopilot', note: 'live control room' },
+          support: { label: 'Human help', note: 'the messy edge' },
+        },
+        wordmark: {
+          logoAlt: 'PicoMUTX logo',
+          atlas: 'operator atlas',
+        },
+        helpLane: {
+          stayHereWhen: 'Stay here when',
+          stayHereBody: 'The next move is still inside {chapter}.',
+          recoveryRoute: 'Recovery route',
+          openSupportLane: 'Open support lane',
+          recoveryBody: 'Use this when the product route is no longer honest about the blocker.',
+          continueSequence: 'Continue sequence',
+          humanHelp: 'Human help',
+          continueBody: 'Keep momentum if the next chapter is already the right tool.',
+        },
+        academyMode: {
+          chapter: 'Chapter {chapter}',
+          howThisWorks: 'How this works',
+          map: 'Map',
+          help: 'Help',
+          routeMode: 'Route mode',
+          focusModeActive: 'Focus mode is active.',
+          mapStaysOpen: 'The map stays open.',
+          previous: 'Previous: {label}',
+          startOfSequence: 'Start of sequence',
+          next: 'Next: {label}',
+          finalChapter: 'Final chapter',
+          backToMap: 'Back to map',
+          proof: 'Proof',
+        },
+        defaultMode: {
+          mobileNavigation: 'Pico mobile navigation',
+          currentChapter: 'Current chapter',
+          chapter: 'Chapter {chapter}',
+          quickHelp: 'Quick help',
+          previousChapter: 'Previous chapter',
+          previousChapterAria: 'Go to previous chapter: {label}',
+          nextChapter: 'Next chapter',
+          nextChapterAria: 'Go to next chapter: {label}',
+          goToOnboarding: 'Go to onboarding',
+          goToSupport: 'Go to support',
+          hideRecovery: 'Hide recovery',
+          showRecovery: 'Show recovery',
+          chapterNote: 'Chapter note',
+          chapterNoteBody: 'Use this chapter to cut uncertainty quickly and identify the next irreversible action.',
+          prev: 'Prev',
+          next: 'Next',
+          openAcademyMap: 'Open Academy map',
+          openHelpLane: 'Open help lane',
+          map: 'Map',
+          help: 'Help',
+          openMission: 'Open mission',
+        },
+        footer: {
+          logoAlt: 'PicoMUTX logo',
+          links: {
+            releases: 'Releases',
+            docs: 'Docs',
+            github: 'GitHub',
+            download: 'Download',
+            privacy: 'Privacy',
+          },
+          copyright: '© {year} MUTX. PicoMUTX is a learning and operations platform for AI agent builders.',
         },
       },
       content: buildPicoStructuredContentMessages(),

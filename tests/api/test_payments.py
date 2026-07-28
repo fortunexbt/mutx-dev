@@ -41,7 +41,6 @@ async def test_create_checkout_session_uses_server_side_plan_mapping(
         price_id=None,
         success_url="https://pico.mutx.dev/onboarding?checkout=success",
         cancel_url="https://pico.mutx.dev/pricing?checkout=canceled",
-        trial_days=7,
     )
 
     assert result == {
@@ -57,8 +56,47 @@ async def test_create_checkout_session_uses_server_side_plan_mapping(
             "plan_id": "pro",
             "price_id": "price_pro",
         },
-        "trial_end": captured["subscription_data"]["trial_end"],
+        "trial_period_days": 7,
     }
+
+
+@pytest.mark.asyncio
+async def test_checkout_trial_is_server_controlled_and_granted_only_once(
+    db_session,
+    test_user,
+    monkeypatch,
+):
+    captured: list[dict[str, object]] = []
+
+    async def fake_get_or_create_customer(*_args, **_kwargs):
+        return "cus_test", None
+
+    def fake_create(**kwargs):
+        captured.append(kwargs)
+        index = len(captured)
+        return SimpleNamespace(
+            id=f"cs_test_{index}",
+            url=f"https://checkout.stripe.test/session/{index}",
+        )
+
+    monkeypatch.setenv("STRIPE_STARTER_PRICE_ID", "price_starter")
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_123")
+    monkeypatch.setenv("STRIPE_TRIAL_DAYS", "7")
+    monkeypatch.setattr(stripe_service, "_get_or_create_customer", fake_get_or_create_customer)
+    monkeypatch.setattr(stripe_service.stripe.checkout.Session, "create", fake_create)
+
+    for _ in range(2):
+        await stripe_service.create_checkout_session(
+            db=db_session,
+            user=test_user,
+            plan_id="starter",
+            price_id=None,
+            success_url="https://pico.mutx.dev/pricing?checkout=success",
+            cancel_url="https://pico.mutx.dev/pricing?checkout=canceled",
+        )
+
+    assert captured[0]["subscription_data"]["trial_period_days"] == 7
+    assert "trial_period_days" not in captured[1]["subscription_data"]
 
 
 @pytest.mark.asyncio
@@ -122,6 +160,21 @@ async def test_checkout_route_requires_auth(client_no_auth):
     )
 
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_checkout_route_rejects_client_controlled_trial_duration(client):
+    response = await client.post(
+        "/v1/payments/checkout",
+        json={
+            "plan_id": "starter",
+            "success_url": "https://pico.mutx.dev/pricing?checkout=success",
+            "cancel_url": "https://pico.mutx.dev/pricing?checkout=canceled",
+            "trial_days": 365,
+        },
+    )
+
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

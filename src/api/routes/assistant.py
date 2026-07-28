@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.api.auth.ownership import get_owned_agent
+from src.api.auth.ownership import get_owned_agent as _get_owned_agent
 from src.api.database import get_db
-from src.api.auth.dependencies import get_current_user
+from src.api.auth.dependencies import require_roles
 from src.api.models import Agent, AgentType, Deployment, User
 from src.api.models.schemas import (
     AssistantChannelResponse,
@@ -30,8 +31,34 @@ from src.api.services.assistant_control_plane import (
     list_gateway_sessions,
     update_assistant_skills,
 )
+from src.api.services.session_ownership import filter_and_claim_owned_sessions
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
+
+
+def _can_view_host_diagnostics(current_user: User) -> bool:
+    return any(
+        isinstance(role, str) and role.strip().upper() == "ADMIN"
+        for role in (current_user.roles or [])
+    )
+
+
+async def get_owned_agent(
+    agent_id: uuid.UUID,
+    db: AsyncSession,
+    current_user: User,
+    **kwargs: Any,
+) -> Agent:
+    """Resolve ownership without revealing whether another tenant owns the id."""
+    try:
+        return await _get_owned_agent(agent_id, db, current_user, **kwargs)
+    except HTTPException as exc:
+        if exc.status_code != 403:
+            raise
+        raise HTTPException(
+            status_code=404,
+            detail=kwargs.get("not_found_detail", "Agent not found"),
+        ) from None
 
 
 async def _resolve_assistant_agent(
@@ -65,7 +92,7 @@ async def _resolve_assistant_agent(
 async def assistant_overview(
     agent_id: uuid.UUID | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     agent = await _resolve_assistant_agent(db=db, current_user=current_user, agent_id=agent_id)
     if agent is None:
@@ -79,7 +106,11 @@ async def assistant_overview(
     return {
         "has_assistant": True,
         "recommended_template_id": "personal_assistant",
-        "assistant": collect_assistant_overview(agent, deployment_payloads),
+        "assistant": collect_assistant_overview(
+            agent,
+            deployment_payloads,
+            include_host_diagnostics=_can_view_host_diagnostics(current_user),
+        ),
     }
 
 
@@ -87,7 +118,7 @@ async def assistant_overview(
 async def assistant_skills(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     agent = await get_owned_agent(agent_id, db, current_user)
     if not is_assistant_agent(agent):
@@ -100,7 +131,7 @@ async def install_assistant_skill(
     agent_id: uuid.UUID,
     skill_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     agent = await get_owned_agent(agent_id, db, current_user)
     if not is_assistant_agent(agent):
@@ -120,7 +151,7 @@ async def uninstall_assistant_skill(
     agent_id: uuid.UUID,
     skill_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     agent = await get_owned_agent(agent_id, db, current_user)
     if not is_assistant_agent(agent):
@@ -134,7 +165,7 @@ async def uninstall_assistant_skill(
 async def assistant_channels(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     agent = await get_owned_agent(agent_id, db, current_user)
     if not is_assistant_agent(agent):
@@ -146,7 +177,7 @@ async def assistant_channels(
 async def assistant_wakeups(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     agent = await get_owned_agent(agent_id, db, current_user)
     if not is_assistant_agent(agent):
@@ -158,23 +189,28 @@ async def assistant_wakeups(
 async def assistant_health(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     agent = await get_owned_agent(agent_id, db, current_user)
     if not is_assistant_agent(agent):
         raise HTTPException(status_code=400, detail="Agent is not an assistant runtime")
-    return collect_gateway_health()
+    return collect_gateway_health(
+        include_host_diagnostics=_can_view_host_diagnostics(current_user),
+    )
 
 
 @router.get("/{agent_id}/sessions", response_model=list[AssistantSessionResponse])
 async def assistant_sessions(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     agent = await get_owned_agent(agent_id, db, current_user)
     if not is_assistant_agent(agent):
         raise HTTPException(status_code=400, detail="Agent is not an assistant runtime")
-    await db.refresh(agent, attribute_names=["deployments"])
-    overview = collect_assistant_overview(agent, list(agent.deployments))
-    return list_gateway_sessions(assistant_id=overview["assistant_id"])
+    return await filter_and_claim_owned_sessions(
+        db,
+        user=current_user,
+        sessions=list_gateway_sessions(),
+        required_agent_id=agent.id,
+    )

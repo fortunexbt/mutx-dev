@@ -90,14 +90,20 @@ def test_deploy_list_passes_agent_and_status_filters(monkeypatch) -> None:
         captured["params"] = params
         return DummyResponse(
             200,
-            [
-                {
-                    "id": "dep-123",
-                    "agent_id": "agent-123",
-                    "status": "running",
-                    "replicas": 2,
-                }
-            ],
+            {
+                "items": [
+                    {
+                        "id": "dep-123",
+                        "agent_id": "agent-123",
+                        "status": "running",
+                        "replicas": 2,
+                    }
+                ],
+                "total": 1,
+                "skip": 2,
+                "limit": 5,
+                "has_more": False,
+            },
         )
 
     monkeypatch.setattr("cli.commands.deploy.current_config", DummyConfig)
@@ -286,13 +292,20 @@ def test_deploy_logs_hits_contract_route_and_supports_level_filter(monkeypatch) 
         captured["params"] = params
         return DummyResponse(
             200,
-            [
-                {
-                    "timestamp": "2026-03-12T15:05:00",
-                    "level": "ERROR",
-                    "message": "probe failed",
-                }
-            ],
+            {
+                "deployment_id": "dep-123",
+                "items": [
+                    {
+                        "timestamp": "2026-03-12T15:05:00",
+                        "level": "ERROR",
+                        "message": "probe failed",
+                    }
+                ],
+                "total": 1,
+                "skip": 3,
+                "limit": 20,
+                "has_more": False,
+            },
         )
 
     monkeypatch.setattr("cli.commands.deploy.current_config", lambda: DummyConfig())
@@ -326,13 +339,20 @@ def test_deploy_metrics_hits_contract_route_and_renders_points(monkeypatch) -> N
         captured["params"] = params
         return DummyResponse(
             200,
-            [
-                {
-                    "timestamp": "2026-03-12T15:10:00",
-                    "cpu_usage": 0.5,
-                    "memory_usage": 0.75,
-                }
-            ],
+            {
+                "deployment_id": "dep-123",
+                "items": [
+                    {
+                        "timestamp": "2026-03-12T15:10:00",
+                        "cpu_usage": 0.5,
+                        "memory_usage": 0.75,
+                    }
+                ],
+                "total": 1,
+                "skip": 1,
+                "limit": 10,
+                "has_more": False,
+            },
         )
 
     monkeypatch.setattr("cli.commands.deploy.current_config", lambda: DummyConfig())

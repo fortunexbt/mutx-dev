@@ -13,10 +13,12 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, ARRAY as PG_ARRAY
 import enum
@@ -46,7 +48,7 @@ def ARRAY(type_):
                 return None
             if dialect.name == "postgresql":
                 return value
-            return json.dumps(value)
+            return json.dumps(value, allow_nan=False)
 
         def process_result_value(self, value, dialect):
             if value is None:
@@ -74,7 +76,7 @@ def JSONText():
                 return None
             if isinstance(value, str):
                 return value
-            return json.dumps(value)
+            return json.dumps(value, allow_nan=False)
 
         def process_result_value(self, value, dialect):
             if value is None or isinstance(value, (dict, list)):
@@ -126,6 +128,14 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=True)
     plan: Mapped[str] = mapped_column(String(20), default="FREE")
+    # Database roles are the authorization authority. Signup and SSO flows use
+    # this least-privilege default and never promote users from token claims.
+    roles: Mapped[list[str]] = mapped_column(
+        MutableList.as_mutable(JSON),
+        nullable=False,
+        default=lambda: ["VIEWER"],
+        server_default='["VIEWER"]',
+    )
     api_key: Mapped[str] = mapped_column(String(64), unique=True, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
@@ -218,6 +228,25 @@ class ExternalAuthIdentity(Base):
     )
 
     user: Mapped["User"] = relationship("User", back_populates="external_auth_identities")
+
+
+class OAuthAuthorizationState(Base):
+    """One-time server-side binding for OAuth and SSO authorization callbacks."""
+
+    __tablename__ = "oauth_authorization_states"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    state_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    flow: Mapped[str] = mapped_column(String(16), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    redirect_uri: Mapped[str] = mapped_column(String(1024), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    consumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class UserSetting(Base):
@@ -409,9 +438,16 @@ class RefreshTokenSession(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    original_issued_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    token_nonce: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     replaced_by_token_jti: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    rotation_grace_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     user: Mapped["User"] = relationship("User", back_populates="refresh_token_sessions")
 
@@ -770,6 +806,19 @@ class Lead(Base):
     company: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     source: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    tier: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    interest: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    locale: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    product_updates_consent: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    idempotency_key: Mapped[Optional[str]] = mapped_column(
+        String(128), nullable=True, unique=True, index=True
+    )
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    notification_scheduled_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True
     )

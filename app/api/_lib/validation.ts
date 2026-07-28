@@ -97,6 +97,7 @@ export const schemas = {
     email: z.string().email("Invalid email format"),
     password: z.string().min(8, "Password must be at least 8 characters"),
     name: z.string().min(1, "Name is required").max(100, "Name too long"),
+    return_path: z.string().max(1024, "Return path too long").optional(),
   }),
 
   localBootstrap: z.object({
@@ -113,6 +114,7 @@ export const schemas = {
 
   forgotPassword: z.object({
     email: z.string().email("Invalid email format"),
+    return_path: z.string().max(1024, "Return path too long").optional(),
   }),
 
   verifyEmail: z.object({
@@ -121,6 +123,7 @@ export const schemas = {
 
   resendVerification: z.object({
     email: z.string().email("Invalid email format"),
+    return_path: z.string().max(1024, "Return path too long").optional(),
   }),
 
   resetPassword: z.object({
@@ -150,14 +153,18 @@ export const schemas = {
   }),
 
   // Agent schemas
-  agentCreate: z.object({
-    name: z.string().min(1, "Name is required").max(100, "Name too long"),
-    description: z.string().max(500, "Description too long").optional(),
-    type: z
-      .enum(["openai", "anthropic", "langchain", "custom"])
-      .default("openai"),
-    config: z.record(z.string(), z.unknown()).optional(),
-  }),
+  agentCreate: z
+    .object({
+      name: z.string().min(1, "Name is required").max(255, "Name too long"),
+      description: z.string().max(1000, "Description too long").optional(),
+      type: z
+        .enum(["openai", "anthropic", "langchain", "custom", "openclaw"])
+        .default("openai"),
+      config: z
+        .union([z.record(z.string(), z.unknown()), z.string()])
+        .optional(),
+    })
+    .strict(),
 
   agentUpdate: z.object({
     name: z
@@ -171,43 +178,46 @@ export const schemas = {
   }),
 
   // Deployment schemas
-  deploymentCreate: z.object({
-    agent_id: z.string().uuid("Invalid agent ID"),
-    replicas: z
-      .number()
-      .int()
-      .positive()
-      .max(10, "Max replicas is 10")
-      .optional(),
-    environment: z.enum(["development", "staging", "production"]).optional(),
-    config: z.record(z.string(), z.unknown()).optional(),
-  }),
+  deploymentCreate: z
+    .object({
+      agent_id: z.string().uuid("Invalid agent ID"),
+      replicas: z
+        .number()
+        .int()
+        .positive()
+        .max(10, "Max replicas is 10")
+        .optional(),
+    })
+    .strict(),
 
   // Webhook schemas
-  webhookCreate: z.object({
-    url: z.string().url("Invalid URL format").max(2048, "URL too long"),
-    events: z
-      .array(z.string().min(1, "Event name cannot be empty"))
-      .min(1, { message: "At least one event required" })
-      .max(20, { message: "Too many events" }),
-    secret: z.string().max(64, "Secret too long").optional(),
-    is_active: z.boolean().optional(),
-  }),
+  webhookCreate: z
+    .object({
+      url: z.string().url("Invalid URL format").max(512, "URL too long"),
+      name: z.string().max(120, "Name too long").optional(),
+      events: z
+        .array(z.string().min(1, "Event name cannot be empty"))
+        .default(["*"]),
+      secret: z.string().max(64, "Secret too long").optional(),
+      is_active: z.boolean().optional(),
+    })
+    .strict(),
 
-  webhookUpdate: z.object({
-    url: z
-      .string()
-      .url("Invalid URL format")
-      .max(2048, "URL too long")
-      .optional(),
-    events: z
-      .array(z.string().min(1, "Event name cannot be empty"))
-      .min(1, { message: "At least one event required" })
-      .max(20, { message: "Too many events" })
-      .optional(),
-    secret: z.string().max(64, "Secret too long").optional(),
-    is_active: z.boolean().optional(),
-  }),
+  webhookUpdate: z
+    .object({
+      url: z
+        .string()
+        .url("Invalid URL format")
+        .max(512, "URL too long")
+        .optional(),
+      name: z.string().max(120, "Name too long").optional(),
+      events: z
+        .array(z.string().min(1, "Event name cannot be empty"))
+        .optional(),
+      is_active: z.boolean().optional(),
+      reset_circuit: z.boolean().optional(),
+    })
+    .strict(),
 
   swarmCreate: z.object({
     name: z.string().min(1, "Name is required").max(255, "Name too long"),

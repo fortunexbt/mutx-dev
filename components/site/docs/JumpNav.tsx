@@ -56,9 +56,11 @@ export function JumpNav({ headings }: JumpNavProps) {
       className="jump-nav"
     >
       <button
+        type="button"
         className="jump-nav-toggle"
         onClick={() => setIsOpen((v) => !v)}
         aria-expanded={isOpen}
+        aria-controls="docs-jump-nav-list"
       >
         <span>On this page</span>
         <svg
@@ -79,7 +81,7 @@ export function JumpNav({ headings }: JumpNavProps) {
         </svg>
       </button>
 
-      <ol className={`jump-nav-list${isOpen ? ' open' : ''}`}>
+      <ol id="docs-jump-nav-list" className={`jump-nav-list${isOpen ? ' open' : ''}`}>
         {headings.map((heading) => (
           <li
             key={heading.id}
@@ -91,6 +93,7 @@ export function JumpNav({ headings }: JumpNavProps) {
               href={`#${heading.id}`}
               className="jump-nav-link"
               onClick={() => setIsOpen(false)}
+              aria-current={activeId === heading.id ? 'location' : undefined}
             >
               {heading.text}
             </a>

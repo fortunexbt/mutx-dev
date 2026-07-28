@@ -13,7 +13,7 @@ export async function POST(
   return withErrorHandling(async () => {
     const { jobId } = await params
     const body = await request.json()
-    return proxyJson(request, `${getApiBaseUrl()}/v1/reasoning/jobs/${jobId}/dispatch`, {
+    return proxyJson(request, `${getApiBaseUrl()}/v1/reasoning/jobs/${encodeURIComponent(jobId)}/dispatch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

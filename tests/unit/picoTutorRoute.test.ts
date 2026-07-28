@@ -23,6 +23,60 @@ function mockJsonRequest(body: unknown) {
   } as unknown as NextRequest
 }
 
+const entitlement = {
+  authenticated: true,
+  plan: 'starter',
+  tutorAccess: true,
+  minimumPlan: 'starter',
+  byokAccess: false,
+  byokMinimumPlan: 'pro',
+}
+
+const tutorReply = {
+  title: 'Create a scheduled workflow',
+  summary: 'Open the scheduling lesson and create one cron workflow.',
+  answer: 'Open the scheduling lesson and create one cron workflow.',
+  confidence: 'high',
+  nextActions: ['Open the scheduling lesson', 'Create one cron workflow'],
+  lessons: [
+    {
+      id: 'create-a-scheduled-workflow',
+      title: 'Create a scheduled workflow',
+      href: '/pico/academy/create-a-scheduled-workflow',
+    },
+  ],
+  docs: [
+    {
+      label: 'github.com',
+      href: 'https://github.com/nousresearch/hermes-agent',
+      sourcePath: 'github.com',
+    },
+  ],
+  recommendedLessonIds: ['create-a-scheduled-workflow'],
+  escalate: false,
+  structured: {
+    situation: 'The workflow is blocked at scheduling.',
+    diagnosis: 'Use the scheduling lesson as the primary recovery path.',
+    steps: ['Open the lesson', 'Create one cron job'],
+    commands: [],
+    verify: ['The cron entry exists and is visible after reload.'],
+    ifThisFails: ['Paste the failing schedule output.'],
+    officialLinks: [],
+    sources: [],
+  },
+  intent: 'integrate',
+  skillLevel: 'intermediate',
+  usedOfficialFallback: false,
+  entitlement,
+  generation: {
+    provider: 'openai',
+    source: 'platform',
+    model: 'gpt-5-mini',
+    responseId: 'chatcmpl-route-proof',
+    completedAt: '2026-07-28T12:00:00Z',
+  },
+}
+
 describe('pico tutor route', () => {
   beforeEach(() => {
     jest.resetModules()
@@ -53,42 +107,8 @@ describe('pico tutor route', () => {
     authenticatedFetch.mockResolvedValue({
       response: {
         status: 200,
-        json: async () => ({
-        title: 'Create a scheduled workflow',
-        summary: 'Open the scheduling lesson and create one cron workflow.',
-        answer: 'Open the scheduling lesson and create one cron workflow.',
-        confidence: 'high',
-        nextActions: ['Open the scheduling lesson', 'Create one cron workflow'],
-        lessons: [
-          {
-            id: 'create-a-scheduled-workflow',
-            title: 'Create a scheduled workflow',
-            href: '/pico/academy/create-a-scheduled-workflow',
-          },
-        ],
-        docs: [
-          {
-            label: 'github.com',
-            href: 'https://github.com/nousresearch/hermes-agent',
-            sourcePath: 'github.com',
-          },
-        ],
-        recommendedLessonIds: ['create-a-scheduled-workflow'],
-        escalate: false,
-        structured: {
-          situation: 'The workflow is blocked at scheduling.',
-          diagnosis: 'Use the scheduling lesson as the primary recovery path.',
-          steps: ['Open the lesson', 'Create one cron job'],
-          commands: [],
-          verify: ['The cron entry exists and is visible after reload.'],
-          ifThisFails: ['Paste the failing schedule output.'],
-          officialLinks: [],
-          sources: [],
-        },
-        intent: 'integrate',
-        skillLevel: 'intermediate',
-        usedOfficialFallback: false,
-        }),
+        ok: true,
+        json: async () => tutorReply,
       },
       tokenRefreshed: false,
     })
@@ -125,7 +145,8 @@ describe('pico tutor route', () => {
     authenticatedFetch.mockResolvedValue({
       response: {
         status: 200,
-        json: async () => ({ answer: 'ok' }),
+        ok: true,
+        json: async () => tutorReply,
       },
       tokenRefreshed: false,
     })
@@ -165,6 +186,49 @@ describe('pico tutor route', () => {
         code: 'BAD_REQUEST',
         message: 'Question is required',
       },
+    })
+  })
+
+  it.each([
+    [403, 'TUTOR_PLAN_REQUIRED'],
+    [429, 'TUTOR_RATE_LIMITED'],
+    [503, 'TUTOR_MODEL_UNAVAILABLE'],
+  ])('preserves upstream HTTP %i with a distinct error contract', async (status, code) => {
+    authenticatedFetch.mockResolvedValue({
+      response: {
+        status,
+        ok: false,
+        json: async () => ({ detail: { code, message: `failure ${status}` } }),
+      },
+      tokenRefreshed: false,
+    })
+
+    const { POST } = await import('../../app/api/pico/tutor/route')
+    const response = await POST(mockJsonRequest({ question: 'Why is this blocked?' }) as never)
+
+    expect(response.status).toBe(status)
+    await expect(response.json()).resolves.toMatchObject({
+      status: 'error',
+      error: { code, message: `failure ${status}` },
+    })
+  })
+
+  it('returns 502 instead of forwarding an unproven answer', async () => {
+    authenticatedFetch.mockResolvedValue({
+      response: {
+        status: 200,
+        ok: true,
+        json: async () => ({ answer: 'plausible but unproven' }),
+      },
+      tokenRefreshed: false,
+    })
+
+    const { POST } = await import('../../app/api/pico/tutor/route')
+    const response = await POST(mockJsonRequest({ question: 'What should I do?' }) as never)
+
+    expect(response.status).toBe(502)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'TUTOR_MALFORMED_RESPONSE' },
     })
   })
 })

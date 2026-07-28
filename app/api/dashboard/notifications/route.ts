@@ -10,9 +10,12 @@ import { unauthorized, withErrorHandling } from "@/app/api/_lib/errors";
 
 export const dynamic = "force-dynamic";
 
+const UPSTREAM_TIMEOUT_MS = 5_000;
+
 type DashboardStatus = "idle" | "running" | "success" | "warning" | "error";
 
-type ResourceStatus = "ok" | "auth_error" | "error";
+type ResourceStatus = "ok" | "unauthenticated" | "forbidden" | "error";
+type AggregateSourceStatus = ResourceStatus | "partial";
 
 type AuthTokens = {
   access_token: string;
@@ -63,6 +66,12 @@ function normalizeCollection(payload: unknown, keys: string[] = ["items", "data"
   return [];
 }
 
+function hasCollectionPayload(payload: unknown, keys: string[]) {
+  if (Array.isArray(payload)) return true;
+  if (!isRecord(payload)) return false;
+  return keys.some((key) => Array.isArray(payload[key]));
+}
+
 function pickString(record: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
     const value = record[key];
@@ -72,6 +81,16 @@ function pickString(record: Record<string, unknown>, keys: string[]) {
   }
 
   return null;
+}
+
+function countMissingIdentifiers(
+  payload: unknown,
+  collectionKeys: string[],
+  identifierKeys: string[],
+) {
+  return normalizeCollection(payload, collectionKeys).filter(
+    (item) => !isRecord(item) || !pickString(item, identifierKeys),
+  ).length;
 }
 
 function pickNumber(record: Record<string, unknown>, keys: string[]) {
@@ -179,54 +198,110 @@ async function fetchResource(
   url: string,
   fallbackMessage: string,
 ): Promise<ResourceResult> {
-  const { response, tokenRefreshed, refreshedTokens } = await authenticatedFetch(request, url, {
-    cache: "no-store",
-  });
-  const payload = response.status === 204 ? null : await response.json().catch(() => null);
+  try {
+    const { response, tokenRefreshed, refreshedTokens } = await authenticatedFetch(request, url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    const payload = response.status === 204 ? null : await response.json().catch(() => null);
 
-  return {
-    status: response.ok
-      ? "ok"
-      : response.status === 401 || response.status === 403
-        ? "auth_error"
-        : "error",
-    statusCode: response.status,
-    data: response.ok ? payload : null,
-    error: response.ok ? null : extractErrorMessage(payload, fallbackMessage),
-    tokenRefreshed,
-    refreshedTokens,
-  };
+    if (response.ok && payload === null) {
+      return {
+        status: "error",
+        statusCode: 502,
+        data: null,
+        error: `${fallbackMessage}: upstream returned no data.`,
+        tokenRefreshed,
+        refreshedTokens,
+      };
+    }
+
+    return {
+      status: response.ok
+        ? "ok"
+        : response.status === 401
+          ? "unauthenticated"
+          : response.status === 403
+            ? "forbidden"
+            : "error",
+      statusCode: response.status,
+      data: response.ok ? payload : null,
+      error: response.ok ? null : extractErrorMessage(payload, fallbackMessage),
+      tokenRefreshed,
+      refreshedTokens,
+    };
+  } catch (error) {
+    const errorName =
+      error && typeof error === "object" && "name" in error ? String(error.name) : "";
+    const timedOut = errorName === "AbortError" || errorName === "TimeoutError";
+
+    return {
+      status: "error",
+      statusCode: timedOut ? 504 : 502,
+      data: null,
+      error: timedOut
+        ? `${fallbackMessage}: upstream request timed out.`
+        : `${fallbackMessage}: upstream request failed.`,
+      tokenRefreshed: false,
+    };
+  }
 }
 
 function pickRefreshedTokens(results: Array<{ tokenRefreshed: boolean; refreshedTokens?: AuthTokens }>) {
   return results.find((result) => result.tokenRefreshed)?.refreshedTokens;
 }
 
+function accessFailureResponse(
+  request: NextRequest,
+  failure: ResourceResult,
+  resources: ResourceResult[],
+  fallback: string,
+) {
+  const nextResponse = NextResponse.json(
+    { detail: failure.error ?? fallback },
+    { status: failure.statusCode },
+  );
+  const refreshedTokens = pickRefreshedTokens(resources);
+  if (refreshedTokens) {
+    applyAuthCookies(nextResponse, request, refreshedTokens);
+  }
+  return nextResponse;
+}
+
 function mapAlertItems(payload: unknown) {
   return normalizeCollection(payload, ["items", "alerts", "data"])
     .filter(isRecord)
-    .map((alert) => ({
-      id: pickString(alert, ["id"]) ?? `alert-${Math.random().toString(36).slice(2, 8)}`,
-      kind: "alert" as const,
-      title: pickString(alert, ["message"]) ?? "Alert requires review",
-      detail: pickString(alert, ["type"]) ?? "Monitoring alert",
-      status: pickString(alert, ["resolved"]) === "true" ? "success" : "error",
-      createdAt: toIsoTimestamp(alert.created_at),
-      source: "monitoring",
-      href: "/dashboard/monitoring",
-      meta: pickString(alert, ["agent_id"]),
-      resolved: Boolean(alert.resolved),
-    }))
+    .flatMap((alert) => {
+      const id = pickString(alert, ["id"]);
+      if (!id) return [];
+
+      const resolved = alert.resolved === true || pickString(alert, ["resolved"]) === "true";
+      return [{
+        id,
+        kind: "alert" as const,
+        title: pickString(alert, ["message"]) ?? "Alert requires review",
+        detail: pickString(alert, ["type"]) ?? "Monitoring alert",
+        status: resolved ? "success" as const : "error" as const,
+        createdAt: toIsoTimestamp(alert.created_at),
+        source: "monitoring",
+        href: "/dashboard/monitoring",
+        meta: pickString(alert, ["agent_id"]),
+        resolved,
+      }];
+    })
     .filter((item) => !item.resolved);
 }
 
 function mapApprovalItems(payload: unknown) {
   return normalizeCollection(payload, ["items", "data"])
     .filter(isRecord)
-    .map((approval) => {
+    .flatMap((approval) => {
+      const id = pickString(approval, ["id"]);
+      if (!id) return [];
+
       const status = pickString(approval, ["status"]) ?? "PENDING";
-      return {
-        id: pickString(approval, ["id"]) ?? `approval-${Math.random().toString(36).slice(2, 8)}`,
+      return [{
+        id,
         kind: "approval" as const,
         title: pickString(approval, ["action_type"]) ?? "Approval request",
         detail:
@@ -236,10 +311,10 @@ function mapApprovalItems(payload: unknown) {
         status: asDashboardStatus(status),
         createdAt: toIsoTimestamp(approval.created_at),
         source: "approvals",
-        href: "/dashboard/orchestration",
+        href: "/dashboard/approvals",
         meta: pickString(approval, ["agent_id"]),
         approvalStatus: status,
-      };
+      }];
     })
     .filter((item) => (item.approvalStatus ?? "").toUpperCase() === "PENDING");
 }
@@ -247,12 +322,15 @@ function mapApprovalItems(payload: unknown) {
 function mapRuntimeItems(payload: unknown) {
   return asArray(payload)
     .filter(isRecord)
-    .map((agent) => {
+    .flatMap((agent) => {
+      const agentId = pickString(agent, ["agent_id"]);
+      if (!agentId) return [];
+
       const status = pickString(agent, ["status"]) ?? "unknown";
-      return {
-        id: pickString(agent, ["agent_id"]) ?? `runtime-${Math.random().toString(36).slice(2, 8)}`,
+      return [{
+        id: agentId,
         kind: "runtime" as const,
-        title: pickString(agent, ["agent_id"]) ?? "Supervised runtime",
+        title: agentId,
         detail:
           pickString(agent, ["error", "policy_name"]) ??
           `Supervisor status: ${status}`,
@@ -262,7 +340,7 @@ function mapRuntimeItems(payload: unknown) {
         href: "/dashboard/security",
         meta: pickString(agent, ["pid"]),
         runtimeStatus: status,
-      };
+      }];
     })
     .filter((item) => !["running", "active", "healthy"].includes((item.runtimeStatus ?? "").toLowerCase()));
 }
@@ -296,19 +374,26 @@ function mapGovernanceItem(payload: unknown): NotificationItem | null {
 }
 
 function mapWebhookItems(deliveries: Array<Record<string, unknown>>) {
-  return deliveries.map((delivery) => ({
-    id: pickString(delivery, ["id"]) ?? `webhook-${Math.random().toString(36).slice(2, 8)}`,
-    kind: "webhook" as const,
-    title: pickString(delivery, ["event"]) ?? "Webhook delivery failed",
-    detail:
-      pickString(delivery, ["error_message"]) ??
-      (pickNumber(delivery, ["status_code"]) ? `HTTP ${pickNumber(delivery, ["status_code"])}` : "Delivery failed"),
-    status: "error" as const,
-    createdAt: toIsoTimestamp(delivery.created_at ?? delivery.delivered_at),
-    source: "webhooks",
-    href: "/dashboard/webhooks",
-    meta: pickString(delivery, ["webhook_url", "webhook_id"]),
-  }));
+  return deliveries.flatMap((delivery) => {
+    const id = pickString(delivery, ["id"]);
+    if (!id) return [];
+
+    return [{
+      id,
+      kind: "webhook" as const,
+      title: pickString(delivery, ["event"]) ?? "Webhook delivery failed",
+      detail:
+        pickString(delivery, ["error_message"]) ??
+        (pickNumber(delivery, ["status_code"])
+          ? `HTTP ${pickNumber(delivery, ["status_code"])}`
+          : "Delivery failed"),
+      status: "error" as const,
+      createdAt: toIsoTimestamp(delivery.created_at ?? delivery.delivered_at),
+      source: "webhooks",
+      href: "/dashboard/webhooks",
+      meta: pickString(delivery, ["webhook_url", "webhook_id"]),
+    }];
+  });
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -318,25 +403,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const apiBaseUrl = getApiBaseUrl();
-    const authResponse = await authenticatedFetch(request, `${apiBaseUrl}/v1/auth/me`, {
-      cache: "no-store",
-    });
-    const authPayload = await authResponse.response
-      .json()
-      .catch(() => ({ detail: "Failed to fetch current operator" }));
-
-    if (!authResponse.response.ok) {
-      const nextResponse = NextResponse.json(authPayload, {
-        status: authResponse.response.status,
-      });
-
-      if (authResponse.tokenRefreshed && authResponse.refreshedTokens) {
-        applyAuthCookies(nextResponse, request, authResponse.refreshedTokens);
-      }
-
-      return nextResponse;
-    }
-
     const [alerts, approvals, governance, supervised, webhooks] = await Promise.all([
       fetchResource(
         request,
@@ -360,6 +426,28 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       ),
       fetchResource(request, `${apiBaseUrl}/v1/webhooks`, "Failed to fetch webhooks"),
     ]);
+    const baseResources = [alerts, approvals, governance, supervised, webhooks];
+
+    const unauthenticatedResource = baseResources.find(
+      (resource) => resource.status === "unauthenticated",
+    );
+    if (unauthenticatedResource) {
+      return accessFailureResponse(
+        request,
+        unauthenticatedResource,
+        baseResources,
+        "Dashboard notification authentication expired.",
+      );
+    }
+
+    if (baseResources.every((resource) => resource.status === "forbidden")) {
+      return accessFailureResponse(
+        request,
+        baseResources[0],
+        baseResources,
+        "Dashboard notification access was denied.",
+      );
+    }
 
     const webhooksList = normalizeCollection(webhooks.data, ["items", "webhooks", "data"])
       .filter(isRecord)
@@ -375,7 +463,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
         const result = await fetchResource(
           request,
-          `${apiBaseUrl}/v1/webhooks/${webhookId}/deliveries?success=false&limit=2`,
+          `${apiBaseUrl}/v1/webhooks/${encodeURIComponent(webhookId)}/deliveries?success=false&limit=2`,
           "Failed to fetch webhook deliveries",
         );
 
@@ -386,9 +474,70 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         };
       }),
     );
+    const deliveryResources = deliveryResults
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+      .map((entry) => entry.result);
+    const unauthenticatedDelivery = deliveryResources.find(
+      (resource) => resource.status === "unauthenticated",
+    );
+    if (unauthenticatedDelivery) {
+      return accessFailureResponse(
+        request,
+        unauthenticatedDelivery,
+        [...baseResources, ...deliveryResources],
+        "Dashboard notification authentication expired.",
+      );
+    }
 
+    const alertIdentifierFailures = countMissingIdentifiers(
+      alerts.data,
+      ["items", "alerts", "data"],
+      ["id"],
+    );
+    const approvalIdentifierFailures = countMissingIdentifiers(
+      approvals.data,
+      ["items", "data"],
+      ["id"],
+    );
+    const runtimeIdentifierFailures = countMissingIdentifiers(
+      supervised.data,
+      [],
+      ["agent_id"],
+    );
+    const activeWebhookIdentifierFailures = webhooksList.filter(
+      (webhook) => !pickString(webhook, ["id"]),
+    ).length;
+
+    const alertsSourceStatus: AggregateSourceStatus =
+      alerts.status !== "ok"
+        ? alerts.status
+        : hasCollectionPayload(alerts.data, ["items", "alerts", "data"])
+          ? alertIdentifierFailures > 0 ? "partial" : "ok"
+          : "error";
+    const approvalsSourceStatus: AggregateSourceStatus =
+      approvals.status !== "ok"
+        ? approvals.status
+        : hasCollectionPayload(approvals.data, ["items", "data"])
+          ? approvalIdentifierFailures > 0 ? "partial" : "ok"
+          : "error";
+    const runtimeSourceStatus: AggregateSourceStatus =
+      supervised.status !== "ok"
+        ? supervised.status
+        : Array.isArray(supervised.data)
+          ? runtimeIdentifierFailures > 0 ? "partial" : "ok"
+          : "error";
+    const governanceSourceStatus: AggregateSourceStatus =
+      governance.status !== "ok"
+        ? governance.status
+        : isRecord(governance.data)
+          ? "ok"
+          : "error";
     const alertItems = mapAlertItems(alerts.data);
     const approvalItems = mapApprovalItems(approvals.data);
+    const approvalTotalValue = isRecord(approvals.data)
+      ? pickNumber(approvals.data, ["total"]) ?? approvalItems.length
+      : approvalItems.length;
+    const approvalTotal = Math.max(0, Math.round(approvalTotalValue));
     const runtimeItems = supervised.status === "ok" ? mapRuntimeItems(supervised.data) : [];
     const governanceItem = governance.status === "ok" ? mapGovernanceItem(governance.data) : null;
 
@@ -410,6 +559,37 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       });
 
     const webhookItems = mapWebhookItems(webhookDeliveries);
+    const webhookDeliveryIdentifierFailures = deliveryResults.reduce((total, entry) => {
+      if (!entry || entry.result.status !== "ok") return total;
+      return total + countMissingIdentifiers(
+        entry.result.data,
+        ["items", "deliveries", "data"],
+        ["id"],
+      );
+    }, 0);
+    const webhookInventoryValid = hasCollectionPayload(webhooks.data, [
+      "items",
+      "webhooks",
+      "data",
+    ]);
+    const webhookDeliveryPartial =
+      activeWebhookIdentifierFailures > 0 ||
+      webhookDeliveryIdentifierFailures > 0 ||
+      deliveryResults.some((entry) => {
+        if (!entry) return false;
+        return (
+          entry.result.status !== "ok" ||
+          !hasCollectionPayload(entry.result.data, ["items", "deliveries", "data"])
+        );
+      });
+    const webhookSourceStatus: AggregateSourceStatus =
+      webhooks.status !== "ok"
+        ? webhooks.status
+        : !webhookInventoryValid
+          ? "error"
+        : webhookDeliveryPartial
+          ? "partial"
+          : "ok";
     const items = [
       ...alertItems,
       ...approvalItems,
@@ -426,25 +606,68 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       "Governance notifications are summarized from runtime status because the backend does not expose a decision-by-decision event feed yet.",
     ];
 
-    if (governance.status !== "ok") {
+    if (alertsSourceStatus !== "ok") {
       partials.push(
-        governance.error ??
-          "Governance runtime detail is unavailable for this operator session.",
+        alertIdentifierFailures > 0
+          ? `${alertIdentifierFailures} monitoring alert record${alertIdentifierFailures === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`
+          : alerts.error ?? "Monitoring alerts returned an invalid or unavailable payload.",
       );
     }
 
-    if (supervised.status !== "ok") {
+    if (approvalsSourceStatus !== "ok") {
       partials.push(
-        supervised.error ??
-          "Supervised runtime incidents are unavailable for this operator session.",
+        approvalIdentifierFailures > 0
+          ? `${approvalIdentifierFailures} approval record${approvalIdentifierFailures === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`
+          : approvals.error ?? "Pending approvals returned an invalid or unavailable payload.",
+      );
+    }
+
+    if (webhookSourceStatus !== "ok" && webhooks.status === "ok" && !webhookInventoryValid) {
+      partials.push("Webhook inventory returned an invalid payload.");
+    } else if (webhooks.status !== "ok") {
+      partials.push(webhooks.error ?? "Webhook inventory is unavailable for this operator session.");
+    }
+
+    if (governanceSourceStatus !== "ok") {
+      partials.push(
+        governance.error ??
+          "Governance runtime detail returned an invalid or unavailable payload.",
+      );
+    }
+
+    if (runtimeSourceStatus !== "ok") {
+      partials.push(
+        runtimeIdentifierFailures > 0
+          ? `${runtimeIdentifierFailures} supervised runtime record${runtimeIdentifierFailures === 1 ? " was" : "s were"} omitted because the upstream agent identifier was missing.`
+          : supervised.error ??
+            "Supervised runtime incidents returned an invalid or unavailable payload.",
+      );
+    }
+
+    if (activeWebhookIdentifierFailures > 0) {
+      partials.push(
+        `${activeWebhookIdentifierFailures} active webhook record${activeWebhookIdentifierFailures === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`,
+      );
+    }
+
+    if (webhookDeliveryIdentifierFailures > 0) {
+      partials.push(
+        `${webhookDeliveryIdentifierFailures} webhook delivery record${webhookDeliveryIdentifierFailures === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`,
       );
     }
 
     for (const deliveryResult of deliveryResults) {
-      if (deliveryResult?.result.status && deliveryResult.result.status !== "ok") {
+      if (!deliveryResult) continue;
+
+      const deliveryPayloadValid = hasCollectionPayload(deliveryResult.result.data, [
+        "items",
+        "deliveries",
+        "data",
+      ]);
+      if (deliveryResult.result.status !== "ok" || !deliveryPayloadValid) {
         partials.push(
           deliveryResult.result.error ??
-            `Webhook delivery history for ${deliveryResult.webhookId} is unavailable.`,
+            `Webhook delivery history for ${deliveryResult.webhookId} returned an invalid or unavailable payload.`,
         );
       }
     }
@@ -456,27 +679,30 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const nextResponse = NextResponse.json({
       generatedAt: new Date().toISOString(),
       summary: {
-        alerts: alertItems.length,
-        approvals: approvalItems.length,
-        webhookFailures: webhookItems.length,
-        runtimeIncidents: runtimeItems.length,
+        alerts: alertsSourceStatus === "ok" ? alertItems.length : null,
+        approvals: approvalsSourceStatus === "ok" ? approvalTotal : null,
+        webhookFailures: webhookSourceStatus === "ok" ? webhookItems.length : null,
+        runtimeIncidents: runtimeSourceStatus === "ok" ? runtimeItems.length : null,
         governancePendingApprovals: governancePending,
+      },
+      sources: {
+        alerts: alertsSourceStatus,
+        approvals: approvalsSourceStatus,
+        webhooks: webhookSourceStatus,
+        runtime: runtimeSourceStatus,
+        governance: governanceSourceStatus,
       },
       items,
       partials,
     });
 
-    const refreshedTokens =
-      authResponse.refreshedTokens ||
-      pickRefreshedTokens([
+    const refreshedTokens = pickRefreshedTokens([
         alerts,
         approvals,
         governance,
         supervised,
         webhooks,
-        ...deliveryResults
-          .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
-          .map((entry) => entry.result),
+        ...deliveryResources,
       ]);
 
     if (refreshedTokens) {

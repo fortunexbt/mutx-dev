@@ -27,11 +27,12 @@ Schema adaptation only. The current upstream package is quarantined pending
 maintainer security review and is not required by this module.
 """
 
-import warnings
 from datetime import datetime
 from typing import Optional
 
 import httpx
+
+from mutx._http import api_path
 
 
 class Observability:
@@ -53,12 +54,10 @@ class Observability:
             )
 
     def _require_async_client(self) -> None:
-        if isinstance(self._client, httpx.Client):
-            warnings.warn(
-                "Async methods should be used with MutxAsyncClient or "
-                "using the async-prefixed methods on the sync client.",
-                DeprecationWarning,
-                stacklevel=2,
+        if not isinstance(self._client, httpx.AsyncClient):
+            raise RuntimeError(
+                "This async resource helper requires an async httpx.AsyncClient "
+                "and an `a*` method call."
             )
 
     def report_run(self, run: dict) -> dict:
@@ -79,7 +78,7 @@ class Observability:
             The created MutxRun with full details including run_id
         """
         self._require_sync_client()
-        response = self._client.post("/v1/observability/runs", json=run)
+        response = self._client.post("observability/runs", json=run)
         response.raise_for_status()
         return response.json()
 
@@ -88,7 +87,7 @@ class Observability:
         Async version of report_run.
         """
         self._require_async_client()
-        response = await self._client.post("/v1/observability/runs", json=run)
+        response = await self._client.post("observability/runs", json=run)
         response.raise_for_status()
         return response.json()
 
@@ -126,7 +125,7 @@ class Observability:
         if trigger:
             params["trigger"] = trigger
 
-        response = self._client.get("/v1/observability/runs", params=params)
+        response = self._client.get("observability/runs", params=params)
         response.raise_for_status()
         result = response.json()
         # Backwards-compat: older servers may not include has_more
@@ -156,7 +155,7 @@ class Observability:
         if trigger:
             params["trigger"] = trigger
 
-        response = await self._client.get("/v1/observability/runs", params=params)
+        response = await self._client.get("observability/runs", params=params)
         response.raise_for_status()
         result = response.json()
         # Backwards-compat: older servers may not include has_more
@@ -174,7 +173,7 @@ class Observability:
             MutxRunDetailResponse with steps array
         """
         self._require_sync_client()
-        response = self._client.get(f"/v1/observability/runs/{run_id}")
+        response = self._client.get(api_path("observability/runs/{run_id}", run_id=run_id))
         response.raise_for_status()
         return response.json()
 
@@ -183,7 +182,7 @@ class Observability:
         Async version of get_run.
         """
         self._require_async_client()
-        response = await self._client.get(f"/v1/observability/runs/{run_id}")
+        response = await self._client.get(api_path("observability/runs/{run_id}", run_id=run_id))
         response.raise_for_status()
         return response.json()
 
@@ -202,7 +201,7 @@ class Observability:
         """
         self._require_sync_client()
         response = self._client.post(
-            f"/v1/observability/runs/{run_id}/steps",
+            api_path("observability/runs/{run_id}/steps", run_id=run_id),
             json=steps,
         )
         response.raise_for_status()
@@ -214,7 +213,7 @@ class Observability:
         """
         self._require_async_client()
         response = await self._client.post(
-            f"/v1/observability/runs/{run_id}/steps",
+            api_path("observability/runs/{run_id}/steps", run_id=run_id),
             json=steps,
         )
         response.raise_for_status()
@@ -231,7 +230,7 @@ class Observability:
             MutxEval dict or None if not evaluated
         """
         self._require_sync_client()
-        response = self._client.get(f"/v1/observability/runs/{run_id}/eval")
+        response = self._client.get(api_path("observability/runs/{run_id}/eval", run_id=run_id))
         if response.status_code == 404:
             return None
         response.raise_for_status()
@@ -242,7 +241,9 @@ class Observability:
         Async version of get_eval.
         """
         self._require_async_client()
-        response = await self._client.get(f"/v1/observability/runs/{run_id}/eval")
+        response = await self._client.get(
+            api_path("observability/runs/{run_id}/eval", run_id=run_id)
+        )
         if response.status_code == 404:
             return None
         response.raise_for_status()
@@ -272,7 +273,7 @@ class Observability:
         """
         self._require_sync_client()
         response = self._client.post(
-            f"/v1/observability/runs/{run_id}/eval",
+            api_path("observability/runs/{run_id}/eval", run_id=run_id),
             json=eval_data,
         )
         response.raise_for_status()
@@ -284,7 +285,7 @@ class Observability:
         """
         self._require_async_client()
         response = await self._client.post(
-            f"/v1/observability/runs/{run_id}/eval",
+            api_path("observability/runs/{run_id}/eval", run_id=run_id),
             json=eval_data,
         )
         response.raise_for_status()
@@ -301,7 +302,9 @@ class Observability:
             MutxProvenance dict or None
         """
         self._require_sync_client()
-        response = self._client.get(f"/v1/observability/runs/{run_id}/provenance")
+        response = self._client.get(
+            api_path("observability/runs/{run_id}/provenance", run_id=run_id)
+        )
         if response.status_code == 404:
             return None
         response.raise_for_status()
@@ -312,7 +315,9 @@ class Observability:
         Async version of get_provenance.
         """
         self._require_async_client()
-        response = await self._client.get(f"/v1/observability/runs/{run_id}/provenance")
+        response = await self._client.get(
+            api_path("observability/runs/{run_id}/provenance", run_id=run_id)
+        )
         if response.status_code == 404:
             return None
         response.raise_for_status()
@@ -355,7 +360,7 @@ class Observability:
             payload["error"] = error
 
         response = self._client.patch(
-            f"/v1/observability/runs/{run_id}/status",
+            api_path("observability/runs/{run_id}/status", run_id=run_id),
             json=payload,
         )
         response.raise_for_status()
@@ -387,7 +392,7 @@ class Observability:
             payload["error"] = error
 
         response = await self._client.patch(
-            f"/v1/observability/runs/{run_id}/status",
+            api_path("observability/runs/{run_id}/status", run_id=run_id),
             json=payload,
         )
         response.raise_for_status()

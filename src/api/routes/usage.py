@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.database import get_db
 from src.api.models import UsageEvent, User
 from src.api.models.schemas import UsageEventCreate, UsageEventResponse
-from src.api.auth.dependencies import get_current_user
+from src.api.auth.dependencies import require_roles
 from src.api.services.usage import track_usage
 
 router = APIRouter(prefix="/usage", tags=["usage"])
@@ -33,7 +33,7 @@ class UsageEventListResponse(BaseModel):
 async def create_usage_event(
     event_data: UsageEventCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("DEVELOPER")),
 ):
     """Record a usage event for tracking API usage and quotas."""
     usage_event = await track_usage(
@@ -58,7 +58,7 @@ async def list_usage_events(
     event_type: Optional[str] = Query(None),
     resource_id: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     """List usage events for the authenticated user."""
     # Filter by current user's events
@@ -92,7 +92,7 @@ async def list_usage_events(
 async def get_usage_event(
     event_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     """Get a specific usage event."""
     query = select(UsageEvent).where(

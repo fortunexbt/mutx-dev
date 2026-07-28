@@ -123,11 +123,11 @@ def test_templates_list_hits_route_and_maps_results() -> None:
         return httpx.Response(200, json=[_template_payload(), _template_payload(name="Two")])
 
     with httpx.Client(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         templates = Templates(client).list()
 
-    assert captured["path"] == "/templates"
+    assert captured["path"] == "/v1/templates"
     assert len(templates) == 2
     assert templates[0].name == "Test Template"
     assert templates[1].name == "Two"
@@ -142,25 +142,25 @@ async def test_templates_alist_hits_route_and_maps_results() -> None:
         return httpx.Response(200, json=[_template_payload(name="Async Template")])
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         templates = await Templates(client).alist()
 
-    assert captured["path"] == "/templates"
+    assert captured["path"] == "/v1/templates"
     assert len(templates) == 1
     assert templates[0].name == "Async Template"
 
 
 @pytest.mark.asyncio
 async def test_templates_list_rejects_async_client() -> None:
-    async with httpx.AsyncClient(base_url="https://api.test") as client:
+    async with httpx.AsyncClient(base_url="https://api.test/v1/") as client:
         with pytest.raises(RuntimeError, match="sync httpx.Client"):
             Templates(client).list()
 
 
 @pytest.mark.asyncio
 async def test_templates_alist_rejects_sync_client() -> None:
-    with httpx.Client(base_url="https://api.test") as client:
+    with httpx.Client(base_url="https://api.test/v1/") as client:
         with pytest.raises(RuntimeError, match="async httpx.AsyncClient"):
             await Templates(client).alist()
 
@@ -180,7 +180,7 @@ def test_templates_deploy_hits_route_and_maps_payload() -> None:
         return httpx.Response(200, json=_deploy_payload(template_id))
 
     with httpx.Client(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         resp = Templates(client).deploy(
             template_id=template_id,
@@ -194,7 +194,7 @@ def test_templates_deploy_hits_route_and_maps_payload() -> None:
             runtime_metadata={"env": "test"},
         )
 
-    assert captured["path"] == f"/templates/{template_id}/deploy"
+    assert captured["path"] == f"/v1/templates/{template_id}/deploy"
     body = json.loads(captured["body"])
     assert body["name"] == "My Agent"
     assert body["description"] == "A description"
@@ -218,7 +218,7 @@ def test_templates_deploy_omits_optional_null_fields() -> None:
         return httpx.Response(200, json=_deploy_payload(template_id))
 
     with httpx.Client(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         Templates(client).deploy(template_id=template_id, name="Minimal Agent")
 
@@ -236,7 +236,7 @@ def test_templates_deploy_omits_optional_null_fields() -> None:
 
 @pytest.mark.asyncio
 async def test_templates_deploy_rejects_async_client() -> None:
-    async with httpx.AsyncClient(base_url="https://api.test") as client:
+    async with httpx.AsyncClient(base_url="https://api.test/v1/") as client:
         with pytest.raises(RuntimeError, match="sync httpx.Client"):
             Templates(client).deploy(template_id=str(uuid.uuid4()), name="Agent")
 
@@ -252,7 +252,7 @@ async def test_templates_adeploy_hits_route_and_maps_payload() -> None:
         return httpx.Response(200, json=_deploy_payload(template_id))
 
     async with httpx.AsyncClient(
-        base_url="https://api.test", transport=httpx.MockTransport(handler)
+        base_url="https://api.test/v1/", transport=httpx.MockTransport(handler)
     ) as client:
         resp = await Templates(client).adeploy(
             template_id=template_id,
@@ -260,7 +260,7 @@ async def test_templates_adeploy_hits_route_and_maps_payload() -> None:
             replicas=2,
         )
 
-    assert captured["path"] == f"/templates/{template_id}/deploy"
+    assert captured["path"] == f"/v1/templates/{template_id}/deploy"
     body = json.loads(captured["body"])
     assert body["name"] == "Async Agent"
     assert body["replicas"] == 2
@@ -269,6 +269,6 @@ async def test_templates_adeploy_hits_route_and_maps_payload() -> None:
 
 @pytest.mark.asyncio
 async def test_templates_adeploy_rejects_sync_client() -> None:
-    with httpx.Client(base_url="https://api.test") as client:
+    with httpx.Client(base_url="https://api.test/v1/") as client:
         with pytest.raises(RuntimeError, match="async httpx.AsyncClient"):
             await Templates(client).adeploy(template_id=str(uuid.uuid4()), name="Agent")

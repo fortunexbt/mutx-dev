@@ -105,6 +105,14 @@ def _failure(message: str) -> dict[str, Any]:
     return {"success": False, "error": message}
 
 
+def _expand_path_argument(value: Any, label: str) -> tuple[Path | None, str | None]:
+    if not isinstance(value, str) or not value.strip():
+        return None, f"{label} must be a non-empty string"
+    if "\0" in value:
+        return None, f"{label} contains an unsupported null character"
+    return Path(value).expanduser(), None
+
+
 def _run_applescript(script: str) -> None:
     subprocess.run(["osascript", "-e", script], check=True, capture_output=True, text=True)
 
@@ -591,20 +599,49 @@ def governance_restart() -> dict[str, Any]:
     return _success({"socket_path": FAREMESH_SOCKET_PATH})
 
 
-def finder_reveal(path: str) -> dict[str, Any]:
-    expanded = Path(path).expanduser()
-    if not expanded.exists():
-        return _failure(f"Path does not exist: {path}")
-    subprocess.run(["open", "-R", str(expanded)], check=False)
+def finder_reveal(path: Any = None) -> dict[str, Any]:
+    expanded, error = _expand_path_argument(path, "Finder path")
+    if error or expanded is None:
+        return _failure(error or "Finder path is invalid")
+
+    try:
+        if not expanded.exists():
+            return _failure(f"Path does not exist: {path}")
+        result = subprocess.run(
+            ["open", "-R", str(expanded)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        return _failure(f"Could not reveal path in Finder: {exc}")
+
+    if result.returncode != 0:
+        return _failure("Finder could not reveal the requested path")
     return _success()
 
 
-def shell_open_terminal(cwd: str | None = None) -> dict[str, Any]:
+def shell_open_terminal(cwd: Any = None) -> dict[str, Any]:
+    expanded: Path | None = None
+    if cwd is not None:
+        expanded, error = _expand_path_argument(cwd, "Terminal working directory")
+        if error or expanded is None:
+            return _failure(error or "Terminal working directory is invalid")
+
     try:
-        _open_command_in_terminal(["pwd"], cwd=cwd)
-        return _success({"cwd": str(Path(cwd).expanduser()) if cwd else None})
-    except Exception as exc:  # noqa: BLE001
-        return _failure(str(exc))
+        if expanded is not None and (not expanded.exists() or not expanded.is_dir()):
+            return _failure(f"Terminal working directory does not exist: {cwd}")
+
+        command = ["open", "-a", "Terminal"]
+        if expanded is not None:
+            command.append(str(expanded))
+        result = subprocess.run(command, check=False, capture_output=True, text=True)
+    except OSError as exc:
+        return _failure(f"Could not open Terminal: {exc}")
+
+    if result.returncode != 0:
+        return _failure("Terminal could not open the requested working directory")
+    return _success({"cwd": str(expanded) if expanded is not None else None})
 
 
 def dialog_choose_workspace() -> dict[str, Any]:

@@ -16,7 +16,7 @@ type AuthTokens = {
   expires_in: number;
 };
 
-type ResourceStatus = "ok" | "auth_error" | "error";
+type ResourceStatus = "ok" | "partial" | "auth_error" | "error";
 
 type ResourceResult = {
   status: ResourceStatus;
@@ -43,6 +43,12 @@ function normalizeCollection(payload: unknown, keys: string[] = ["items", "data"
   }
 
   return [];
+}
+
+function hasCollection(payload: unknown, keys: string[]) {
+  if (Array.isArray(payload)) return true;
+  if (!isRecord(payload)) return false;
+  return keys.some((key) => Array.isArray(payload[key]));
 }
 
 function pickString(record: Record<string, unknown>, keys: string[]) {
@@ -161,8 +167,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       overview.status === "ok" && isRecord(overview.data) && isRecord(overview.data.assistant)
         ? overview.data.assistant
         : null;
-    const hasAssistant =
+    const overviewPayloadValid =
       overview.status === "ok" &&
+      isRecord(overview.data) &&
+      typeof overview.data.has_assistant === "boolean" &&
+      (overview.data.has_assistant === false || Boolean(assistantRecord));
+    const hasAssistant =
+      overviewPayloadValid &&
       isRecord(overview.data) &&
       Boolean(overview.data.has_assistant) &&
       Boolean(assistantRecord);
@@ -172,7 +183,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       ? await Promise.all([
           fetchResource(
             request,
-            `${apiBaseUrl}/v1/assistant/${agentId}/channels`,
+            `${apiBaseUrl}/v1/assistant/${encodeURIComponent(agentId)}/channels`,
             "Failed to fetch assistant channels",
           ),
           fetchResource(
@@ -186,50 +197,82 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           { status: "ok", statusCode: 200, data: null, error: null, tokenRefreshed: false } as ResourceResult,
         ];
 
-    const channels = (
-      channelsResult.status === "ok"
+    const overviewChannelsValid = Boolean(
+      assistantRecord && hasCollection(assistantRecord.channels, ["items", "data"]),
+    );
+    const liveChannelsValid = hasAssistant && agentId
+      ? hasCollection(channelsResult.data, ["items", "data"])
+      : true;
+    const sessionCollectionValid = hasAssistant && agentId
+      ? hasCollection(sessionsResult.data, ["sessions", "items", "data"])
+      : true;
+    const channelRecords = (
+      channelsResult.status === "ok" && liveChannelsValid
         ? normalizeCollection(channelsResult.data, ["items", "data"])
-        : assistantRecord
+        : overviewChannelsValid && assistantRecord
           ? normalizeCollection(assistantRecord.channels, ["items", "data"])
           : []
-    )
-      .filter(isRecord)
-      .map((channel) => {
-        const channelId = pickString(channel, ["id"]) ?? "unknown";
-        const sessions = normalizeCollection(sessionsResult.data, ["sessions", "items", "data"])
-          .filter(isRecord)
-          .filter((session) => pickString(session, ["channel"]) === channelId);
-        const activeSessions = sessions.filter((session) => Boolean(session.active)).length;
-        const latestActivity = sessions.reduce<string | null>((latest, session) => {
-          const candidate = toIsoTimestamp(session.last_activity ?? session.lastActivity);
-          if (!candidate) return latest;
-          if (!latest) return candidate;
-          return new Date(candidate).getTime() > new Date(latest).getTime() ? candidate : latest;
-        }, null);
-        const sources = Array.from(
-          new Set(
-            sessions
-              .map((session) => pickString(session, ["source"]))
-              .filter((value): value is string => Boolean(value)),
-          ),
-        );
+    ).filter(isRecord);
+    const sessionRecords = normalizeCollection(sessionsResult.data, ["sessions", "items", "data"])
+      .filter(isRecord);
+    const missingChannelIds = channelRecords.filter(
+      (channel) => !pickString(channel, ["id"]),
+    ).length;
+    const sessionsMissingChannels = sessionRecords.filter(
+      (session) => !pickString(session, ["channel"]),
+    ).length;
+    const channelsComplete =
+      overviewPayloadValid &&
+      (!hasAssistant ||
+        (Boolean(agentId) &&
+          channelsResult.status === "ok" &&
+          liveChannelsValid &&
+          missingChannelIds === 0));
+    const sessionsComplete =
+      overviewPayloadValid &&
+      (!hasAssistant ||
+        (Boolean(agentId) &&
+          sessionsResult.status === "ok" &&
+          sessionCollectionValid &&
+          sessionsMissingChannels === 0));
 
-        return {
-          id: channelId,
-          label: pickString(channel, ["label"]) ?? channelId,
-          enabled: Boolean(channel.enabled),
-          mode: pickString(channel, ["mode"]) ?? "unknown",
-          allowFrom: Array.isArray(channel.allow_from)
-            ? channel.allow_from.filter(
-                (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
-              )
-            : [],
-          sessionCount: sessions.length,
-          activeSessions,
-          latestActivity,
-          sources,
-        };
-      });
+    const channels = channelRecords.flatMap((channel) => {
+      const channelId = pickString(channel, ["id"]);
+      if (!channelId) return [];
+      const channelSessions = sessionRecords.filter(
+        (session) => pickString(session, ["channel"]) === channelId,
+      );
+      const activeSessions = channelSessions.filter((session) => Boolean(session.active)).length;
+      const latestActivity = channelSessions.reduce<string | null>((latest, session) => {
+        const candidate = toIsoTimestamp(session.last_activity ?? session.lastActivity);
+        if (!candidate) return latest;
+        if (!latest) return candidate;
+        return new Date(candidate).getTime() > new Date(latest).getTime() ? candidate : latest;
+      }, null);
+      const sources = Array.from(
+        new Set(
+          channelSessions
+            .map((session) => pickString(session, ["source"]))
+            .filter((value): value is string => Boolean(value)),
+        ),
+      );
+
+      return [{
+        id: channelId,
+        label: pickString(channel, ["label"]) ?? channelId,
+        enabled: Boolean(channel.enabled),
+        mode: pickString(channel, ["mode"]) ?? "unknown",
+        allowFrom: Array.isArray(channel.allow_from)
+          ? channel.allow_from.filter(
+              (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
+            )
+          : [],
+        sessionCount: channelSessions.length,
+        activeSessions,
+        latestActivity,
+        sources,
+      }];
+    });
 
     const sessionSourceMap = new Map<string, number>();
     for (const session of normalizeCollection(sessionsResult.data, ["sessions", "items", "data"]).filter(
@@ -243,6 +286,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     if (overview.status !== "ok") {
       partials.push(overview.error ?? "Assistant overview is unavailable.");
+    } else if (!overviewPayloadValid) {
+      partials.push("Assistant overview returned an invalid envelope.");
     }
 
     if (hasAssistant && channelsResult.status !== "ok") {
@@ -258,10 +303,37 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           "Session activity is unavailable, so live channel counts are partial.",
       );
     }
+    if (hasAssistant && !agentId) {
+      partials.push(
+        "Assistant overview did not publish an agent identifier, so channel and session totals are unavailable.",
+      );
+    }
+    if (hasAssistant && channelsResult.status === "ok" && !liveChannelsValid) {
+      partials.push("Assistant channels returned an invalid collection envelope.");
+    }
+    if (hasAssistant && sessionsResult.status === "ok" && !sessionCollectionValid) {
+      partials.push("Assistant sessions returned an invalid collection envelope.");
+    }
+    if (missingChannelIds > 0) {
+      partials.push(
+        `${missingChannelIds} channel record${missingChannelIds === 1 ? " was" : "s were"} omitted because the upstream identifier was missing.`,
+      );
+    }
+    if (sessionsMissingChannels > 0) {
+      partials.push(
+        `${sessionsMissingChannels} session record${sessionsMissingChannels === 1 ? " was" : "s were"} omitted from channel counts because the upstream channel identifier was missing.`,
+      );
+    }
 
     const nextResponse = NextResponse.json({
       generatedAt: new Date().toISOString(),
       hasAssistant,
+      sourceStatus: {
+        overview:
+          overview.status === "ok" && !overviewPayloadValid ? "partial" : overview.status,
+        channels: channelsComplete ? "ok" : "partial",
+        sessions: sessionsComplete ? "ok" : "partial",
+      },
       assistant: hasAssistant && assistantRecord
         ? {
             agentId,
@@ -281,11 +353,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           }
         : null,
       summary: {
-        configuredChannels: channels.length,
-        enabledChannels: channels.filter((channel) => channel.enabled).length,
-        liveChannels: channels.filter((channel) => channel.activeSessions > 0).length,
-        activeSessions: channels.reduce((sum, channel) => sum + channel.activeSessions, 0),
-        sources: sessionSourceMap.size,
+        configuredChannels: channelsComplete ? channels.length : null,
+        enabledChannels: channelsComplete
+          ? channels.filter((channel) => channel.enabled).length
+          : null,
+        liveChannels: channelsComplete && sessionsComplete
+          ? channels.filter((channel) => channel.activeSessions > 0).length
+          : null,
+        activeSessions: channelsComplete && sessionsComplete
+          ? channels.reduce((sum, channel) => sum + channel.activeSessions, 0)
+          : null,
+        sources: sessionsComplete ? sessionSourceMap.size : null,
       },
       channels,
       sessionSources: Array.from(sessionSourceMap.entries()).map(([source, count]) => ({

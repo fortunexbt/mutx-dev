@@ -49,7 +49,11 @@ def pause_lane(
     if auto_resume_after_seconds:
         try:
             resume_at_ts = datetime.now(timezone.utc).timestamp() + auto_resume_after_seconds
-            resume_at = datetime.fromtimestamp(resume_at_ts, timezone.utc).isoformat().replace("+00:00", "Z")
+            resume_at = (
+                datetime.fromtimestamp(resume_at_ts, timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z")
+            )
         except (OverflowError, OSError, ValueError):
             resume_at = None
     lane_state.update(
@@ -69,7 +73,9 @@ def pause_lane(
     return payload
 
 
-def resume_lane(payload: dict[str, Any], lane: str, *, resumed_by: str | None = None) -> dict[str, Any]:
+def resume_lane(
+    payload: dict[str, Any], lane: str, *, resumed_by: str | None = None
+) -> dict[str, Any]:
     lanes = payload.setdefault("lanes", {})
     lane_state = lanes.setdefault(lane, {})
     previous_reason = lane_state.get("reason")
@@ -86,7 +92,9 @@ def resume_lane(payload: dict[str, Any], lane: str, *, resumed_by: str | None = 
         }
     )
     if previous_reason == "quota_exceeded":
-        lane_state["auto_resume_count"] = int(lane_state.get("auto_resume_count") or 0) + (1 if (resumed_by or "manual") == "auto" else 0)
+        lane_state["auto_resume_count"] = int(lane_state.get("auto_resume_count") or 0) + (
+            1 if (resumed_by or "manual") == "auto" else 0
+        )
     return payload
 
 

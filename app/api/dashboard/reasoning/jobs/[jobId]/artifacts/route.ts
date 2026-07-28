@@ -23,7 +23,7 @@ export async function POST(
     const formData = await request.formData()
     const { response, tokenRefreshed, refreshedTokens } = await authenticatedFetch(
       request,
-      `${getApiBaseUrl()}/v1/reasoning/jobs/${jobId}/artifacts`,
+      `${getApiBaseUrl()}/v1/reasoning/jobs/${encodeURIComponent(jobId)}/artifacts`,
       {
         method: 'POST',
         body: formData,

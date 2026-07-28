@@ -24,6 +24,8 @@ from datetime import datetime
 import click
 
 from cli.config import CLIConfig, get_client
+from cli.errors import CLIServiceError
+from cli.services.observability import ObservabilityService
 
 
 def _get_config() -> CLIConfig:
@@ -31,9 +33,8 @@ def _get_config() -> CLIConfig:
     return ctx.obj["config"]
 
 
-def _get_client_instance():
-    config = _get_config()
-    return get_client(config)
+def _service() -> ObservabilityService:
+    return ObservabilityService(config=_get_config(), client_factory=get_client)
 
 
 @click.group(name="observability")
@@ -66,23 +67,16 @@ def list_runs(
     output_json: bool,
 ):
     """List agent runs with optional filters."""
-    client = _get_client_instance()
-
-    params = {"skip": skip, "limit": limit}
-    if agent_id:
-        params["agent_id"] = agent_id
-    if status:
-        params["status"] = status
-    if runtime:
-        params["runtime"] = runtime
-    if trigger:
-        params["trigger"] = trigger
-
     try:
-        response = client._client.get("/v1/observability/runs", params=params)
-        response.raise_for_status()
-        data = response.json()
-    except Exception as exc:
+        data = _service().list_runs_page(
+            skip=skip,
+            limit=limit,
+            agent_id=agent_id,
+            status=status,
+            runtime=runtime,
+            trigger=trigger,
+        )
+    except CLIServiceError as exc:
         click.echo(f"Error fetching runs: {exc}", err=True)
         return
 
@@ -125,13 +119,9 @@ def list_runs(
 @click.option("--steps", is_flag=True, help="Show step details")
 def show_run(run_id: str, output_json: bool, steps: bool):
     """Show detailed information about a run."""
-    client = _get_client_instance()
-
     try:
-        response = client._client.get(f"/v1/observability/runs/{run_id}")
-        response.raise_for_status()
-        run = response.json()
-    except Exception as exc:
+        run = _service().get_run(run_id)
+    except CLIServiceError as exc:
         click.echo(f"Error fetching run: {exc}", err=True)
         return
 
@@ -278,8 +268,6 @@ def submit_eval(
         click.echo("Error: score must be between 0 and 100", err=True)
         return
 
-    client = _get_client_instance()
-
     eval_data = {
         "pass": passed,
         "score": score,
@@ -298,13 +286,8 @@ def submit_eval(
         eval_data["actual_outcome"] = actual
 
     try:
-        response = client._client.post(
-            f"/v1/observability/runs/{run_id}/eval",
-            json=eval_data,
-        )
-        response.raise_for_status()
-        result = response.json()
-    except Exception as exc:
+        result = _service().submit_eval(run_id, eval_data)
+    except CLIServiceError as exc:
         click.echo(f"Error submitting eval: {exc}", err=True)
         return
 
@@ -324,17 +307,14 @@ def submit_eval(
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON")
 def show_eval(run_id: str, output_json: bool):
     """Show the evaluation for a run."""
-    client = _get_client_instance()
-
     try:
-        response = client._client.get(f"/v1/observability/runs/{run_id}/eval")
-        if response.status_code == 404:
-            click.echo(f"No evaluation found for run {run_id}.")
-            return
-        response.raise_for_status()
-        eval_data = response.json()
-    except Exception as exc:
+        eval_data = _service().get_eval(run_id)
+    except CLIServiceError as exc:
         click.echo(f"Error fetching eval: {exc}", err=True)
+        return
+
+    if eval_data is None:
+        click.echo(f"No evaluation found for run {run_id}.")
         return
 
     if output_json:
@@ -372,17 +352,14 @@ def provenance_group():
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON")
 def show_provenance(run_id: str, output_json: bool):
     """Show the provenance record for a run."""
-    client = _get_client_instance()
-
     try:
-        response = client._client.get(f"/v1/observability/runs/{run_id}/provenance")
-        if response.status_code == 404:
-            click.echo(f"No provenance record found for run {run_id}.")
-            return
-        response.raise_for_status()
-        prov = response.json()
-    except Exception as exc:
+        prov = _service().get_provenance(run_id)
+    except CLIServiceError as exc:
         click.echo(f"Error fetching provenance: {exc}", err=True)
+        return
+
+    if prov is None:
+        click.echo(f"No provenance record found for run {run_id}.")
         return
 
     if output_json:

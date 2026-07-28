@@ -7,6 +7,7 @@ PII detection, toxicity detection, and custom regex-based blocking.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
@@ -165,19 +166,99 @@ class RegexBlocklistGuardrail:
 class ToxicityGuardrail:
     """Guardrail for toxicity detection via external API.
 
-    If toxicity_api_url is not configured, returns allow.
-    This is a stub implementation that can be extended to call
-    a real toxicity detection service.
+    Availability failures block by default. Callers that explicitly accept the
+    risk can set ``fail_open_on_unavailable=True`` and receive a warning result
+    that includes the availability reason.
     """
 
-    def __init__(self, toxicity_api_url: str | None = None):
+    def __init__(
+        self,
+        toxicity_api_url: str | None = None,
+        *,
+        timeout: float = 10.0,
+        fail_open_on_unavailable: bool = False,
+    ):
         """Initialize toxicity guardrail.
 
         Args:
             toxicity_api_url: Optional URL for toxicity detection API.
-                              If None, all checks return allow.
+            timeout: Request timeout in seconds.
+            fail_open_on_unavailable: Allow with a warning when the service is
+                unavailable or returns an invalid response. Defaults to False.
         """
+        if timeout <= 0:
+            raise ValueError("timeout must be greater than zero")
+
         self.toxicity_api_url = toxicity_api_url
+        self.timeout = timeout
+        self.fail_open_on_unavailable = fail_open_on_unavailable
+
+    def _unavailable_result(self, reason: str) -> GuardrailResult:
+        message = f"Toxicity check unavailable: {reason}"
+        if self.fail_open_on_unavailable:
+            return GuardrailResult(
+                passed=True,
+                triggered_rule="toxicity_unavailable",
+                action="warn",
+                message=f"{message}; allowing because fail_open_on_unavailable=True",
+            )
+        return GuardrailResult(
+            passed=False,
+            triggered_rule="toxicity_unavailable",
+            action="block",
+            message=message,
+        )
+
+    @staticmethod
+    def _result_from_response(response: httpx.Response) -> GuardrailResult:
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise ValueError("response was not valid JSON") from exc
+
+        if not isinstance(data, Mapping):
+            raise ValueError("response must be a JSON object")
+
+        toxic = data.get("toxic")
+        if not isinstance(toxic, bool):
+            raise ValueError("response field 'toxic' must be a boolean")
+
+        reason = data.get("reason")
+        if reason is not None and not isinstance(reason, str):
+            raise ValueError("response field 'reason' must be a string")
+
+        if toxic:
+            return GuardrailResult(
+                passed=False,
+                triggered_rule="toxicity",
+                action="block",
+                message=reason or "Toxic content detected",
+            )
+
+        return GuardrailResult(
+            passed=True,
+            triggered_rule=None,
+            action="allow",
+            message="Toxicity check passed",
+        )
+
+    def _request(self, text: str, context: dict[str, Any]) -> httpx.Response:
+        if self.toxicity_api_url is None:
+            raise RuntimeError("toxicity API URL is not configured")
+        with httpx.Client(timeout=self.timeout) as client:
+            return client.post(
+                self.toxicity_api_url,
+                json={"text": text, "context": context},
+            )
+
+    async def _arequest(self, text: str, context: dict[str, Any]) -> httpx.Response:
+        if self.toxicity_api_url is None:
+            raise RuntimeError("toxicity API URL is not configured")
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            return await client.post(
+                self.toxicity_api_url,
+                json={"text": text, "context": context},
+            )
 
     def check(self, text: str, context: dict[str, Any]) -> GuardrailResult:
         """Check text for toxicity.
@@ -187,25 +268,20 @@ class ToxicityGuardrail:
             context: Additional context (unused).
 
         Returns:
-            GuardrailResult with allow if no API configured, otherwise
-            stub returns allow for future implementation.
+            GuardrailResult from the configured service, or an availability
+            result governed by ``fail_open_on_unavailable``.
         """
         if not self.toxicity_api_url:
-            return GuardrailResult(
-                passed=True,
-                triggered_rule=None,
-                action="allow",
-                message="Toxicity check not configured, allowing",
-            )
+            return self._unavailable_result("service URL is not configured")
 
-        # Stub implementation - in production, this would call the API
-        # For now, return allow since this is a stub
-        return GuardrailResult(
-            passed=True,
-            triggered_rule=None,
-            action="allow",
-            message="Toxicity check passed",
-        )
+        try:
+            response = self._request(text, context)
+            response.raise_for_status()
+            return self._result_from_response(response)
+        except httpx.HTTPError as exc:
+            return self._unavailable_result(f"request failed ({type(exc).__name__})")
+        except ValueError as exc:
+            return self._unavailable_result(f"invalid service response ({exc})")
 
     async def acheck(self, text: str, context: dict[str, Any]) -> GuardrailResult:
         """Async version of toxicity check.
@@ -215,48 +291,20 @@ class ToxicityGuardrail:
             context: Additional context.
 
         Returns:
-            GuardrailResult with allow if no API configured.
+            GuardrailResult with the same validation and availability semantics
+            as :meth:`check`.
         """
         if not self.toxicity_api_url:
-            return GuardrailResult(
-                passed=True,
-                triggered_rule=None,
-                action="allow",
-                message="Toxicity check not configured, allowing",
-            )
+            return self._unavailable_result("service URL is not configured")
 
-        # Stub implementation - would call external API in production
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
-                    self.toxicity_api_url,
-                    json={"text": text, "context": context},
-                )
-                response.raise_for_status()
-                data = response.json()
-
-                if data.get("toxic", False):
-                    return GuardrailResult(
-                        passed=False,
-                        triggered_rule="toxicity",
-                        action="block",
-                        message=data.get("reason", "Toxic content detected"),
-                    )
-
-                return GuardrailResult(
-                    passed=True,
-                    triggered_rule=None,
-                    action="allow",
-                    message="Toxicity check passed",
-                )
-        except httpx.HTTPError:
-            # On API error, fail open to avoid blocking legitimate requests
-            return GuardrailResult(
-                passed=True,
-                triggered_rule=None,
-                action="allow",
-                message="Toxicity check API error, allowing",
-            )
+            response = await self._arequest(text, context)
+            response.raise_for_status()
+            return self._result_from_response(response)
+        except httpx.HTTPError as exc:
+            return self._unavailable_result(f"request failed ({type(exc).__name__})")
+        except ValueError as exc:
+            return self._unavailable_result(f"invalid service response ({exc})")
 
 
 class GuardrailViolationError(Exception):

@@ -8,18 +8,29 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.database import get_db
-from src.api.auth.dependencies import get_current_user
+from src.api.auth.dependencies import require_roles
 from src.api.models import UsageEvent, Agent, User
+from src.api.models.numeric import require_finite_float
 from src.api.services.billing import get_current_billing_period, get_plan_credits, get_usage_credits
 
 router = APIRouter(prefix="/budgets", tags=["budgets"])
 logger = logging.getLogger(__name__)
+
+BILLING_INTEGRITY_ERROR = "Billing data is unavailable because numeric integrity checks failed"
+
+
+def _billing_value(value: object, *, path: str) -> float:
+    try:
+        return require_finite_float(value, path=path)
+    except (TypeError, ValueError, OverflowError) as exc:
+        logger.error("Rejected non-finite billing aggregate at %s", path)
+        raise HTTPException(status_code=503, detail=BILLING_INTEGRITY_ERROR) from exc
 
 
 class BudgetResponse(BaseModel):
@@ -86,16 +97,20 @@ def _safe_uuid(value: Optional[str]) -> uuid.UUID:
 @router.get("", response_model=BudgetResponse)
 async def get_budget(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     """Get the current user's monthly budget and credits."""
     billing_period_start, reset_date = get_current_billing_period()
-    credits_used = await get_usage_credits(
-        db,
-        current_user.id,
-        period_start=billing_period_start,
-        period_end=reset_date,
-    )
+    try:
+        credits_used = await get_usage_credits(
+            db,
+            current_user.id,
+            period_start=billing_period_start,
+            period_end=reset_date,
+        )
+    except (TypeError, ValueError, OverflowError) as exc:
+        logger.error("Rejected non-finite billing aggregate for user %s", current_user.id)
+        raise HTTPException(status_code=503, detail=BILLING_INTEGRITY_ERROR) from exc
 
     credits_total = get_plan_credits(current_user.plan)
     credits_remaining = max(0.0, credits_total - credits_used)
@@ -116,7 +131,7 @@ async def get_usage_breakdown(
     period_start: Optional[str] = Query(None),
     period_end: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("VIEWER", "DEVELOPER")),
 ):
     """Get detailed usage breakdown by agent and event type."""
     now = datetime.now(timezone.utc)
@@ -135,14 +150,21 @@ async def get_usage_breakdown(
     date_filter = and_(
         UsageEvent.user_id == current_user.id,
         UsageEvent.created_at >= period_start_dt,
-        UsageEvent.created_at <= period_end_dt,
+        UsageEvent.created_at < period_end_dt,
     )
 
-    # --- Total credits via SQL aggregate ---
-    total_result = await db.execute(
-        select(func.coalesce(func.sum(UsageEvent.credits_used), 0.0)).where(date_filter)
-    )
-    total_credits = float(total_result.scalar_one())
+    # Validate every source row before grouped SQL aggregates can hide or
+    # propagate a legacy non-finite value.
+    try:
+        total_credits = await get_usage_credits(
+            db,
+            current_user.id,
+            period_start=period_start_dt,
+            period_end=period_end_dt,
+        )
+    except (TypeError, ValueError, OverflowError) as exc:
+        logger.error("Rejected non-finite usage source data for user %s", current_user.id)
+        raise HTTPException(status_code=503, detail=BILLING_INTEGRITY_ERROR) from exc
 
     # --- Breakdown by event_type via SQL GROUP BY ---
     type_result = await db.execute(
@@ -158,7 +180,10 @@ async def get_usage_breakdown(
     usage_by_type = [
         UsageByType(
             event_type=row[0] or "unknown",
-            credits_used=round(float(row[1]), 2),
+            credits_used=round(
+                _billing_value(row[1], path=f"$.usage_by_type.{row[0] or 'unknown'}"),
+                2,
+            ),
             event_count=int(row[2]),
         )
         for row in type_rows
@@ -212,7 +237,10 @@ async def get_usage_breakdown(
 
         if agent_key not in agent_usage:
             agent_usage[agent_key] = {"credits": 0.0, "count": 0}
-        agent_usage[agent_key]["credits"] += float(credits)
+        agent_usage[agent_key]["credits"] += _billing_value(
+            credits,
+            path=f"$.usage_by_agent.{agent_key}",
+        )
         agent_usage[agent_key]["count"] += int(count)
 
     # Batch-resolve agent names (single query instead of N+1)
@@ -225,7 +253,10 @@ async def get_usage_breakdown(
     agent_name_map: dict[uuid.UUID, str] = {}
     if agent_uuids:
         agent_rows_db = await db.execute(
-            select(Agent.id, Agent.name).where(Agent.id.in_(agent_uuids))
+            select(Agent.id, Agent.name).where(
+                Agent.id.in_(agent_uuids),
+                Agent.user_id == current_user.id,
+            )
         )
         for row in agent_rows_db.all():
             agent_name_map[row[0]] = row[1]

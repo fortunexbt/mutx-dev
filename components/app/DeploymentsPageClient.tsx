@@ -37,12 +37,37 @@ import {
 import { DeploymentHistory } from "./DeploymentHistory";
 import { type components } from "@/app/types/api";
 
-type Deployment = components["schemas"]["DeploymentResponse"];
+export type DeploymentAction = "start" | "stop" | "restart" | "scale" | "terminate";
+export type DeploymentWithActions = components["schemas"]["DeploymentResponse"];
+export type DeploymentActionCapabilities = {
+  allowed_actions?: readonly DeploymentAction[];
+};
+
+type Deployment = DeploymentWithActions;
 type Agent = components["schemas"]["AgentResponse"];
+
+export function deploymentAllowsAction(
+  deployment: DeploymentActionCapabilities,
+  action: DeploymentAction,
+) {
+  return deployment.allowed_actions?.includes(action) ?? false;
+}
+
+export function deploymentErrorMessage(error: unknown, fallback: string) {
+  if (!(error instanceof ApiRequestError)) {
+    return fallback;
+  }
+
+  if (error.status === 401) return "Your session expired. Sign in again to operate deployments.";
+  if (error.status === 403) return "You do not have permission to operate this deployment.";
+  if (error.status === 404) return "This deployment no longer exists.";
+  if (error.status >= 500) return `The control plane could not complete this request. ${fallback}`;
+  return error.message || fallback;
+}
 
 function DeploymentCardSkeleton() {
   return (
-    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5 animate-pulse">
+    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5 motion-safe:animate-pulse motion-reduce:animate-none">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="h-5 w-48 rounded bg-white/10" />
@@ -69,13 +94,13 @@ interface DeploymentCardProps {
   onRestart: (id: string) => void;
   onStop: (id: string) => void;
   onStart: (id: string) => void;
-  onDelete: (id: string) => void;
+  onTerminate: (deployment: Deployment) => void;
   isProcessing: (id: string) => boolean;
   copiedId: string | null;
   onCopyId: (id: string) => void;
 }
 
-function DeploymentCard({ deployment, onRestart, onStop, onStart, onDelete, isProcessing, copiedId, onCopyId }: DeploymentCardProps) {
+function DeploymentCard({ deployment, onRestart, onStop, onStart, onTerminate, isProcessing, copiedId, onCopyId }: DeploymentCardProps) {
   const processing = isProcessing(deployment.id);
   const copied = copiedId === deployment.id;
 
@@ -88,6 +113,7 @@ function DeploymentCard({ deployment, onRestart, onStop, onStart, onDelete, isPr
               {deployment.id}
             </p>
             <button
+              type="button"
               onClick={() => onCopyId(deployment.id)}
               className="inline-flex items-center gap-1 rounded-full border border-[#293543] bg-[#10161d] px-2.5 py-1 text-[11px] text-slate-500 transition-colors hover:border-cyan-400/24 hover:text-cyan-300"
               title="Copy deployment ID"
@@ -110,22 +136,39 @@ function DeploymentCard({ deployment, onRestart, onStop, onStart, onDelete, isPr
         </LiveMiniStatGrid>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          className="inline-flex items-center gap-2 rounded-[12px] border border-[#293543] bg-[#0e141b] px-3 py-2 text-xs font-medium text-white transition hover:border-emerald-400/24 hover:bg-[#131c24] disabled:opacity-50"
-          onClick={() => onRestart(deployment.id)}
-          disabled={processing}
-        >
-          <RotateCcw className={`h-3.5 w-3.5 ${processing ? 'animate-spin' : ''}`} />
-          Restart
-        </button>
-        <button
-          className="inline-flex items-center gap-2 rounded-[12px] border border-[#293543] bg-[#0e141b] px-3 py-2 text-xs font-medium text-white transition hover:border-amber-400/24 hover:bg-[#131c24] disabled:opacity-50"
-          onClick={() => deployment.status === "running" ? onStop(deployment.id) : onStart(deployment.id)}
-          disabled={processing}
-        >
-          <Power className="h-3.5 w-3.5" />
-          {deployment.status === "running" ? "Stop" : "Start"}
-        </button>
+        {deploymentAllowsAction(deployment, "restart") ? (
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-[12px] border border-[#293543] bg-[#0e141b] px-3 py-2 text-xs font-medium text-white transition hover:border-emerald-400/24 hover:bg-[#131c24] disabled:opacity-50"
+            onClick={() => onRestart(deployment.id)}
+            disabled={processing}
+          >
+            <RotateCcw className={`h-3.5 w-3.5 ${processing ? "motion-safe:animate-spin motion-reduce:animate-none" : ""}`} />
+            Restart
+          </button>
+        ) : null}
+        {deploymentAllowsAction(deployment, "stop") ? (
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-[12px] border border-[#293543] bg-[#0e141b] px-3 py-2 text-xs font-medium text-white transition hover:border-amber-400/24 hover:bg-[#131c24] disabled:opacity-50"
+            onClick={() => onStop(deployment.id)}
+            disabled={processing}
+          >
+            <Power className="h-3.5 w-3.5" />
+            Stop
+          </button>
+        ) : null}
+        {deploymentAllowsAction(deployment, "start") ? (
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-[12px] border border-[#293543] bg-[#0e141b] px-3 py-2 text-xs font-medium text-white transition hover:border-emerald-400/24 hover:bg-[#131c24] disabled:opacity-50"
+            onClick={() => onStart(deployment.id)}
+            disabled={processing}
+          >
+            <Power className="h-3.5 w-3.5" />
+            Start
+          </button>
+        ) : null}
         <Link
           href={`/dashboard/logs?deploymentId=${encodeURIComponent(deployment.id)}`}
           className="inline-flex items-center gap-2 rounded-[12px] border border-[#293543] bg-[#0e141b] px-3 py-2 text-xs font-medium text-white transition hover:border-sky-300/24 hover:bg-[#131c24]"
@@ -134,14 +177,17 @@ function DeploymentCard({ deployment, onRestart, onStop, onStart, onDelete, isPr
           Logs
         </Link>
         <DeploymentHistory deploymentId={deployment.id} />
-        <button
-          className="inline-flex items-center gap-2 rounded-[12px] border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-xs font-medium text-rose-300 transition hover:bg-rose-400/20 disabled:opacity-50"
-          onClick={() => onDelete(deployment.id)}
-          disabled={processing}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-          Delete
-        </button>
+        {deploymentAllowsAction(deployment, "terminate") ? (
+          <button
+            type="button"
+            className="inline-flex min-h-11 items-center gap-2 rounded-[12px] border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-xs font-medium text-rose-300 transition hover:bg-rose-400/20 disabled:opacity-50"
+            onClick={() => onTerminate(deployment)}
+            disabled={processing}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Terminate
+          </button>
+        ) : null}
       </div>
     </article>
   );
@@ -212,7 +258,7 @@ function CreateDeploymentDialog({ open, onOpenChange, agents, onSubmit }: Create
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="rounded-[12px] border border-[#2e3946] bg-[#0d131a] px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-emerald-300/24"
+            className="min-h-11 rounded-[12px] border border-[#2e3946] bg-[#0d131a] px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-emerald-300/24"
           >
             Cancel
           </button>
@@ -220,11 +266,11 @@ function CreateDeploymentDialog({ open, onOpenChange, agents, onSubmit }: Create
             type="submit"
             form="create-deployment-form"
             disabled={submitting || !agentId || availableAgents.length === 0}
-            className="rounded-[12px] bg-emerald-400 px-4 py-2 text-sm font-medium text-[#071018] transition hover:bg-emerald-300 disabled:opacity-50"
+            className="min-h-11 rounded-[12px] bg-emerald-400 px-4 py-2 text-sm font-medium text-[#071018] transition hover:bg-emerald-300 disabled:opacity-50"
           >
             {submitting ? (
               <span className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" />
                 Creating...
               </span>
             ) : (
@@ -236,16 +282,17 @@ function CreateDeploymentDialog({ open, onOpenChange, agents, onSubmit }: Create
     >
       <form id="create-deployment-form" onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="rounded-[14px] border border-rose-400/20 bg-rose-400/10 p-3 text-sm text-rose-300">
+            <div role="alert" className="rounded-[14px] border border-rose-400/20 bg-rose-400/10 p-3 text-sm text-rose-300">
               {error}
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+            <label htmlFor="deployment-agent" className="block text-sm font-medium text-slate-300 mb-2">
               Select Agent
             </label>
             <select
+              id="deployment-agent"
               value={agentId}
               onChange={(e) => setAgentId(e.target.value)}
               className={fieldClassName}
@@ -264,10 +311,11 @@ function CreateDeploymentDialog({ open, onOpenChange, agents, onSubmit }: Create
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+            <label htmlFor="deployment-create-replicas" className="block text-sm font-medium text-slate-300 mb-2">
               Replicas
             </label>
             <input
+              id="deployment-create-replicas"
               type="number"
               min="1"
               max="10"
@@ -296,6 +344,9 @@ export function DeploymentsPageClient() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isMac] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [terminationTarget, setTerminationTarget] = useState<Deployment | null>(null);
+  const [terminationError, setTerminationError] = useState("");
+  const [actionNotice, setActionNotice] = useState("");
 
   const runningDeployments = deployments.filter(
     (d) => d.status === "running",
@@ -345,9 +396,7 @@ export function DeploymentsPageClient() {
       }
 
       setAuthRequired(false);
-      setError(
-        err instanceof Error ? err.message : "Failed to load deployments",
-      );
+      setError(deploymentErrorMessage(err, "Failed to load deployments."));
     }
   }
 
@@ -372,12 +421,17 @@ export function DeploymentsPageClient() {
   async function handleCreateDeployment(agentId: string, replicas: number) {
     setProcessingIds(prev => new Set(prev).add("create"));
     try {
-      await writeJson<Deployment>("/api/dashboard/deployments", {
+      await writeJson<unknown>("/api/dashboard/deployments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ agent_id: agentId, replicas }),
       });
       await loadDeployments();
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.status === 401) {
+        setAuthRequired(true);
+      }
+      throw new Error(deploymentErrorMessage(err, "Failed to create deployment."), { cause: err });
     } finally {
       setProcessingIds(prev => {
         const next = new Set(prev);
@@ -390,12 +444,13 @@ export function DeploymentsPageClient() {
   async function handleRestart(deploymentId: string) {
     setProcessingIds(prev => new Set(prev).add(deploymentId));
     try {
-      await writeJson<Deployment>(`/api/dashboard/deployments/${deploymentId}?action=restart`, {
+      await writeJson<unknown>(`/api/dashboard/deployments/${encodeURIComponent(deploymentId)}?action=restart`, {
         method: "POST",
       });
       await loadDeployments();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to restart deployment");
+      if (err instanceof ApiRequestError && err.status === 401) setAuthRequired(true);
+      setError(deploymentErrorMessage(err, "Failed to restart deployment."));
     } finally {
       setProcessingIds(prev => {
         const next = new Set(prev);
@@ -408,14 +463,15 @@ export function DeploymentsPageClient() {
   async function handleStop(deploymentId: string) {
     setProcessingIds(prev => new Set(prev).add(deploymentId));
     try {
-      await writeJson<Deployment>(`/api/dashboard/deployments/${deploymentId}?action=scale`, {
+      await writeJson<unknown>(`/api/dashboard/deployments/${encodeURIComponent(deploymentId)}?action=scale`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ replicas: 0 }),
       });
       await loadDeployments();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to stop deployment");
+      if (err instanceof ApiRequestError && err.status === 401) setAuthRequired(true);
+      setError(deploymentErrorMessage(err, "Failed to stop deployment."));
     } finally {
       setProcessingIds(prev => {
         const next = new Set(prev);
@@ -429,14 +485,15 @@ export function DeploymentsPageClient() {
     setProcessingIds(prev => new Set(prev).add(deploymentId));
     try {
       const deployment = deployments.find(d => d.id === deploymentId);
-      await writeJson<Deployment>(`/api/dashboard/deployments/${deploymentId}?action=scale`, {
+      await writeJson<unknown>(`/api/dashboard/deployments/${encodeURIComponent(deploymentId)}?action=scale`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ replicas: deployment?.replicas || 1 }),
       });
       await loadDeployments();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start deployment");
+      if (err instanceof ApiRequestError && err.status === 401) setAuthRequired(true);
+      setError(deploymentErrorMessage(err, "Failed to start deployment."));
     } finally {
       setProcessingIds(prev => {
         const next = new Set(prev);
@@ -446,19 +503,34 @@ export function DeploymentsPageClient() {
     }
   }
 
-  async function handleDelete(deploymentId: string) {
-    if (!confirm("Are you sure you want to delete this deployment? This action cannot be undone.")) {
-      return;
-    }
+  function requestTermination(deployment: Deployment) {
+    if (processingIds.has(deployment.id)) return;
+    setTerminationError("");
+    setActionNotice("");
+    setTerminationTarget(deployment);
+  }
+
+  async function handleTerminate() {
+    if (!terminationTarget || processingIds.has(terminationTarget.id)) return;
+
+    const deployment = terminationTarget;
+    const deploymentId = deployment.id;
 
     setProcessingIds(prev => new Set(prev).add(deploymentId));
+    setError("");
+    setTerminationError("");
     try {
-      await writeJson(`/api/dashboard/deployments/${deploymentId}`, {
+      await writeJson(`/api/dashboard/deployments/${encodeURIComponent(deploymentId)}`, {
         method: "DELETE",
       });
       await loadDeployments();
+      setActionNotice(`Terminated deployment ${deploymentId}.`);
+      setTerminationTarget(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete deployment");
+      if (err instanceof ApiRequestError && err.status === 401) setAuthRequired(true);
+      const message = deploymentErrorMessage(err, "Failed to terminate deployment.");
+      setTerminationError(message);
+      setError(message);
     } finally {
       setProcessingIds(prev => {
         const next = new Set(prev);
@@ -548,8 +620,79 @@ export function DeploymentsPageClient() {
         onSubmit={handleCreateDeployment}
       />
 
+      <DashboardDialog
+        open={Boolean(terminationTarget)}
+        onOpenChange={(open) => {
+          if (!open && terminationTarget && !processingIds.has(terminationTarget.id)) {
+            setTerminationTarget(null);
+            setTerminationError("");
+          }
+        }}
+        title="Terminate deployment"
+        description="End this deployment's runtime lifecycle permanently."
+        footer={
+          <>
+            <button
+              type="button"
+              data-autofocus
+              onClick={() => {
+                setTerminationTarget(null);
+                setTerminationError("");
+              }}
+              disabled={Boolean(terminationTarget && processingIds.has(terminationTarget.id))}
+              className="min-h-11 w-full rounded-[12px] border border-[#2e3946] bg-[#0d131a] px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-emerald-300/24 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleTerminate()}
+              disabled={Boolean(terminationTarget && processingIds.has(terminationTarget.id))}
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[12px] border border-rose-400/30 bg-rose-400/15 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-400/25 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            >
+              {terminationTarget && processingIds.has(terminationTarget.id) ? (
+                <>
+                  <Loader2 className="h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                  Terminating…
+                </>
+              ) : (
+                "Terminate Deployment"
+              )}
+            </button>
+          </>
+        }
+      >
+        <div
+          aria-busy={Boolean(terminationTarget && processingIds.has(terminationTarget.id))}
+          className="space-y-4 text-start"
+        >
+          <div className="rounded-[12px] border border-[#2e3946] bg-[#0b1017] p-3">
+            <p dir="ltr" className="break-all text-start text-sm font-semibold text-white">
+              {terminationTarget?.id}
+            </p>
+            <p dir="ltr" className="mt-1 break-all text-start text-xs text-slate-400">
+              Agent {terminationTarget?.agent_id} · {terminationTarget?.replicas} replicas
+            </p>
+          </div>
+          <p className="text-sm leading-6 text-slate-300">
+            Deployment history will remain available, but this deployment cannot be restarted after termination.
+          </p>
+          {terminationError ? (
+            <div role="alert" className="rounded-[12px] border border-rose-400/20 bg-rose-400/10 p-3 text-sm text-rose-300">
+              Deployment termination failed: {terminationError}
+            </div>
+          ) : null}
+        </div>
+      </DashboardDialog>
+
+      {actionNotice ? (
+        <div role="status" aria-live="polite" aria-atomic="true" className="rounded-[18px] border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-200">
+          {actionNotice}
+        </div>
+      ) : null}
+
       {error && !authRequired && (
-        <div className="flex items-center justify-between gap-4 rounded-[18px] border border-rose-400/20 bg-rose-400/10 p-4 text-sm text-rose-300">
+        <div role="alert" className="flex items-center justify-between gap-4 rounded-[18px] border border-rose-400/20 bg-rose-400/10 p-4 text-sm text-rose-300">
           <div className="flex items-center gap-3">
             <span>{error}</span>
             <button
@@ -564,7 +707,9 @@ export function DeploymentsPageClient() {
             </button>
           </div>
           <button
+            type="button"
             onClick={() => setError("")}
+            aria-label="Dismiss deployment error"
             className="text-rose-300 hover:text-white"
           >
             <X className="h-4 w-4" />
@@ -618,7 +763,7 @@ export function DeploymentsPageClient() {
               className="inline-flex items-center gap-2 rounded-[14px] border border-[#2f3c49] bg-[#10161d] px-3.5 py-2 text-sm font-medium text-white transition hover:border-emerald-300/30 disabled:opacity-50"
             >
               {refreshing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" />
               ) : (
                 <RefreshCcw className="h-4 w-4" />
               )}
@@ -671,7 +816,7 @@ export function DeploymentsPageClient() {
                 onRestart={handleRestart}
                 onStop={handleStop}
                 onStart={handleStart}
-                onDelete={handleDelete}
+                onTerminate={requestTermination}
                 isProcessing={isProcessing}
                 copiedId={copiedId}
                 onCopyId={handleCopyId}

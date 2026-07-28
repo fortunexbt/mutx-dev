@@ -3,7 +3,10 @@ from __future__ import annotations
 import re
 
 
-_DURATION_TOKEN = re.compile(r"(?P<value>\d+)\s*(?P<unit>hours?|hrs?|hr|h|minutes?|mins?|min|m|seconds?|secs?|sec|s)", re.IGNORECASE)
+_DURATION_TOKEN = re.compile(
+    r"(?P<value>\d+)\s*(?P<unit>hours?|hrs?|hr|h|minutes?|mins?|min|m|seconds?|secs?|sec|s)",
+    re.IGNORECASE,
+)
 
 
 def extract_retry_after_seconds(text: str) -> int | None:
@@ -34,7 +37,13 @@ def classify_failure(text: str) -> str | None:
     hay = (text or "").lower()
     if not hay.strip():
         return None
-    if "quota exceeded" in hay or "billing details" in hay or "insufficient_quota" in hay or "usage limit" in hay or "rate limit" in hay:
+    if (
+        "quota exceeded" in hay
+        or "billing details" in hay
+        or "insufficient_quota" in hay
+        or "usage limit" in hay
+        or "rate limit" in hay
+    ):
         return "quota_exceeded"
     if "http error 404" in hay or "not found" in hay and "api" in hay:
         return "provider_failure"

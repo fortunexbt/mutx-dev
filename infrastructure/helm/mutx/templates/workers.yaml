@@ -1,0 +1,295 @@
+{{- $apiSecret := include "mutx.apiSecretName" . }}
+{{- if .Values.workers.monitor.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mutx.fullname" . }}-monitor
+  labels:
+    {{- include "mutx.labels" . | nindent 4 }}
+    app.kubernetes.io/component: monitor
+spec:
+  replicas: {{ .Values.workers.monitor.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "mutx.componentSelectorLabels" (dict "root" . "component" "monitor") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if and (not .Values.api.existingSecret) .Values.api.secretEnv }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "mutx.componentSelectorLabels" (dict "root" . "component" "monitor") | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "mutx.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "mutx.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: monitor
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          command: ["python", "-m", "src.api.monitor_worker"]
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          env:
+            - name: BACKGROUND_MONITOR_ENABLED
+              value: "true"
+            - name: MUTX_DOCUMENTS_ENABLED
+              value: "false"
+            - name: MUTX_REASONING_ENABLED
+              value: "false"
+            - name: MONITOR_HEARTBEAT_FILE
+              value: /tmp/mutx-monitor-heartbeat
+            - name: MONITOR_HEARTBEAT_MAX_AGE_SECONDS
+              value: {{ .Values.workers.monitor.heartbeatMaxAgeSeconds | quote }}
+            - name: MONITOR_MAX_CONSECUTIVE_FAILURES
+              value: {{ .Values.workers.monitor.maxConsecutiveFailures | quote }}
+            - name: PYTHONPATH
+              value: /app
+          envFrom:
+            {{- if $apiSecret }}
+            - secretRef:
+                name: {{ $apiSecret }}
+            {{- end }}
+            - configMapRef:
+                name: {{ include "mutx.fullname" . }}-api-env
+          resources:
+            {{- toYaml .Values.workers.monitor.resources | nindent 12 }}
+          startupProbe:
+            exec:
+              command: ["python", "-m", "src.api.monitor_worker", "--healthcheck"]
+            failureThreshold: {{ .Values.workers.monitor.probes.startup.failureThreshold }}
+            periodSeconds: {{ .Values.workers.monitor.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.workers.monitor.probes.startup.timeoutSeconds }}
+          livenessProbe:
+            exec:
+              command: ["python", "-m", "src.api.monitor_worker", "--healthcheck"]
+            failureThreshold: {{ .Values.workers.monitor.probes.liveness.failureThreshold }}
+            periodSeconds: {{ .Values.workers.monitor.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.workers.monitor.probes.liveness.timeoutSeconds }}
+          readinessProbe:
+            exec:
+              command: ["python", "-m", "src.api.monitor_worker", "--healthcheck"]
+            failureThreshold: {{ .Values.workers.monitor.probes.readiness.failureThreshold }}
+            periodSeconds: {{ .Values.workers.monitor.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.workers.monitor.probes.readiness.timeoutSeconds }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- if .Values.workers.document.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mutx.fullname" . }}-document-worker
+  labels:
+    {{- include "mutx.labels" . | nindent 4 }}
+    app.kubernetes.io/component: document-worker
+spec:
+  replicas: {{ .Values.workers.document.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "mutx.componentSelectorLabels" (dict "root" . "component" "document-worker") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if and (not .Values.api.existingSecret) .Values.api.secretEnv }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "mutx.componentSelectorLabels" (dict "root" . "component" "document-worker") | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "mutx.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "mutx.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: document-worker
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          command: ["python", "-m", "src.api.document_worker"]
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          workingDir: {{ .Values.persistence.mountPath }}
+          env:
+            - name: BACKGROUND_MONITOR_ENABLED
+              value: "false"
+            - name: MUTX_DOCUMENTS_ENABLED
+              value: "true"
+            - name: MUTX_REASONING_ENABLED
+              value: "false"
+            - name: MUTX_HOME
+              value: {{ printf "%s/home" .Values.persistence.mountPath | quote }}
+            - name: MUTX_ARTIFACTS_DIR
+              value: {{ printf "%s/artifacts" .Values.persistence.mountPath | quote }}
+            - name: PYTHONPATH
+              value: /app
+          envFrom:
+            {{- if $apiSecret }}
+            - secretRef:
+                name: {{ $apiSecret }}
+            {{- end }}
+            - configMapRef:
+                name: {{ include "mutx.fullname" . }}-api-env
+          resources:
+            {{- toYaml .Values.workers.document.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "mutx.persistenceClaimName" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- if .Values.workers.reasoning.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mutx.fullname" . }}-reasoning-worker
+  labels:
+    {{- include "mutx.labels" . | nindent 4 }}
+    app.kubernetes.io/component: reasoning-worker
+spec:
+  replicas: {{ .Values.workers.reasoning.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "mutx.componentSelectorLabels" (dict "root" . "component" "reasoning-worker") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if and (not .Values.api.existingSecret) .Values.api.secretEnv }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "mutx.componentSelectorLabels" (dict "root" . "component" "reasoning-worker") | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "mutx.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "mutx.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: reasoning-worker
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          command: ["python", "-m", "src.api.reasoning_worker"]
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          workingDir: {{ .Values.persistence.mountPath }}
+          env:
+            - name: BACKGROUND_MONITOR_ENABLED
+              value: "false"
+            - name: MUTX_DOCUMENTS_ENABLED
+              value: "false"
+            - name: MUTX_REASONING_ENABLED
+              value: "true"
+            - name: MUTX_HOME
+              value: {{ printf "%s/home" .Values.persistence.mountPath | quote }}
+            - name: MUTX_ARTIFACTS_DIR
+              value: {{ printf "%s/artifacts" .Values.persistence.mountPath | quote }}
+            - name: PYTHONPATH
+              value: /app
+          envFrom:
+            {{- if $apiSecret }}
+            - secretRef:
+                name: {{ $apiSecret }}
+            {{- end }}
+            - configMapRef:
+                name: {{ include "mutx.fullname" . }}-api-env
+          resources:
+            {{- toYaml .Values.workers.reasoning.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "mutx.persistenceClaimName" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

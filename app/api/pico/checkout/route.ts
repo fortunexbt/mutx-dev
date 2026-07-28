@@ -1,17 +1,25 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 
 import { getApiBaseUrl, hasAuthSession } from '@/app/api/_lib/controlPlane'
-import { unauthorized, withErrorHandling } from '@/app/api/_lib/errors'
+import { badRequest, unauthorized, withErrorHandling } from '@/app/api/_lib/errors'
 import { proxyJson } from '@/app/api/_lib/proxy'
 import { isPicoHost } from '@/lib/auth/redirects'
+import { isPicoPaidPlanId } from '@/lib/pico/payments'
 
 export const dynamic = 'force-dynamic'
 
-const supportedPlanIds = new Set(['starter', 'pro'])
-const supportedPriceIdsByPlanId = {
-  starter: process.env.STRIPE_STARTER_PRICE_ID,
-  pro: process.env.STRIPE_PRO_PRICE_ID,
-} as const
+export async function GET(request: NextRequest) {
+  return withErrorHandling(async () => {
+    if (!hasAuthSession(request)) {
+      return unauthorized()
+    }
+
+    return proxyJson(request, `${getApiBaseUrl()}/v1/payments/subscription`, {
+      cache: 'no-store',
+      fallbackMessage: 'Failed to refresh subscription status',
+    })
+  })(request)
+}
 
 export async function POST(request: NextRequest) {
   return withErrorHandling(async () => {
@@ -19,20 +27,19 @@ export async function POST(request: NextRequest) {
       return unauthorized()
     }
 
-    const body = await request.json()
-    const { planId, priceId } = body
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return badRequest('Invalid JSON in request body')
+    }
 
-    const resolvedPlanId = typeof planId === 'string' && supportedPlanIds.has(planId)
-      ? planId
-      : Object.entries(supportedPriceIdsByPlanId).find(([, configuredPriceId]) =>
-          typeof priceId === 'string' && configuredPriceId === priceId,
-        )?.[0]
+    const planId = body && typeof body === 'object' && 'planId' in body
+      ? (body as { planId?: unknown }).planId
+      : null
 
-    if (!resolvedPlanId) {
-      return NextResponse.json(
-        { error: 'A supported planId or priceId is required' },
-        { status: 400 },
-      )
+    if (!isPicoPaidPlanId(planId)) {
+      return badRequest('A supported planId is required')
     }
 
     const origin = new URL(request.url).origin
@@ -42,10 +49,9 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        plan_id: resolvedPlanId,
-        success_url: `${origin}${returnBasePath}/onboarding?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${origin}${returnBasePath}/pricing?checkout=canceled`,
-        trial_days: 7,
+        plan_id: planId,
+        success_url: `${origin}${returnBasePath}/pricing?checkout=success&plan=${planId}&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${origin}${returnBasePath}/pricing?checkout=canceled&plan=${planId}`,
       }),
       fallbackMessage: 'Failed to create checkout session',
     })

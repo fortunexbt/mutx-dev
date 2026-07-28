@@ -142,7 +142,7 @@
   text-transform: uppercase;
 }
 
-.ledger span { color: #77736c; }
+.ledger span { color: #858178; }
 .ledger strong { color: #91d9b2; }
 .ledger p { margin: 0; color: #d1cdc4; }
 
@@ -156,8 +156,8 @@
 
 .ledger i::after {
   position: absolute;
-  left: 50%;
-  top: .55rem;
+  inset-block-start: .55rem;
+  inset-inline-start: 50%;
   width: 1px;
   height: 2.55rem;
   background: rgba(255, 77, 0, .42);
@@ -175,7 +175,7 @@
   gap: .4rem 1rem;
   margin: 1.5rem clamp(1.25rem, 4vw, 3.25rem) clamp(1.25rem, 4vw, 3.25rem);
   border: 1px solid rgba(243, 240, 231, .24);
-  border-left: 3px solid #ff4d00;
+  border-inline-start: 3px solid #ff4d00;
   padding: 1rem;
 }
 
@@ -195,13 +195,21 @@
 
 .formMeta {
   border-color: #d5cfc3;
-  color: #77736c;
+  color: #6b675f;
 }
 
 .formInner {
   width: min(100% - 3rem, 31rem);
   margin: auto;
   padding-block: 3rem;
+}
+
+.main[data-auth-host='pico'] :global([data-auth-divider='pico']) {
+  color: #48633f;
+}
+
+.main[data-auth-host='pico'] :global([data-auth-divider-line]) {
+  background: #6d8c61;
 }
 
 .formInner :global(input),
@@ -222,7 +230,7 @@
 
 .formInner :global(input::placeholder),
 .formInner :global(textarea::placeholder) {
-  color: #77736c;
+  color: #6b675f;
   opacity: 1;
 }
 

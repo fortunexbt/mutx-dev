@@ -84,4 +84,66 @@ describe('pico onboarding auth route', () => {
     })
     expect(authenticatedFetch).not.toHaveBeenCalled()
   })
+
+  it('propagates an invalid bearer 401 from the Pico chat backend', async () => {
+    authenticatedFetch.mockResolvedValue({
+      response: new Response(JSON.stringify({ detail: 'Invalid or expired token' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      tokenRefreshed: false,
+    })
+
+    const { POST } = await import('../../app/api/pico/onboarding/route')
+    const request = new NextRequest('https://pico.mutx.dev/api/pico/onboarding', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer supplied-but-invalid',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'coach_message',
+        message: 'Do not downgrade this request',
+      }),
+    })
+
+    const response = await POST(request)
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({ detail: 'Invalid or expired token' })
+    expect(authenticatedFetch).toHaveBeenCalledTimes(1)
+    expect(applyAuthCookies).not.toHaveBeenCalled()
+  })
+
+  it('applies refreshed cookies when a stale Pico session is retried upstream', async () => {
+    const refreshedTokens = {
+      access_token: 'fresh-access-token',
+      refresh_token: 'rotated-refresh-token',
+      expires_in: 1800,
+    }
+    authenticatedFetch.mockResolvedValue({
+      response: new Response(JSON.stringify({ session_id: 'fresh-session' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      tokenRefreshed: true,
+      refreshedTokens,
+    })
+
+    const { GET } = await import('../../app/api/pico/onboarding/route')
+    const request = new NextRequest(
+      'https://pico.mutx.dev/api/pico/onboarding?view=coach_session',
+      {
+        headers: {
+          Cookie: 'access_token=stale-access-token; refresh_token=usable-refresh-token',
+        },
+      },
+    )
+
+    const response = await GET(request)
+
+    expect(response.status).toBe(200)
+    expect(authenticatedFetch).toHaveBeenCalledTimes(1)
+    expect(applyAuthCookies).toHaveBeenCalledWith(response, request, refreshedTokens)
+  })
 })

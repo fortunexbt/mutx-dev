@@ -12,7 +12,7 @@ Run with:
 
 # CrewAI imports
 from crewai import Agent, Crew, Task
-from crewai_tools import SerpSearchTool, WebsiteSearchTool
+from crewai_tools import SerpSearchTool
 
 # MUTX adapter imports
 from mutx.adapters.crewai import MutxCrewAICallbackHandler, run_crew
@@ -31,7 +31,7 @@ def create_researcher_agent(api_key: str) -> Agent:
         role="Research Analyst",
         goal="Research and synthesize comprehensive information on the given topic",
         backstory="You are an experienced research analyst with expertise in "
-                  "finding and synthesizing information from various sources.",
+        "finding and synthesizing information from various sources.",
         tools=[SerpSearchTool(api_key=api_key)],
         verbose=True,
     )
@@ -47,7 +47,7 @@ def create_writer_agent() -> Agent:
         role="Content Writer",
         goal="Create well-structured, engaging content based on research",
         backstory="You are a skilled content writer who transforms research "
-                  "into clear, compelling narratives.",
+        "into clear, compelling narratives.",
         verbose=True,
     )
 
@@ -115,6 +115,9 @@ def main():
         api_key=MUTX_API_KEY,
         crew_name="research-writing-crew",
     )
+    for agent in crew.agents:
+        if getattr(agent, "callback", None) is None:
+            agent.callback = callback_handler
 
     # Execute crew with callback (manual approach)
     result = crew.kickoff(inputs={"topic": "latest AI trends in 2024"})

@@ -43,7 +43,11 @@ function isObject(value: unknown): value is MessageObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function deepMergeMessages(base: MessageObject, override: MessageObject | undefined): MessageObject {
+function deepMergeMessages(
+  base: MessageObject,
+  override: MessageObject | undefined,
+  includeUnknownKeys = false,
+): MessageObject {
   if (!override) {
     return structuredClone(base)
   }
@@ -51,13 +55,49 @@ function deepMergeMessages(base: MessageObject, override: MessageObject | undefi
   const merged: MessageObject = structuredClone(base)
 
   for (const [key, value] of Object.entries(override)) {
+    if (!(key in base)) {
+      if (includeUnknownKeys) {
+        merged[key] = structuredClone(value)
+      }
+      continue
+    }
+
     if (Array.isArray(value)) {
-      merged[key] = structuredClone(value)
+      const baseValue = base[key]
+      if (!Array.isArray(baseValue)) {
+        continue
+      }
+
+      merged[key] = Array.from(
+        {
+          length: includeUnknownKeys
+            ? Math.max(baseValue.length, value.length)
+            : baseValue.length,
+        },
+        (_, index) => {
+          const baseItem = baseValue[index]
+          const overrideItem = value[index]
+          if (overrideItem === undefined) {
+            return structuredClone(baseItem)
+          }
+          if (baseItem === undefined) {
+            return structuredClone(overrideItem)
+          }
+          if (isObject(baseItem) && isObject(overrideItem)) {
+            return deepMergeMessages(baseItem, overrideItem, includeUnknownKeys)
+          }
+          return structuredClone(overrideItem)
+        },
+      )
       continue
     }
 
     if (isObject(value) && isObject(merged[key])) {
-      merged[key] = deepMergeMessages(merged[key] as MessageObject, value)
+      merged[key] = deepMergeMessages(
+        merged[key] as MessageObject,
+        value,
+        includeUnknownKeys,
+      )
       continue
     }
 
@@ -96,7 +136,11 @@ function collectMissingPaths(
 }
 
 function getBaseEnglishMessages() {
-  return deepMergeMessages(getPicoDefaultMessages() as MessageObject, en as MessageObject)
+  return deepMergeMessages(
+    getPicoDefaultMessages() as MessageObject,
+    en as MessageObject,
+    true,
+  )
 }
 
 function warnMissingMessages(locale: PicoLocale, messages: MessageObject | undefined, base: MessageObject) {

@@ -31,3 +31,6 @@ def test_railway_promotion_script_requires_both_frontend_and_backend_service_ids
     assert "RAILWAY_API_SERVICE_ID" in script
     assert 'deploy_service "${RAILWAY_FRONTEND_SERVICE_ID}" "frontend"' in script
     assert 'deploy_service "${RAILWAY_API_SERVICE_ID}" "backend"' in script
+    assert 'wait_for_release_identity "API" "${API_RELEASE_IDENTITY_URL}"' in script
+    assert 'wait_for_release_identity "frontend" "${FRONTEND_RELEASE_IDENTITY_URL}"' in script
+    assert "src/api/mutx-release.json" in script

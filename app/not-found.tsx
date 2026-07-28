@@ -24,14 +24,10 @@ export default function NotFound() {
             <Home className="h-4 w-4" />
             MUTX home
           </Link>
-          <a
-            href="https://docs.mutx.dev"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <Link href="/docs">
             <BookOpen className="h-4 w-4" />
             Open docs
-          </a>
+          </Link>
           <Link
             href="/dashboard"
           >

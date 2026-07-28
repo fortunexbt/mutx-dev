@@ -12,7 +12,8 @@ export async function GET(
 ) {
   return withErrorHandling(async () => {
     const { jobId } = await params
-    return proxyJson(request, `${getApiBaseUrl()}/v1/documents/jobs/${jobId}`, {
+    const encodedJobId = encodeURIComponent(jobId)
+    return proxyJson(request, `${getApiBaseUrl()}/v1/documents/jobs/${encodedJobId}`, {
       method: 'GET',
       fallbackMessage: 'Failed to fetch document job',
     })

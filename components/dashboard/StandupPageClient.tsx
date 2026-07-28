@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 
-import { ApiRequestError, readJson } from "@/components/app/http";
+import { readJson } from "@/components/app/http";
+import { getDashboardRequestAccessFailure } from "@/components/dashboard/dashboardRequestAccess";
 import {
   LiveAuthRequired,
   LiveEmptyState,
   LiveErrorState,
+  LiveForbidden,
   LiveKpiGrid,
   LiveLoading,
   LivePanel,
@@ -16,6 +18,12 @@ import {
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 
 type DashboardStatus = "idle" | "running" | "success" | "warning" | "error";
+type AggregateSourceStatus =
+  | "ok"
+  | "partial"
+  | "unauthenticated"
+  | "forbidden"
+  | "error";
 
 type BriefItem = {
   id: string;
@@ -30,10 +38,17 @@ type StandupPayload = {
   generatedAt: string;
   focus: string;
   metrics: {
-    openAlerts: number;
-    pendingApprovals: number;
-    failedRuns: number;
+    openAlerts: number | null;
+    pendingApprovals: number | null;
+    failedRuns: number | null;
     queuedAutonomy: number | null;
+  };
+  sources: {
+    alerts: AggregateSourceStatus;
+    approvals: AggregateSourceStatus;
+    runs: AggregateSourceStatus;
+    webhooks: AggregateSourceStatus;
+    autonomy: AggregateSourceStatus;
   };
   blockers: BriefItem[];
   watchlist: BriefItem[];
@@ -41,25 +56,30 @@ type StandupPayload = {
   partials: string[];
 };
 
-function isAuthError(error: unknown) {
-  return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
-}
-
 function BriefList({
   title,
   items,
   emptyTitle,
   emptyMessage,
+  coverageComplete,
 }: {
   title: string;
   items: BriefItem[];
   emptyTitle: string;
   emptyMessage: string;
+  coverageComplete: boolean;
 }) {
   return (
     <LivePanel title={title} meta={`${items.length} items`}>
       {items.length === 0 ? (
-        <LiveEmptyState title={emptyTitle} message={emptyMessage} />
+        <LiveEmptyState
+          title={coverageComplete ? emptyTitle : `${title} coverage is incomplete`}
+          message={
+            coverageComplete
+              ? emptyMessage
+              : "One or more source feeds are unavailable, so this empty list is not confirmation of a successful zero."
+          }
+        />
       ) : (
         <div className="space-y-3">
           {items.map((item) => (
@@ -90,6 +110,7 @@ function BriefList({
 export function StandupPageClient() {
   const [loading, setLoading] = useState(true);
   const [authRequired, setAuthRequired] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<StandupPayload | null>(null);
 
@@ -99,6 +120,7 @@ export function StandupPageClient() {
     async function load() {
       setLoading(true);
       setAuthRequired(false);
+      setPermissionDenied(false);
       setError(null);
 
       try {
@@ -109,8 +131,11 @@ export function StandupPageClient() {
         }
       } catch (loadError) {
         if (!cancelled) {
-          if (isAuthError(loadError)) {
+          const accessFailure = getDashboardRequestAccessFailure(loadError);
+          if (accessFailure === "authentication") {
             setAuthRequired(true);
+          } else if (accessFailure === "permission") {
+            setPermissionDenied(true);
           } else {
             setError(loadError instanceof Error ? loadError.message : "Failed to load standup");
           }
@@ -134,6 +159,14 @@ export function StandupPageClient() {
       />
     );
   }
+  if (permissionDenied) {
+    return (
+      <LiveForbidden
+        title="Standup permission required"
+        message="Your account cannot inspect the workspace signals used for this standup. Derived brief actions are unavailable."
+      />
+    );
+  }
   if (error) return <LiveErrorState title="Standup unavailable" message={error} />;
   if (!payload) {
     return (
@@ -149,21 +182,47 @@ export function StandupPageClient() {
       <LiveKpiGrid>
         <LiveStatCard
           label="Open alerts"
-          value={String(payload.metrics.openAlerts)}
+          value={
+            payload.metrics.openAlerts === null ? "Unknown" : String(payload.metrics.openAlerts)
+          }
           detail="Monitoring blockers sampled into this brief."
-          status={payload.metrics.openAlerts > 0 ? "error" : "success"}
+          status={
+            payload.metrics.openAlerts === null
+              ? "idle"
+              : payload.metrics.openAlerts > 0
+                ? "error"
+                : "success"
+          }
         />
         <LiveStatCard
           label="Pending approvals"
-          value={String(payload.metrics.pendingApprovals)}
+          value={
+            payload.metrics.pendingApprovals === null
+              ? "Unknown"
+              : String(payload.metrics.pendingApprovals)
+          }
           detail="Approval decisions still waiting on operator review."
-          status={payload.metrics.pendingApprovals > 0 ? "warning" : "success"}
+          status={
+            payload.metrics.pendingApprovals === null
+              ? "idle"
+              : payload.metrics.pendingApprovals > 0
+                ? "warning"
+                : "success"
+          }
         />
         <LiveStatCard
           label="Failed runs"
-          value={String(payload.metrics.failedRuns)}
+          value={
+            payload.metrics.failedRuns === null ? "Unknown" : String(payload.metrics.failedRuns)
+          }
           detail="Recent execution failures currently flagged in the watchlist."
-          status={payload.metrics.failedRuns > 0 ? "error" : "success"}
+          status={
+            payload.metrics.failedRuns === null
+              ? "idle"
+              : payload.metrics.failedRuns > 0
+                ? "error"
+                : "success"
+          }
         />
         <LiveStatCard
           label="Autonomy backlog"
@@ -183,7 +242,10 @@ export function StandupPageClient() {
         />
       </LiveKpiGrid>
 
-      <LivePanel title="Derived operator brief" meta="read-only synthesis">
+      <LivePanel
+        title="Derived operator brief"
+        meta={`updated ${formatRelativeTime(payload.generatedAt)}`}
+      >
         <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
             Focus
@@ -203,18 +265,25 @@ export function StandupPageClient() {
           items={payload.blockers}
           emptyTitle="No blockers detected"
           emptyMessage="The current brief did not surface any blocking alerts, approvals, or webhook failures."
+          coverageComplete={
+            payload.sources.alerts === "ok" &&
+            payload.sources.approvals === "ok" &&
+            payload.sources.webhooks === "ok"
+          }
         />
         <BriefList
           title="Watchlist"
           items={payload.watchlist}
           emptyTitle="Watchlist is clear"
           emptyMessage="No live or failed execution items were sampled into the watchlist."
+          coverageComplete={payload.sources.runs === "ok"}
         />
         <BriefList
           title="Recent completions"
           items={payload.completions}
           emptyTitle="No recent completions"
           emptyMessage="Completed runs will show up here once recent execution history is available."
+          coverageComplete={payload.sources.runs === "ok"}
         />
       </div>
 

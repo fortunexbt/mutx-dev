@@ -124,7 +124,7 @@
 
 .hero::after {
   position: absolute;
-  right: 0;
+  inset-inline-end: 0;
   bottom: -1px;
   width: min(26rem, 38vw);
   height: 0.65rem;
@@ -177,7 +177,7 @@
   width: min(100% - 3rem, 112rem);
   margin: clamp(4rem, 7vw, 7rem) auto 0;
   border-top: 1px solid var(--carbon);
-  border-left: 1px solid var(--carbon);
+  border-inline-start: 1px solid var(--carbon);
 }
 
 .plans article {
@@ -186,7 +186,7 @@
   min-height: 38rem;
   flex-direction: column;
   padding: 1.5rem;
-  border-right: 1px solid var(--carbon);
+  border-inline-end: 1px solid var(--carbon);
   border-bottom: 1px solid var(--carbon);
   background: var(--paper);
 }
@@ -232,7 +232,7 @@
 }
 
 .price small {
-  margin-left: 0.35rem;
+  margin-inline-start: 0.35rem;
   font-family: var(--font-mono), monospace;
   font-size: 0.72rem;
   letter-spacing: 0.08em;
@@ -309,6 +309,10 @@
   color: var(--bone);
 }
 
+.current {
+  cursor: default;
+}
+
 .plans article > button:disabled {
   cursor: wait;
   opacity: 0.68;
@@ -325,14 +329,61 @@
   color: var(--carbon);
 }
 
-.error {
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   width: min(100% - 3rem, 112rem);
   margin: 1rem auto;
   padding: 1rem;
-  border: 1px solid #a73408;
-  border-left: 0.5rem solid var(--orange);
+  border: 1px solid var(--carbon);
+  border-inline-start: 0.5rem solid var(--trace);
   background: var(--paper);
+}
+
+.notice p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.notice.success {
+  border-inline-start-color: #147a42;
+  color: #0d5e31;
+}
+
+.notice.error {
+  border-color: #a73408;
+  border-inline-start-color: var(--orange);
   color: #7c2505;
+}
+
+.notice button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding-inline: 0.9rem;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.notice button:hover,
+.notice button:focus-visible {
+  background: var(--carbon);
+  color: var(--bone);
+}
+
+.notice svg {
+  width: 0.9rem;
 }
 
 .final {
@@ -402,8 +453,17 @@
   .hero,
   .plans,
   .final,
-  .error {
+  .notice {
     width: min(100% - 2rem, 112rem);
+  }
+
+  .notice {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .notice button {
+    justify-content: space-between;
   }
 
   .nav {

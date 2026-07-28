@@ -59,7 +59,7 @@ describe('dashboard route proxies', () => {
 
     const response = await GET(mockRequest())
 
-    expect(authenticatedFetch).toHaveBeenCalledWith(mockRequest(), 'http://localhost:8000/v1/agents?limit=20', {
+    expect(authenticatedFetch).toHaveBeenCalledWith(mockRequest(), 'http://localhost:8000/v1/agents?skip=0&limit=20', {
       cache: 'no-store',
     })
     expect(response.status).toBe(401)
@@ -78,7 +78,7 @@ describe('dashboard route proxies', () => {
 
     const response = await GET(mockRequest())
 
-    expect(authenticatedFetch).toHaveBeenCalledWith(mockRequest(), 'http://localhost:8000/v1/agents?limit=20', {
+    expect(authenticatedFetch).toHaveBeenCalledWith(mockRequest(), 'http://localhost:8000/v1/agents?skip=0&limit=20', {
       cache: 'no-store',
     })
     expect(response.status).toBe(403)
@@ -110,17 +110,74 @@ describe('dashboard route proxies', () => {
 
     const response = await GET(mockRequest())
 
-    expect(authenticatedFetch).toHaveBeenCalledWith(mockRequest(), 'http://localhost:8000/v1/agents?limit=20', {
+    expect(authenticatedFetch).toHaveBeenCalledWith(mockRequest(), 'http://localhost:8000/v1/agents?skip=0&limit=20', {
       cache: 'no-store',
     })
     expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toEqual([
-      {
-        id: 'agent_123',
-        name: 'runtime-agent',
-        status: 'running',
+    await expect(response.json()).resolves.toEqual({
+      items: [
+        {
+          id: 'agent_123',
+          name: 'runtime-agent',
+          status: 'running',
+        },
+      ],
+      total: 1,
+      skip: 0,
+      limit: 20,
+      has_more: false,
+    })
+  })
+
+  it('forwards agents pagination and preserves the authoritative envelope', async () => {
+    hasAuthSession.mockReturnValue(true)
+    authenticatedFetch.mockResolvedValue({
+      response: {
+        status: 200,
+        json: async () => ({
+          items: [{ id: 'agent_21', name: 'next-page', status: 'stopped' }],
+          total: 41,
+          skip: 20,
+          limit: 20,
+          has_more: true,
+        }),
       },
-    ])
+      tokenRefreshed: false,
+    })
+    const { GET } = await import('../../app/api/dashboard/agents/route')
+    const request = mockRequest('http://localhost:3000/api/dashboard/agents?skip=20&limit=20')
+
+    const response = await GET(request)
+
+    expect(authenticatedFetch).toHaveBeenCalledWith(
+      request,
+      'http://localhost:8000/v1/agents?skip=20&limit=20',
+      { cache: 'no-store' },
+    )
+    await expect(response.json()).resolves.toEqual({
+      items: [{ id: 'agent_21', name: 'next-page', status: 'stopped' }],
+      total: 41,
+      skip: 20,
+      limit: 20,
+      has_more: true,
+    })
+  })
+
+  it('preserves upstream server errors for dashboard agents proxy', async () => {
+    hasAuthSession.mockReturnValue(true)
+    authenticatedFetch.mockResolvedValue({
+      response: {
+        status: 503,
+        json: async () => ({ detail: 'Agent registry unavailable' }),
+      },
+      tokenRefreshed: false,
+    })
+    const { GET } = await import('../../app/api/dashboard/agents/route')
+
+    const response = await GET(mockRequest())
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toEqual({ detail: 'Agent registry unavailable' })
   })
 
   it('returns 401 from dashboard deployments proxy when no auth token exists', async () => {

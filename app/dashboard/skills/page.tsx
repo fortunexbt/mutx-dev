@@ -19,9 +19,9 @@ export default function DashboardSkillsPage() {
             iconTone='text-cyan-300 bg-cyan-400/10'
             badge='skillpack control'
             hint={{
-              tone: 'beta',
+              tone: 'boundary',
               detail:
-                'Skill installs are active, but runtime sync and assistant binding still have sharp edges. Treat this as an operator beta, not a final marketplace surface.',
+                'Skill configuration persists through the control plane. Runtime-ready status requires an enabled assistant provider to report reconciliation evidence.',
             }}
             stats={[
               { label: 'Catalog', value: 'ClawHub + Orchestra' },

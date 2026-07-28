@@ -10,6 +10,9 @@ const STATIC_SOURCE = resolve(BUILD_DIR, "static");
 const STATIC_TARGET = resolve(STANDALONE_NEXT_DIR, "static");
 const PUBLIC_SOURCE = resolve(ROOT, "public");
 const PUBLIC_TARGET = resolve(STANDALONE_DIR, "public");
+const DOCS_SOURCE = resolve(ROOT, "docs");
+const DOCS_TARGET = resolve(STANDALONE_DIR, "docs");
+const ROOT_MARKDOWN_FILES = ["SUMMARY.md", "security.md", "support.md"];
 
 function resetTarget(targetPath) {
   rmSync(targetPath, { recursive: true, force: true });
@@ -32,4 +35,18 @@ if (existsSync(PUBLIC_SOURCE)) {
   cpSync(PUBLIC_SOURCE, PUBLIC_TARGET, { recursive: true });
 }
 
-console.log("[prepare-standalone] copied .next/static and public into .next/standalone");
+if (existsSync(DOCS_SOURCE)) {
+  resetTarget(DOCS_TARGET);
+  cpSync(DOCS_SOURCE, DOCS_TARGET, { recursive: true });
+}
+
+for (const fileName of ROOT_MARKDOWN_FILES) {
+  const sourcePath = resolve(ROOT, fileName);
+  if (existsSync(sourcePath)) {
+    cpSync(sourcePath, resolve(STANDALONE_DIR, fileName));
+  }
+}
+
+console.log(
+  "[prepare-standalone] copied runtime static assets and documentation into .next/standalone",
+);

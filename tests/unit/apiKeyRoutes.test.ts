@@ -60,6 +60,51 @@ describe('API key route proxies', () => {
     await expect(response.json()).resolves.toEqual({ detail: 'Forbidden' })
   })
 
+  it('preserves upstream rotate conflicts', async () => {
+    hasAuthSession.mockReturnValue(true)
+    authenticatedFetch.mockResolvedValue({
+      response: {
+        status: 409,
+        json: async () => ({ detail: 'Key rotation is already in progress' }),
+      },
+      tokenRefreshed: false,
+    })
+
+    const request = mockRequest()
+    const { POST } = await import('../../app/api/api-keys/[id]/rotate/route')
+    const response = await POST(request, {
+      params: Promise.resolve({ id: 'key_123' }),
+    })
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toEqual({
+      detail: 'Key rotation is already in progress',
+    })
+  })
+
+  it('preserves upstream revoke server errors', async () => {
+    hasAuthSession.mockReturnValue(true)
+    authenticatedFetch.mockResolvedValue({
+      response: {
+        ok: false,
+        status: 503,
+        json: async () => ({ detail: 'Credential store unavailable' }),
+      },
+      tokenRefreshed: false,
+    })
+
+    const request = mockRequest()
+    const { DELETE } = await import('../../app/api/api-keys/[id]/route')
+    const response = await DELETE(request, {
+      params: Promise.resolve({ id: 'key_123' }),
+    })
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toEqual({
+      detail: 'Credential store unavailable',
+    })
+  })
+
   it('preserves successful list responses', async () => {
     hasAuthSession.mockReturnValue(true)
     authenticatedFetch.mockResolvedValue({

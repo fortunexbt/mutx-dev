@@ -2,9 +2,11 @@
   "source": {
     "name": "Orchestra Research AI-Research-SKILLs",
     "repo_url": "https://github.com/Orchestra-Research/AI-Research-SKILLs",
-    "commit": "05f1958727bfc2bc22240f41d060504473c4f236",
-    "commit_date": "2026-04-10T11:02:43-07:00",
-    "commit_subject": "Merge pull request #47 from Gitsamshi/main",
+    "version": "v1.7.2",
+    "commit": "773a52944ba4747a18bd4ae9ade53fff041adcbc",
+    "commit_date": "2026-06-15T21:36:40-04:00",
+    "commit_subject": "release: v1.7.2 — ship Qoder agent auto-detection to npm",
+    "release_url": "https://github.com/Orchestra-Research/AI-Research-SKILLs/releases/tag/v1.7.2",
     "license": "MIT",
     "attribution": "Catalog metadata derived from Orchestra Research upstream repository. Skill content remains credited to Orchestra Research and upstream project authors."
   },
@@ -60,7 +62,7 @@
       "id": "mamba",
       "canonical_name": "mamba-architecture",
       "name": "Mamba - Selective State Space Models",
-      "description": "State-space model with O(n) complexity vs Transformers' O(n\u00b2). 5\u00d7 faster inference, million-token sequences, no KV cache. Selective SSM with hardware-aware design. Mamba-1 (d_state=16) and Mamba-2 (d_state=128, multi-head). Models 130M-2.8B on HuggingFace.",
+      "description": "State-space model with O(n) complexity vs Transformers' O(n²). 5× faster inference, million-token sequences, no KV cache. Selective SSM with hardware-aware design. Mamba-1 (d_state=16) and Mamba-2 (d_state=128, multi-head). Models 130M-2.8B on HuggingFace.",
       "author": "Orchestra Research",
       "category_id": "01-model-architecture",
       "category_name": "Model Architecture",
@@ -391,7 +393,7 @@
       "id": "nemo-curator",
       "canonical_name": "nemo-curator",
       "name": "NeMo Curator - GPU-Accelerated Data Curation",
-      "description": "GPU-accelerated data curation for LLM training. Supports text/image/video/audio. Features fuzzy deduplication (16\u00d7 faster), quality filtering (30+ heuristics), semantic deduplication, PII redaction, NSFW detection. Scales across GPUs with RAPIDS. Use for preparing high-quality training datasets, cleaning web data, or deduplicating large corpora.",
+      "description": "GPU-accelerated data curation for LLM training. Supports text/image/video/audio. Features fuzzy deduplication (16× faster), quality filtering (30+ heuristics), semantic deduplication, PII redaction, NSFW detection. Scales across GPUs with RAPIDS. Use for preparing high-quality training datasets, cleaning web data, or deduplicating large corpora.",
       "author": "Orchestra Research",
       "category_id": "05-data-processing",
       "category_name": "Data Processing",
@@ -489,7 +491,7 @@
       "id": "openrlhf",
       "canonical_name": "openrlhf-training",
       "name": "OpenRLHF - High-Performance RLHF Training",
-      "description": "High-performance RLHF framework with Ray+vLLM acceleration. Use for PPO, GRPO, RLOO, DPO training of large models (7B-70B+). Built on Ray, vLLM, ZeRO-3. 2\u00d7 faster than DeepSpeedChat with distributed architecture and GPU resource sharing.",
+      "description": "High-performance RLHF framework with Ray+vLLM acceleration. Use for PPO, GRPO, RLOO, DPO training of large models (7B-70B+). Built on Ray, vLLM, ZeRO-3. 2× faster than DeepSpeedChat with distributed architecture and GPU resource sharing.",
       "author": "Orchestra Research",
       "category_id": "06-post-training",
       "category_name": "Post-Training",
@@ -1034,7 +1036,7 @@
       "id": "gptq",
       "canonical_name": "gptq",
       "name": "GPTQ (Generative Pre-trained Transformer Quantization)",
-      "description": "Post-training 4-bit quantization for LLMs with minimal accuracy loss. Use for deploying large models (70B, 405B) on consumer GPUs, when you need 4\u00d7 memory reduction with <2% perplexity degradation, or for faster inference (3-4\u00d7 speedup) vs FP16. Integrates with transformers and PEFT for QLoRA fine-tuning.",
+      "description": "Post-training 4-bit quantization for LLMs with minimal accuracy loss. Use for deploying large models (70B, 405B) on consumer GPUs, when you need 4× memory reduction with <2% perplexity degradation, or for faster inference (3-4× speedup) vs FP16. Integrates with transformers and PEFT for QLoRA fine-tuning.",
       "author": "Orchestra Research",
       "category_id": "10-optimization",
       "category_name": "Optimization",
@@ -1080,7 +1082,7 @@
       "id": "ml-training-recipes",
       "canonical_name": "ml-training-recipes",
       "name": "ML Training Recipes",
-      "description": "Battle-tested PyTorch training recipes for all domains \u2014 LLMs, vision, diffusion, medical imaging, protein/drug discovery, spatial omics, genomics. Covers training loops, optimizer selection (AdamW, Muon), LR scheduling, mixed precision, debugging, and systematic experimentation. Use when training or fine-tuning neural networks, debugging loss spikes or OOM, choosing architectures, or optimizing GPU throughput.",
+      "description": "Battle-tested PyTorch training recipes for all domains — LLMs, vision, diffusion, medical imaging, protein/drug discovery, spatial omics, genomics. Covers training loops, optimizer selection (AdamW, Muon), LR scheduling, mixed precision, debugging, and systematic experimentation. Use when training or fine-tuning neural networks, debugging loss spikes or OOM, choosing architectures, or optimizing GPU throughput.",
       "author": "dailycafi",
       "category_id": "10-optimization",
       "category_name": "Optimization",
@@ -1180,7 +1182,7 @@
       "id": "llama-cpp",
       "canonical_name": "llama-cpp",
       "name": "llama.cpp",
-      "description": "Runs LLM inference on CPU, Apple Silicon, and consumer GPUs without NVIDIA hardware. Use for edge deployment, M1/M2/M3 Macs, AMD/Intel GPUs, or when CUDA is unavailable. Supports GGUF quantization (1.5-8 bit) for reduced memory and 4-10\u00d7 speedup vs PyTorch on CPU.",
+      "description": "Runs LLM inference on CPU, Apple Silicon, and consumer GPUs without NVIDIA hardware. Use for edge deployment, M1/M2/M3 Macs, AMD/Intel GPUs, or when CUDA is unavailable. Supports GGUF quantization (1.5-8 bit) for reduced memory and 4-10× speedup vs PyTorch on CPU.",
       "author": "Orchestra Research",
       "category_id": "12-inference-serving",
       "category_name": "Inference & Serving",
@@ -1206,7 +1208,7 @@
       "id": "sglang",
       "canonical_name": "sglang",
       "name": "SGLang",
-      "description": "Fast structured generation and serving for LLMs with RadixAttention prefix caching. Use for JSON/regex outputs, constrained decoding, agentic workflows with tool calls, or when you need 5\u00d7 faster inference than vLLM with prefix sharing. Powers 300,000+ GPUs at xAI, AMD, NVIDIA, and LinkedIn.",
+      "description": "Fast structured generation and serving for LLMs with RadixAttention prefix caching. Use for JSON/regex outputs, constrained decoding, agentic workflows with tool calls, or when you need 5× faster inference than vLLM with prefix sharing. Powers 300,000+ GPUs at xAI, AMD, NVIDIA, and LinkedIn.",
       "author": "Orchestra Research",
       "category_id": "12-inference-serving",
       "category_name": "Inference & Serving",
@@ -2108,7 +2110,7 @@
       "id": "moe-training",
       "canonical_name": "moe-training",
       "name": "MoE Training: Mixture of Experts",
-      "description": "Train Mixture of Experts (MoE) models using DeepSpeed or HuggingFace. Use when training large-scale models with limited compute (5\u00d7 cost reduction vs dense models), implementing sparse architectures like Mixtral 8x7B or DeepSeek-V3, or scaling model capacity without proportional compute increase. Covers MoE architectures, routing mechanisms, load balancing, expert parallelism, and inference optimization.",
+      "description": "Train Mixture of Experts (MoE) models using DeepSpeed or HuggingFace. Use when training large-scale models with limited compute (5× cost reduction vs dense models), implementing sparse architectures like Mixtral 8x7B or DeepSeek-V3, or scaling model capacity without proportional compute increase. Covers MoE architectures, routing mechanisms, load balancing, expert parallelism, and inference optimization.",
       "author": "Orchestra Research",
       "category_id": "19-emerging-techniques",
       "category_name": "Emerging Techniques",
@@ -2134,7 +2136,7 @@
       "id": "speculative-decoding",
       "canonical_name": "speculative-decoding",
       "name": "Speculative Decoding: Accelerating LLM Inference",
-      "description": "Accelerate LLM inference using speculative decoding, Medusa multiple heads, and lookahead decoding techniques. Use when optimizing inference speed (1.5-3.6\u00d7 speedup), reducing latency for real-time applications, or deploying models with limited compute. Covers draft models, tree-based attention, Jacobi iteration, parallel token generation, and production deployment strategies.",
+      "description": "Accelerate LLM inference using speculative decoding, Medusa multiple heads, and lookahead decoding techniques. Use when optimizing inference speed (1.5-3.6× speedup), reducing latency for real-time applications, or deploying models with limited compute. Covers draft models, tree-based attention, Jacobi iteration, parallel token generation, and production deployment strategies.",
       "author": "Orchestra Research",
       "category_id": "19-emerging-techniques",
       "category_name": "Emerging Techniques",
@@ -2293,6 +2295,74 @@
         "Cognitive Science"
       ],
       "has_references": false,
+      "has_templates": false,
+      "has_scripts": false
+    },
+    {
+      "id": "compiler",
+      "canonical_name": "ara-compiler",
+      "name": "Universal ARA Compiler",
+      "description": "Compiles any research input — PDF papers, GitHub repositories, experiment logs, code directories, or raw notes — into a complete Agent-Native Research Artifact (ARA) with cognitive layer (claims, concepts, heuristics), physical layer (configs, code stubs), exploration graph, and grounded evidence. Use when ingesting a paper or codebase into a structured, machine-executable knowledge package, building an ARA from scratch, or converting research outputs into a falsifiable, agent-traversable form.",
+      "author": "Orchestra Research",
+      "category_id": "22-agent-native-research-artifact",
+      "category_name": "Agent Native Research Artifact",
+      "upstream_path": "22-agent-native-research-artifact/compiler",
+      "tags": [
+        "ARA",
+        "Research Artifacts",
+        "Knowledge Extraction",
+        "Paper Ingestion",
+        "Exploration Graph",
+        "Provenance",
+        "Research Tooling",
+        "Epistemic Compilation"
+      ],
+      "has_references": true,
+      "has_templates": false,
+      "has_scripts": false
+    },
+    {
+      "id": "research-manager",
+      "canonical_name": "ara-research-manager",
+      "name": "Live Research Project Manager (Live PM)",
+      "description": "Records research provenance as a post-task epilogue, scanning conversation history at the end of a coding or research session to extract decisions, experiments, dead ends, claims, heuristics, and pivots, and writing them into the ara/ directory with user-vs-AI provenance tags. Use as a session epilogue — never during execution — to maintain a faithful, auditable trace of how a research project actually evolved.",
+      "author": "Orchestra Research",
+      "category_id": "22-agent-native-research-artifact",
+      "category_name": "Agent Native Research Artifact",
+      "upstream_path": "22-agent-native-research-artifact/research-manager",
+      "tags": [
+        "ARA",
+        "Research Recording",
+        "Provenance",
+        "Session Logging",
+        "Knowledge Management",
+        "Exploration Tree",
+        "Research Tooling"
+      ],
+      "has_references": true,
+      "has_templates": false,
+      "has_scripts": false
+    },
+    {
+      "id": "rigor-reviewer",
+      "canonical_name": "ara-rigor-reviewer",
+      "name": "ARA Seal Level 2: Semantic Epistemic Review",
+      "description": "Performs ARA Seal Level 2 semantic epistemic review on Agent-Native Research Artifacts, scoring six dimensions (evidence relevance, falsifiability, scope calibration, argument coherence, exploration integrity, methodological rigor) and producing a constructive, severity-ranked report with a Strong Accept-to-Reject recommendation. Use after Level 1 structural validation passes, when an ARA needs an objective epistemic critique before publication or release.",
+      "author": "Orchestra Research",
+      "category_id": "22-agent-native-research-artifact",
+      "category_name": "Agent Native Research Artifact",
+      "upstream_path": "22-agent-native-research-artifact/rigor-reviewer",
+      "tags": [
+        "ARA",
+        "Epistemic Review",
+        "Research Rigor",
+        "Peer Review",
+        "Scoring",
+        "Audit",
+        "Falsifiability",
+        "Research Tooling"
+      ],
+      "has_references": true,
       "has_templates": false,
       "has_scripts": false
     }
@@ -2561,6 +2631,40 @@
         "ops",
         "cost"
       ]
+    },
+    {
+      "id": "multimodal-review-loop",
+      "name": "Multimodal Review Loop",
+      "summary": "Build, red-team, and observe multimodal agent behavior before release.",
+      "description": "Use for vision, audio, or generation work that needs an explicit safety and evidence review loop.",
+      "roles": [
+        {
+          "id": "builder",
+          "title": "Multimodal Builder",
+          "bundle_id": "orchestra-multimodal-safety",
+          "goal": "Own model integration, modality handling, and measurable task quality."
+        },
+        {
+          "id": "safety",
+          "title": "Safety Reviewer",
+          "bundle_id": "orchestra-multimodal-safety",
+          "goal": "Exercise guardrails, adversarial inputs, and policy boundaries before release."
+        },
+        {
+          "id": "evidence",
+          "title": "Evidence Reviewer",
+          "bundle_id": "orchestra-research-foundation",
+          "goal": "Require reproducible evaluations, traces, and release evidence for every claim."
+        }
+      ],
+      "recommended_min_agents": 3,
+      "recommended_max_agents": 4,
+      "coordination_notes": "Do not ship a modality until quality, abuse resistance, and trace evidence pass independently.",
+      "tags": [
+        "multimodal",
+        "safety",
+        "evaluation"
+      ]
     }
   ],
   "templates": [
@@ -2612,11 +2716,11 @@
         "official-import"
       ],
       "category": "orchestra-research",
-      "version": "2026.04.10",
+      "version": "2026.06.15",
       "is_official": false,
       "source_path": "src/api/data/orchestra_research_catalog.json",
       "validation_status": "pinned",
-      "validation_message": "Pinned to Orchestra Research commit 05f1958727bfc2bc22240f41d060504473c4f236."
+      "validation_message": "Pinned to Orchestra Research v1.7.2 at commit 773a52944ba4747a18bd4ae9ade53fff041adcbc."
     },
     {
       "id": "orchestra_rag_lab",
@@ -2665,11 +2769,11 @@
         "grounding"
       ],
       "category": "orchestra-research",
-      "version": "2026.04.10",
+      "version": "2026.06.15",
       "is_official": false,
       "source_path": "src/api/data/orchestra_research_catalog.json",
       "validation_status": "pinned",
-      "validation_message": "Pinned to Orchestra Research commit 05f1958727bfc2bc22240f41d060504473c4f236."
+      "validation_message": "Pinned to Orchestra Research v1.7.2 at commit 773a52944ba4747a18bd4ae9ade53fff041adcbc."
     },
     {
       "id": "orchestra_post_training_lab",
@@ -2721,11 +2825,11 @@
         "fine-tuning"
       ],
       "category": "orchestra-research",
-      "version": "2026.04.10",
+      "version": "2026.06.15",
       "is_official": false,
       "source_path": "src/api/data/orchestra_research_catalog.json",
       "validation_status": "pinned",
-      "validation_message": "Pinned to Orchestra Research commit 05f1958727bfc2bc22240f41d060504473c4f236."
+      "validation_message": "Pinned to Orchestra Research v1.7.2 at commit 773a52944ba4747a18bd4ae9ade53fff041adcbc."
     },
     {
       "id": "orchestra_inference_lab",
@@ -2775,11 +2879,68 @@
         "optimization"
       ],
       "category": "orchestra-research",
-      "version": "2026.04.10",
+      "version": "2026.06.15",
       "is_official": false,
       "source_path": "src/api/data/orchestra_research_catalog.json",
       "validation_status": "pinned",
-      "validation_message": "Pinned to Orchestra Research commit 05f1958727bfc2bc22240f41d060504473c4f236."
+      "validation_message": "Pinned to Orchestra Research v1.7.2 at commit 773a52944ba4747a18bd4ae9ade53fff041adcbc."
+    },
+    {
+      "id": "orchestra_multimodal_guardrails",
+      "name": "Orchestra Multimodal Guardrails",
+      "summary": "Deploy a multimodal operator with safety, evaluation, and observability skills preloaded.",
+      "description": "Starter for vision, audio, and generation work that must pass explicit guardrail and trace review before release.",
+      "bundle_ids": [
+        "orchestra-multimodal-safety"
+      ],
+      "default_config": {
+        "name": "Orchestra Multimodal Guardrails",
+        "runtime": "personal_assistant",
+        "template": "orchestra_multimodal_guardrails",
+        "workspace": "orchestra-multimodal-guardrails",
+        "model": "openai/gpt-5",
+        "skills": [
+          "llava",
+          "blip-2",
+          "clip",
+          "whisper",
+          "constitutional-ai",
+          "llamaguard",
+          "prompt-guard",
+          "nemo-guardrails",
+          "langsmith",
+          "phoenix"
+        ],
+        "channels": {
+          "webchat": {
+            "label": "WebChat",
+            "enabled": true,
+            "mode": "pairing",
+            "allow_from": []
+          }
+        },
+        "metadata": {
+          "template": {
+            "kind": "orchestra-research",
+            "source": "orchestra-research",
+            "files": [
+              "src/api/data/orchestra_research_catalog.json"
+            ],
+            "source_template_id": null
+          }
+        }
+      },
+      "tags": [
+        "multimodal",
+        "safety",
+        "observability"
+      ],
+      "category": "orchestra-research",
+      "version": "2026.06.15",
+      "is_official": false,
+      "source_path": "src/api/data/orchestra_research_catalog.json",
+      "validation_status": "pinned",
+      "validation_message": "Pinned to Orchestra Research v1.7.2 at commit 773a52944ba4747a18bd4ae9ade53fff041adcbc."
     }
   ]
 }

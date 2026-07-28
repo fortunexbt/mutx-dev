@@ -65,6 +65,7 @@ API_DOC_EXPECTATIONS = {
     ],
     "docs/api/leads.md": ["/v1/leads", "/v1/leads/contacts"],
 }
+OPENAPI_METHODS = {"delete", "get", "head", "options", "patch", "post", "put"}
 
 
 def read_text(relative_path: str) -> str:
@@ -117,7 +118,9 @@ def _try_resolve(candidate: Path) -> Path | None:
         if index.exists():
             return index
     # Next.js app routes: /ai-agent-approvals -> app/ai-agent-approvals/
-    app_candidate = ROOT / "app" / candidate.relative_to(ROOT) if candidate.is_relative_to(ROOT) else None
+    app_candidate = (
+        ROOT / "app" / candidate.relative_to(ROOT) if candidate.is_relative_to(ROOT) else None
+    )
     if app_candidate and app_candidate.exists():
         return app_candidate
     return None
@@ -161,7 +164,7 @@ def test_canonical_quickstart_surfaces_share_assistant_first_commands() -> None:
 
     assert "/download" in landing_content
     assert "/releases" in landing_content
-    assert "Download for Mac" in landing_content
+    assert "Check Mac availability" in landing_content
     assert "Releases" in landing_content
     assert "run_setup_handoff" in install_script
     assert "MUTX_OPEN_TUI" in install_script
@@ -287,13 +290,78 @@ def test_contract_stubs_point_back_to_docs_api() -> None:
         assert "canonical" in content.lower() or "compatibility" in content.lower()
 
 
-def test_openapi_snapshot_matches_current_app_routes() -> None:
+def test_openapi_snapshot_matches_current_app_contract() -> None:
+    from src.api.main import app
+
     snapshot = json.loads(read_text("docs/api/openapi.json"))
     generated = build_openapi_document()
+    live_paths = app.openapi()["paths"]
 
-    assert snapshot["paths"] == generated["paths"]
-    assert "/v1/leads/contacts" in snapshot["paths"]
-    assert "/v1/contacts" not in snapshot["paths"]
+    assert snapshot == generated
+    assert set(generated["paths"]) == set(live_paths)
+    assert "/v1/leads/contacts" in generated["paths"]
+    assert "/v1/contacts" not in generated["paths"]
+
+
+def test_claim_matrix_statistics_match_generated_contract() -> None:
+    snapshot = json.loads(read_text("docs/api/openapi.json"))
+    matrix = read_text("docs/claim-to-reality-gap-matrix.md")
+    paths = snapshot["paths"]
+    operations = [
+        operation
+        for path_item in paths.values()
+        for method, operation in path_item.items()
+        if method in OPENAPI_METHODS
+    ]
+    families = {
+        f"/v1/{path.split('/')[2]}"
+        for path in paths
+        if path.startswith("/v1/") and len(path.split("/")) > 2
+    }
+    public = sum(operation.get("security") == [] for operation in operations)
+    optional = sum(
+        bool(operation.get("security")) and {} in operation["security"] for operation in operations
+    )
+    required = len(operations) - public - optional
+
+    assert f"**Total top-level `/v1` families:** {len(families)}" in matrix
+    assert f"**Total OpenAPI paths:** {len(paths)}" in matrix
+    assert f"**Total endpoint-method pairs:** {len(operations)}" in matrix
+    assert f"| Required-auth operations | {required} |" in matrix
+    assert f"| Optional-auth operations | {optional} |" in matrix
+    assert f"| Public operations | {public} |" in matrix
+
+
+def test_public_auth_docs_match_current_identity_boundaries() -> None:
+    auth = read_text("docs/api/authentication.md")
+    api_keys = read_text("docs/api/api-keys.md")
+    rbac = read_text("docs/architecture/rbac.md")
+
+    assert "registration still does not issue tokens" in auth
+    assert '"state": "SERVER_ISSUED_STATE"' in auth
+    assert "do not directly accept an arbitrary provider bearer token" in auth
+    assert "protected user-principal routes" in api_keys
+    assert "`mutx_agent_...` credentials" in api_keys
+    for role in ("ADMIN", "AUDIT_ADMIN", "DEVELOPER", "VIEWER"):
+        assert f"`{role}`" in rbac
+    assert "Provider role/group claims" in rbac
+    assert "do not" in rbac
+
+
+def test_governance_and_lifecycle_docs_use_current_route_shapes() -> None:
+    reference = read_text("docs/api/reference.md")
+    deployments = read_text("docs/api/deployments.md")
+    webhooks = read_text("docs/api/webhooks.md")
+    governance = read_text("docs/governance.md")
+    whitepaper = read_text("docs/whitepaper.md")
+
+    assert "/v1/runtime/governance/supervised" in reference
+    assert "/v1/governance/supervision" not in reference + whitepaper
+    assert "/v1/runtime/governance/metrics" in governance
+    assert "/v1/policies/stream" not in whitepaper
+    assert "running, ready, or failed deployment" in deployments
+    assert "Restart stopped, failed, or killed" not in deployments
+    assert "30 seconds, 5 minutes, 30 minutes, and 2 hours" in webhooks
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +414,7 @@ def test_no_invalid_underscore_imports_from_external_modules() -> None:
                     if name.startswith("_") and len(name) > 1:
                         # Check if this is an alias: "Foo as _Foo"
                         # In that case the raw name doesn't start with _
-                        if not any(n == name or f"{name.lstrip('_')} as {name}" in imports_str):
+                        if f"{name.lstrip('_')} as {name}" not in imports_str:
                             # Also skip if it's explicitly aliased the other way: "Foo as _Bar"
                             if not alias_pattern.search(imports_str):
                                 violations.append(

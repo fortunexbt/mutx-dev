@@ -1,13 +1,64 @@
-image:
-  repository: mutx/mutx
-  tag: latest
-  pullPolicy: Always
+api:
+  replicaCount: 1
+  image:
+    repository: registry.example.com/mutx-api
+    tag: "1.4.0"
+    pullPolicy: IfNotPresent
+  existingSecret: mutx-prod-api-env
+  env:
+    ENVIRONMENT: production
+    LOG_LEVEL: INFO
+    JSON_LOGGING: "true"
+    DATABASE_REQUIRED_ON_STARTUP: "true"
+    DATABASE_SSL_MODE: require
+    # Replace with the exact pod/source CIDR used by the ingress controller.
+    FORWARDED_ALLOW_IPS: 10.244.0.0/16
+    ALLOWED_HOSTS: mutx.example.com,localhost,127.0.0.1
+    CORS_ORIGINS: https://mutx.example.com
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
 
-replicaCount: 1
+frontend:
+  replicaCount: 2
+  image:
+    repository: registry.example.com/mutx-frontend
+    tag: "1.4.0"
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+  autoscaling:
+    enabled: false
 
-service:
-  type: ClusterIP
-  port: 8000
+workers:
+  monitor:
+    enabled: true
+    replicaCount: 1
+    heartbeatMaxAgeSeconds: 30
+    maxConsecutiveFailures: 3
+  document:
+    enabled: false
+  reasoning:
+    enabled: false
+
+migrations:
+  enabled: true
+
+persistence:
+  enabled: true
+  accessModes:
+    - ReadWriteOnce
+  size: 20Gi
+  retain: true
 
 ingress:
   enabled: true
@@ -15,24 +66,4 @@ ingress:
   host: mutx.example.com
   tls:
     enabled: true
-    secretName: mutx-tls-prod
-
-resources:
-  limits:
-    cpu: 2000m
-    memory: 2Gi
-  requests:
-    cpu: 500m
-    memory: 1Gi
-
-env:
-  LOG_LEVEL: "WARNING"
-  ENVIRONMENT: "production"
-
-secretEnv: {}
-
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 1
-  targetCPUUtilizationPercentage: 70
+    secretName: mutx-prod-tls

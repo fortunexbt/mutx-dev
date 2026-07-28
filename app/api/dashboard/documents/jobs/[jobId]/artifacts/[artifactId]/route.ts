@@ -20,9 +20,11 @@ export async function GET(
     }
 
     const { jobId, artifactId } = await params
+    const encodedJobId = encodeURIComponent(jobId)
+    const encodedArtifactId = encodeURIComponent(artifactId)
     const { response, tokenRefreshed, refreshedTokens } = await authenticatedFetch(
       request,
-      `${getApiBaseUrl()}/v1/documents/jobs/${jobId}/artifacts/${artifactId}`,
+      `${getApiBaseUrl()}/v1/documents/jobs/${encodedJobId}/artifacts/${encodedArtifactId}`,
       {
         method: 'GET',
       },

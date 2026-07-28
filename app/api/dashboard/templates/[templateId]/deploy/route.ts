@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server'
 
 import { getApiBaseUrl } from '@/app/api/_lib/controlPlane'
-import { badRequest, withErrorHandling } from '@/app/api/_lib/errors'
+import { withErrorHandling } from '@/app/api/_lib/errors'
 import { proxyJson } from '@/app/api/_lib/proxy'
+import { readJsonBody } from '@/app/api/dashboard/templates/_lib/jsonBody'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,21 +13,19 @@ export async function POST(
 ) {
   return withErrorHandling(async () => {
     const { templateId } = await params
-    let payload: unknown
-
-    try {
-      payload = await request.json()
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        return badRequest('Invalid JSON in request body')
-      }
-      throw error
+    const body = await readJsonBody(request)
+    if (!body.ok) {
+      return body.response
     }
+    const idempotencyKey = request.headers?.get('idempotency-key')
 
-    return proxyJson(request, `${getApiBaseUrl()}/v1/templates/${templateId}/deploy`, {
+    return proxyJson(request, `${getApiBaseUrl()}/v1/templates/${encodeURIComponent(templateId)}/deploy`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+      },
+      body: body.body,
       fallbackMessage: 'Failed to deploy starter template',
     })
   })(request)

@@ -1,0 +1,13 @@
+MUTX rendered as separate frontend and API services.
+
+Frontend service: {{ include "mutx.fullname" . }}-frontend:{{ .Values.frontend.service.port }}
+API service: {{ include "mutx.fullname" . }}-api:{{ .Values.api.service.port }}
+
+{{- if not (include "mutx.apiSecretName" .) }}
+WARNING: no API Secret is configured. The FastAPI container requires a reachable
+DATABASE_URL; production additionally requires JWT_SECRET and SECRET_ENCRYPTION_KEY.
+{{- end }}
+{{- if not .Values.persistence.enabled }}
+WARNING: persistence is disabled. Local audit, credential-broker, and artifact data
+will be lost when the API pod is replaced.
+{{- end }}

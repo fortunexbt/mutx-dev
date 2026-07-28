@@ -5,6 +5,11 @@ import uuid
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def developer_principal(test_user):
+    test_user.roles = ["DEVELOPER"]
+
+
 @pytest.mark.asyncio
 async def test_create_observability_run(client):
     """Test creating an observability run with minimal fields."""
@@ -181,15 +186,17 @@ async def test_security_evaluate_endpoint(client):
 
 
 @pytest.mark.asyncio
-async def test_security_metrics_endpoint(client):
+async def test_security_metrics_endpoint(client, test_user):
     """Test the security metrics endpoint."""
+    test_user.roles = ["ADMIN"]
     response = await client.get("/v1/security/metrics")
     assert response.status_code == 200
 
 
 @pytest.mark.asyncio
-async def test_security_compliance_endpoint(client):
+async def test_security_compliance_endpoint(client, test_user):
     """Test the security compliance endpoint."""
+    test_user.roles = ["ADMIN"]
     response = await client.get("/v1/security/compliance")
     assert response.status_code == 200
     payload = response.json()

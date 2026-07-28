@@ -52,6 +52,7 @@ describe('webmaster route contracts', () => {
         ...BLOCKED_CRAWL_PREFIXES.filter((prefix) => prefix !== '/onboarding'),
         '/academy',
         '/autopilot',
+        '/build-ledger',
         '/pricing',
         '/support',
         '/tutor',
@@ -80,6 +81,21 @@ describe('webmaster route contracts', () => {
     expect(urls).not.toContain('https://mutx.dev/login')
   })
 
+  it.each([
+    ['marketing', 'mutx.dev'],
+    ['app', 'app.mutx.dev'],
+    ['pico', 'pico.mutx.dev'],
+  ])('does not invent request-time freshness for the %s sitemap', async (_surface, host) => {
+    mockHeaders.mockResolvedValue(new Headers({ host }))
+
+    const result = await sitemap()
+
+    expect(result.length).toBeGreaterThan(0)
+    for (const entry of result) {
+      expect(entry).not.toHaveProperty('lastModified')
+    }
+  })
+
   it('app sitemap publishes only the control lane', async () => {
     mockHeaders.mockResolvedValue(new Headers({ host: 'app.mutx.dev' }))
 
@@ -98,6 +114,7 @@ describe('webmaster route contracts', () => {
 
     expect(urls).toContain('https://pico.mutx.dev')
     expect(urls).toHaveLength(1)
+    expect(urls).not.toContain('https://pico.mutx.dev/build-ledger')
     expect(urls).not.toContain('https://pico.mutx.dev/wip')
   })
 

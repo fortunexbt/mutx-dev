@@ -1,4 +1,7 @@
+'use client'
+
 import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 
 import { picoClasses, picoEmber, picoInset, picoPanel, picoSoft } from '@/components/pico/picoTheme'
 import { cn } from '@/lib/utils'
@@ -40,6 +43,7 @@ export function PicoSurfaceCompass({
   items,
   aside,
 }: PicoSurfaceCompassProps) {
+  const t = useTranslations('pico.surfaceCompass')
   const itemGridClass = cn(
     'mt-5 grid grid-flow-col auto-cols-[minmax(16rem,84vw)] gap-4 overflow-x-auto pb-2 snap-x snap-mandatory md:grid-flow-row md:auto-cols-auto md:overflow-visible',
     items.length === 2 && 'md:grid-cols-2',
@@ -52,7 +56,7 @@ export function PicoSurfaceCompass({
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr),22rem] lg:items-start">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className={picoClasses.label}>Surface compass</span>
+            <span className={picoClasses.label}>{t('label')}</span>
             {status ? <span className={picoClasses.chip}>{status}</span> : null}
           </div>
           <h2 className="mt-3 font-[family:var(--font-site-display)] text-3xl tracking-[-0.05em] text-[color:var(--pico-text)] sm:text-4xl">
@@ -65,7 +69,7 @@ export function PicoSurfaceCompass({
 
         {aside ? (
           <div className={picoSoft('p-4 sm:p-5')}>
-            <p className={picoClasses.label}>Operating rule</p>
+            <p className={picoClasses.label}>{t('operatingRule')}</p>
             <p className="mt-3 text-sm leading-6 text-[color:var(--pico-text-secondary)]">{aside}</p>
           </div>
         ) : null}
@@ -82,8 +86,8 @@ export function PicoSurfaceCompass({
               <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--pico-text-muted)]">
                 {item.note}
               </span>
-              <span className="text-sm text-[color:var(--pico-accent)] transition group-hover:translate-x-0.5">
-                →
+              <span className="text-sm text-[color:var(--pico-accent)]" aria-hidden="true">
+                {t('forwardSymbol')}
               </span>
             </div>
             <p className="font-[family:var(--font-site-display)] text-2xl tracking-[-0.05em] text-[color:var(--pico-text)]">

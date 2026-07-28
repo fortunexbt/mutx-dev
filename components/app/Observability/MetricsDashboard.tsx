@@ -166,7 +166,7 @@ export function MetricsDashboard({
         </div>
         <div className="flex items-center gap-2">
           <span className="flex items-center gap-1.5 rounded-lg bg-emerald-400/10 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 motion-safe:animate-pulse motion-reduce:animate-none" />
             Live
           </span>
           <button
@@ -175,7 +175,7 @@ export function MetricsDashboard({
             className="inline-flex items-center gap-1.5 rounded-lg bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:text-white disabled:opacity-50"
           >
             <RefreshCcw
-              className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+              className={`h-3.5 w-3.5 ${loading ? "motion-safe:animate-spin motion-reduce:animate-none" : ""}`}
             />
           </button>
         </div>
@@ -189,7 +189,7 @@ export function MetricsDashboard({
 
       {loading && metrics.length === 0 ? (
         <div className="flex items-center justify-center py-12 text-slate-500">
-          <RefreshCcw className="mr-2 h-4 w-4 animate-spin" />
+          <RefreshCcw className="mr-2 h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" />
           Loading metrics...
         </div>
       ) : metrics.length === 0 ? (

@@ -5,7 +5,10 @@ icon: terminal
 
 # CLI Command Reference
 
-The MUTX CLI distribution lives at repo root and installs the `mutx` entrypoint from `pyproject.toml`.
+The MUTX CLI distribution lives at repo root and installs only the `mutx` entrypoint from
+`pyproject.toml`. Backend queue workers are server modules and are not included in the CLI wheel;
+run them from a full backend installation with `python -m src.api.document_worker` or
+`python -m src.api.reasoning_worker`.
 
 ## Install
 
@@ -236,6 +239,12 @@ Document workflows require `MUTX_DOCUMENTS_ENABLED=true`, `predict-rlm`, `deno`,
 | Command | Description |
 | ------- | ----------- |
 | `mutx security evaluate --agent-id <id> --session-id <id> <tool_name>` | Evaluate a tool call against security policy |
+| `mutx security approvals list` | List pending approvals visible to the authenticated caller |
+| `mutx security approvals approve <request_id>` | Approve an eligible assigned request by durable request ID |
+| `mutx security approvals deny <request_id>` | Deny an eligible assigned request by durable request ID |
+
+Approval decisions use the CLI's ordinary authenticated session plus persisted
+role and reviewer assignment. There is no separate approval bearer token.
 
 ### Webhooks
 

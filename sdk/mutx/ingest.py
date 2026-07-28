@@ -53,7 +53,7 @@ class Ingest:
         if error_message:
             payload["error_message"] = error_message
 
-        response = self._client.post("/ingest/agent-status", json=payload)
+        response = self._client.post("ingest/agent-status", json=payload)
         response.raise_for_status()
         return response.json()
 
@@ -75,7 +75,7 @@ class Ingest:
         if error_message:
             payload["error_message"] = error_message
 
-        response = await self._client.post("/ingest/agent-status", json=payload)
+        response = await self._client.post("ingest/agent-status", json=payload)
         response.raise_for_status()
         return response.json()
 
@@ -108,7 +108,7 @@ class Ingest:
         if error_message:
             payload["error_message"] = error_message
 
-        response = self._client.post("/ingest/deployment", json=payload)
+        response = self._client.post("ingest/deployment", json=payload)
         response.raise_for_status()
         return response.json()
 
@@ -133,7 +133,7 @@ class Ingest:
         if error_message:
             payload["error_message"] = error_message
 
-        response = await self._client.post("/ingest/deployment", json=payload)
+        response = await self._client.post("ingest/deployment", json=payload)
         response.raise_for_status()
         return response.json()
 
@@ -157,7 +157,7 @@ class Ingest:
         if memory_usage is not None:
             payload["memory_usage"] = memory_usage
 
-        response = self._client.post("/ingest/metrics", json=payload)
+        response = self._client.post("ingest/metrics", json=payload)
         response.raise_for_status()
         return response.json()
 
@@ -175,6 +175,6 @@ class Ingest:
         if memory_usage is not None:
             payload["memory_usage"] = memory_usage
 
-        response = await self._client.post("/ingest/metrics", json=payload)
+        response = await self._client.post("ingest/metrics", json=payload)
         response.raise_for_status()
         return response.json()

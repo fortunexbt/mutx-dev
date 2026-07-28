@@ -3,6 +3,7 @@
 import { AlertTriangle, CheckCircle2, Loader2, X } from "lucide-react";
 
 import type { Job } from "@/components/desktop/useDesktopJob";
+import { DESKTOP_FOCUS_CLASS } from "@/components/desktop/desktopVisualContract";
 import { cn } from "@/lib/utils";
 
 const JOB_LABELS: Record<string, string> = {
@@ -47,19 +48,16 @@ export function DesktopJobNotice({
 
   return (
     <div
+      role={failed ? "alert" : "status"}
+      aria-live={failed ? "assertive" : "polite"}
+      data-desktop-job-tone={tone}
       className={cn(
-        "rounded-[16px] border px-4 py-3.5 shadow-[0_10px_24px_rgba(15,23,42,0.08)]",
-        tone === "light"
-          ? failed
-            ? "border-rose-200 bg-[linear-gradient(180deg,#fff7f8_0%,#fbecef_100%)]"
-            : completed
-              ? "border-emerald-200 bg-[linear-gradient(180deg,#f7fcf8_0%,#edf8f2_100%)]"
-              : "border-[#d8dde5] bg-[linear-gradient(180deg,#ffffff_0%,#f4f6fa_100%)]"
-          : failed
-            ? "border-rose-500/20 bg-rose-500/10"
-            : completed
-              ? "border-emerald-500/20 bg-emerald-500/10"
-              : "border-white/10 bg-white/[0.04]",
+        "rounded-[6px] border px-4 py-3.5",
+        failed
+          ? "border-[#66302e] bg-[#241312]"
+          : completed
+            ? "border-[#285a43] bg-[#0f2018]"
+            : "border-[#294d6c] bg-[#101c26]",
       )}
     >
       <div className="flex items-start justify-between gap-4">
@@ -67,40 +65,28 @@ export function DesktopJobNotice({
           <div className="flex items-center gap-2">
             {running ? (
               <Loader2
-                className={cn(
-                  "h-4 w-4 animate-spin",
-                  tone === "light" ? "text-[#526171]" : "text-cyan-200",
-                )}
+                className="h-4 w-4 text-[#8ac7ff] motion-safe:animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
               />
             ) : completed ? (
               <CheckCircle2
-                className={cn(
-                  "h-4 w-4",
-                  tone === "light" ? "text-emerald-700" : "text-emerald-200",
-                )}
+                className="h-4 w-4 text-[#78e3b4]"
+                aria-hidden="true"
               />
             ) : (
               <AlertTriangle
-                className={cn(
-                  "h-4 w-4",
-                  tone === "light" ? "text-rose-700" : "text-rose-200",
-                )}
+                className="h-4 w-4 text-[#ff9b96]"
+                aria-hidden="true"
               />
             )}
             <p
-              className={cn(
-                "text-[12.5px] font-semibold tracking-[-0.01em]",
-                tone === "light" ? "text-[#171a1f]" : "text-white",
-              )}
+              className="text-[12.5px] font-semibold tracking-[-0.01em] text-[#eee9dc]"
             >
               {title}
             </p>
           </div>
           <p
-            className={cn(
-              "mt-2 text-[12px] leading-5",
-              tone === "light" ? "text-[#64707d]" : "text-slate-300",
-            )}
+            className="mt-2 text-[12px] leading-5 text-[#c8c0b0]"
           >
             {summary}
           </p>
@@ -110,39 +96,31 @@ export function DesktopJobNotice({
           <button
             type="button"
             onClick={onDismiss}
-            className={cn(
-              "inline-flex items-center gap-1 rounded-[10px] border px-2 py-1 text-[11px] transition",
-              tone === "light"
-                ? "border-[#d7dce4] bg-white text-[#596472] hover:bg-[#f6f8fb]"
-                : "border-white/10 bg-black/20 text-slate-300 hover:bg-white/10",
-            )}
+            aria-label={`Dismiss ${getJobLabel(job.id)} status`}
+            className={cn("inline-flex items-center gap-1 rounded-[4px] border border-[#48463e] bg-[#11120f] px-2 py-1 text-[11px] text-[#c8c0b0] transition-colors hover:text-[#eee9dc]", DESKTOP_FOCUS_CLASS)}
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
             Dismiss
           </button>
         ) : null}
       </div>
 
       <div
-        className={cn(
-          "mt-3 overflow-hidden rounded-full",
-          tone === "light" ? "bg-[#e6eaf0]" : "bg-black/30",
-        )}
+        className="mt-3 overflow-hidden rounded-[4px] bg-[#090a08]"
+        role="progressbar"
+        aria-label={`${getJobLabel(job.id)} progress`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
       >
         <div
           className={cn(
-            "h-1.5 rounded-full transition-all duration-300",
+            "h-1.5 rounded-[4px] motion-safe:transition-[width] motion-safe:duration-300 motion-reduce:transition-none",
             failed
-              ? tone === "light"
-                ? "bg-rose-500"
-                : "bg-rose-300"
+              ? "bg-[#ff6d66]"
               : completed
-                ? tone === "light"
-                  ? "bg-emerald-500"
-                  : "bg-emerald-300"
-                : tone === "light"
-                  ? "bg-[#516273]"
-                  : "bg-cyan-300",
+                ? "bg-[#4bd69b]"
+                : "bg-[#58aaff]",
           )}
           style={{ width: `${percent}%` }}
         />

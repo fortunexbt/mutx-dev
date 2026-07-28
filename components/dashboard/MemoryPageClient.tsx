@@ -3,11 +3,16 @@
 import { useEffect, useState } from "react";
 import { Database, FileStack, Sparkles } from "lucide-react";
 
-import { ApiRequestError, readJson } from "@/components/app/http";
+import { readJson } from "@/components/app/http";
+import {
+  dashboardRequestErrorMessage,
+  getDashboardRequestAccessFailure,
+} from "@/components/dashboard/dashboardRequestAccess";
 import {
   LiveAuthRequired,
   LiveEmptyState,
   LiveErrorState,
+  LiveForbidden,
   LiveKpiGrid,
   LiveLoading,
   LiveMiniStat,
@@ -25,14 +30,20 @@ type MemoryPayload = {
     workspace: string;
     status: string;
   } | null;
+  sourceStatus: {
+    assistant: MemorySourceStatus;
+    sessions: MemorySourceStatus;
+    documents: MemorySourceStatus;
+    reasoning: MemorySourceStatus;
+  };
   summary: {
-    sessions: number;
-    activeSessions: number;
-    sources: number;
-    documentJobs: number;
-    documentArtifacts: number;
-    reasoningJobs: number;
-    reasoningArtifacts: number;
+    sessions: number | null;
+    activeSessions: number | null;
+    sources: number | null;
+    documentJobs: number | null;
+    documentArtifacts: number | null;
+    reasoningJobs: number | null;
+    reasoningArtifacts: number | null;
   };
   sessions: Array<{
     id: string;
@@ -71,6 +82,8 @@ type MemoryPayload = {
   partials: string[];
 };
 
+type MemorySourceStatus = "ok" | "partial" | "auth_error" | "error";
+
 type MemorySession = MemoryPayload["sessions"][number];
 type MemoryJob = MemoryPayload["documents"][number];
 
@@ -94,6 +107,18 @@ function asCount(value: unknown, fallback = 0) {
     : fallback;
 }
 
+function asNullableCount(value: unknown, fallback: number | null = null) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.trunc(value))
+    : fallback;
+}
+
+function asSourceStatus(value: unknown): MemorySourceStatus {
+  return value === "ok" || value === "partial" || value === "auth_error" || value === "error"
+    ? value
+    : "error";
+}
+
 function asStringList(value: unknown) {
   if (!Array.isArray(value)) return [];
 
@@ -103,11 +128,12 @@ function asStringList(value: unknown) {
     .filter(Boolean);
 }
 
-function normalizeSession(value: unknown, index: number): MemorySession | null {
+function normalizeSession(value: unknown): MemorySession | null {
   const session = asRecord(value);
   if (!session) return null;
 
-  const id = asString(session.id, `session-${index + 1}`);
+  const id = asNullableString(session.id);
+  if (!id) return null;
   return {
     id,
     label: asString(session.label, id),
@@ -121,12 +147,15 @@ function normalizeSession(value: unknown, index: number): MemorySession | null {
   };
 }
 
-function normalizeJob(value: unknown, index: number, prefix: string): MemoryJob | null {
+function normalizeJob(value: unknown): MemoryJob | null {
   const job = asRecord(value);
   if (!job) return null;
 
+  const id = asNullableString(job.id);
+  if (!id) return null;
+
   return {
-    id: asString(job.id, `${prefix}-${index + 1}`),
+    id,
     templateId: asString(job.templateId, "unpublished"),
     status: asString(job.status, "unknown"),
     executionMode: asString(job.executionMode, "unknown"),
@@ -141,6 +170,7 @@ function normalizeJob(value: unknown, index: number, prefix: string): MemoryJob 
 export function normalizeMemoryPayload(value: unknown): MemoryPayload {
   const root = asRecord(value) ?? {};
   const summary = asRecord(root.summary) ?? {};
+  const sourceStatus = asRecord(root.sourceStatus) ?? {};
   const assistantRecord = asRecord(root.assistant);
   const sessions = Array.isArray(root.sessions)
     ? root.sessions
@@ -156,18 +186,30 @@ export function normalizeMemoryPayload(value: unknown): MemoryPayload {
     : [];
   const documents = Array.isArray(root.documents)
     ? root.documents
-        .map((job, index) => normalizeJob(job, index, "document"))
+        .map(normalizeJob)
         .filter((job): job is MemoryJob => job !== null)
     : [];
   const reasoning = Array.isArray(root.reasoning)
     ? root.reasoning
-        .map((job, index) => normalizeJob(job, index, "reasoning"))
+        .map(normalizeJob)
         .filter((job): job is MemoryJob => job !== null)
     : [];
 
-  const activeSessions = sessions.filter((session) => session.active).length;
-  const documentArtifacts = documents.reduce((total, job) => total + job.artifacts, 0);
-  const reasoningArtifacts = reasoning.reduce((total, job) => total + job.artifacts, 0);
+  const partials = asStringList(root.partials);
+  const responseIsIncomplete =
+    !asRecord(value) ||
+    !asRecord(root.summary) ||
+    !asRecord(root.sourceStatus) ||
+    !Array.isArray(root.sessions) ||
+    !Array.isArray(root.sources) ||
+    !Array.isArray(root.documents) ||
+    !Array.isArray(root.reasoning) ||
+    !Array.isArray(root.partials);
+  if (responseIsIncomplete) {
+    partials.push(
+      "The memory proxy returned an incomplete payload; unavailable totals are shown as unknown.",
+    );
+  }
 
   return {
     generatedAt: asString(root.generatedAt, ""),
@@ -178,30 +220,33 @@ export function normalizeMemoryPayload(value: unknown): MemoryPayload {
           status: asString(assistantRecord.status, "unknown"),
         }
       : null,
+    sourceStatus: {
+      assistant: asSourceStatus(sourceStatus.assistant),
+      sessions: asSourceStatus(sourceStatus.sessions),
+      documents: asSourceStatus(sourceStatus.documents),
+      reasoning: asSourceStatus(sourceStatus.reasoning),
+    },
     summary: {
-      sessions: asCount(summary.sessions, sessions.length),
-      activeSessions: asCount(summary.activeSessions, activeSessions),
-      sources: asCount(summary.sources, sources.length),
-      documentJobs: asCount(summary.documentJobs, documents.length),
-      documentArtifacts: asCount(summary.documentArtifacts, documentArtifacts),
-      reasoningJobs: asCount(summary.reasoningJobs, reasoning.length),
-      reasoningArtifacts: asCount(summary.reasoningArtifacts, reasoningArtifacts),
+      sessions: asNullableCount(summary.sessions),
+      activeSessions: asNullableCount(summary.activeSessions),
+      sources: asNullableCount(summary.sources),
+      documentJobs: asNullableCount(summary.documentJobs),
+      documentArtifacts: asNullableCount(summary.documentArtifacts),
+      reasoningJobs: asNullableCount(summary.reasoningJobs),
+      reasoningArtifacts: asNullableCount(summary.reasoningArtifacts),
     },
     sessions,
     sources,
     documents,
     reasoning,
-    partials: asStringList(root.partials),
+    partials: [...new Set(partials)],
   };
-}
-
-function isAuthError(error: unknown) {
-  return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
 }
 
 export function MemoryPageClient() {
   const [loading, setLoading] = useState(true);
   const [authRequired, setAuthRequired] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<MemoryPayload | null>(null);
 
@@ -211,6 +256,7 @@ export function MemoryPageClient() {
     async function load() {
       setLoading(true);
       setAuthRequired(false);
+      setPermissionDenied(false);
       setError(null);
 
       try {
@@ -221,10 +267,13 @@ export function MemoryPageClient() {
         }
       } catch (loadError) {
         if (!cancelled) {
-          if (isAuthError(loadError)) {
+          const accessFailure = getDashboardRequestAccessFailure(loadError);
+          if (accessFailure === "authentication") {
             setAuthRequired(true);
+          } else if (accessFailure === "permission") {
+            setPermissionDenied(true);
           } else {
-            setError(loadError instanceof Error ? loadError.message : "Failed to load memory");
+            setError(dashboardRequestErrorMessage(loadError, "Failed to load memory"));
           }
           setLoading(false);
         }
@@ -246,6 +295,9 @@ export function MemoryPageClient() {
       />
     );
   }
+  if (permissionDenied) {
+    return <LiveForbidden title="Memory permission required" message="Your account cannot read workspace memory or artifact context." />;
+  }
   if (error) return <LiveErrorState title="Memory surface unavailable" message={error} />;
   if (!payload) {
     return (
@@ -261,27 +313,71 @@ export function MemoryPageClient() {
       <LiveKpiGrid>
         <LiveStatCard
           label="Sessions"
-          value={String(payload.summary.sessions)}
-          detail={`${payload.summary.activeSessions} active context sessions are visible right now.`}
-          status={payload.summary.activeSessions > 0 ? "running" : "idle"}
+          value={payload.summary.sessions === null ? "Unknown" : String(payload.summary.sessions)}
+          detail={
+            payload.summary.activeSessions === null
+              ? "Session coverage is incomplete; active context totals are not verified."
+              : `${payload.summary.activeSessions} active context sessions are visible right now.`
+          }
+          status={
+            payload.summary.activeSessions === null
+              ? "warning"
+              : payload.summary.activeSessions > 0
+                ? "running"
+                : "idle"
+          }
         />
         <LiveStatCard
           label="Sources"
-          value={String(payload.summary.sources)}
+          value={payload.summary.sources === null ? "Unknown" : String(payload.summary.sources)}
           detail="Distinct context sources represented in the current inventory."
-          status={payload.summary.sources > 0 ? "success" : "idle"}
+          status={
+            payload.summary.sources === null
+              ? "warning"
+              : payload.summary.sources > 0
+                ? "success"
+                : "idle"
+          }
         />
         <LiveStatCard
           label="Document artifacts"
-          value={String(payload.summary.documentArtifacts)}
-          detail={`${payload.summary.documentJobs} document jobs currently retained in the dashboard feed.`}
-          status={payload.summary.documentArtifacts > 0 ? "success" : "idle"}
+          value={
+            payload.summary.documentArtifacts === null
+              ? "Unknown"
+              : String(payload.summary.documentArtifacts)
+          }
+          detail={
+            payload.summary.documentJobs === null
+              ? "Document job coverage is incomplete."
+              : `${payload.summary.documentJobs} document jobs currently retained in the dashboard feed.`
+          }
+          status={
+            payload.summary.documentArtifacts === null
+              ? "warning"
+              : payload.summary.documentArtifacts > 0
+                ? "success"
+                : "idle"
+          }
         />
         <LiveStatCard
           label="Reasoning artifacts"
-          value={String(payload.summary.reasoningArtifacts)}
-          detail={`${payload.summary.reasoningJobs} reasoning jobs currently retained in the dashboard feed.`}
-          status={payload.summary.reasoningArtifacts > 0 ? "success" : "idle"}
+          value={
+            payload.summary.reasoningArtifacts === null
+              ? "Unknown"
+              : String(payload.summary.reasoningArtifacts)
+          }
+          detail={
+            payload.summary.reasoningJobs === null
+              ? "Reasoning job coverage is incomplete."
+              : `${payload.summary.reasoningJobs} reasoning jobs currently retained in the dashboard feed.`
+          }
+          status={
+            payload.summary.reasoningArtifacts === null
+              ? "warning"
+              : payload.summary.reasoningArtifacts > 0
+                ? "success"
+                : "idle"
+          }
         />
       </LiveKpiGrid>
 
@@ -289,8 +385,16 @@ export function MemoryPageClient() {
         <LivePanel title="Context inventory" meta={`${payload.sessions.length} sessions`}>
           {payload.sessions.length === 0 ? (
             <LiveEmptyState
-              title="No session context discovered"
-              message="Session context will appear here once assistants or local session sources report activity."
+              title={
+                payload.sourceStatus.sessions === "ok"
+                  ? "No session context discovered"
+                  : "Session context coverage is incomplete"
+              }
+              message={
+                payload.sourceStatus.sessions === "ok"
+                  ? "Session context will appear here once assistants or local session sources report activity."
+                  : "The session feed is unavailable or malformed, so this empty inventory is not a verified zero."
+              }
             />
           ) : (
             <div className="space-y-3">
@@ -341,14 +445,30 @@ export function MemoryPageClient() {
               />
               <LiveMiniStat
                 label="Document jobs"
-                value={String(payload.summary.documentJobs)}
-                detail={`${payload.summary.documentArtifacts} artifacts in current feed`}
+                value={
+                  payload.summary.documentJobs === null
+                    ? "Unknown"
+                    : String(payload.summary.documentJobs)
+                }
+                detail={
+                  payload.summary.documentArtifacts === null
+                    ? "Document feed incomplete"
+                    : `${payload.summary.documentArtifacts} artifacts in current feed`
+                }
                 icon={FileStack}
               />
               <LiveMiniStat
                 label="Reasoning jobs"
-                value={String(payload.summary.reasoningJobs)}
-                detail={`${payload.summary.reasoningArtifacts} artifacts in current feed`}
+                value={
+                  payload.summary.reasoningJobs === null
+                    ? "Unknown"
+                    : String(payload.summary.reasoningJobs)
+                }
+                detail={
+                  payload.summary.reasoningArtifacts === null
+                    ? "Reasoning feed incomplete"
+                    : `${payload.summary.reasoningArtifacts} artifacts in current feed`
+                }
               />
             </LiveMiniStatGrid>
           </LivePanel>
@@ -372,8 +492,16 @@ export function MemoryPageClient() {
         <LivePanel title="Document artifacts" meta={`${payload.documents.length} jobs`}>
           {payload.documents.length === 0 ? (
             <LiveEmptyState
-              title="No document jobs yet"
-              message="Document workflow outputs show up here once the document engine has created jobs or artifacts."
+              title={
+                payload.sourceStatus.documents === "ok"
+                  ? "No document jobs yet"
+                  : "Document job coverage is incomplete"
+              }
+              message={
+                payload.sourceStatus.documents === "ok"
+                  ? "Document workflow outputs show up here once the document engine has created jobs or artifacts."
+                  : "The document feed is unavailable or malformed, so this empty inventory is not a verified zero."
+              }
             />
           ) : (
             <div className="space-y-3">
@@ -408,8 +536,16 @@ export function MemoryPageClient() {
         <LivePanel title="Reasoning artifacts" meta={`${payload.reasoning.length} jobs`}>
           {payload.reasoning.length === 0 ? (
             <LiveEmptyState
-              title="No reasoning jobs yet"
-              message="Reasoning outputs appear here once MUTX has persisted reasoning jobs or artifacts."
+              title={
+                payload.sourceStatus.reasoning === "ok"
+                  ? "No reasoning jobs yet"
+                  : "Reasoning job coverage is incomplete"
+              }
+              message={
+                payload.sourceStatus.reasoning === "ok"
+                  ? "Reasoning outputs appear here once MUTX has persisted reasoning jobs or artifacts."
+                  : "The reasoning feed is unavailable or malformed, so this empty inventory is not a verified zero."
+              }
             />
           ) : (
             <div className="space-y-3">

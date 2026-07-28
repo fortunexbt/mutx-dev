@@ -14,18 +14,20 @@ def run_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 def load_open_issues(repo: str, limit: int) -> list[dict[str, Any]]:
-    result = run_gh([
-        "issue",
-        "list",
-        "--repo",
-        repo,
-        "--state",
-        "open",
-        "--limit",
-        str(limit),
-        "--json",
-        "number,title,body,url,labels",
-    ])
+    result = run_gh(
+        [
+            "issue",
+            "list",
+            "--repo",
+            repo,
+            "--state",
+            "open",
+            "--limit",
+            str(limit),
+            "--json",
+            "number,title,body,url,labels",
+        ]
+    )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "gh issue list failed")
     payload = json.loads(result.stdout or "[]")
@@ -57,14 +59,22 @@ def fallback_body(issue: dict[str, Any]) -> str:
 def fix_issue_body(repo: str, issue_number: int, body: str) -> None:
     result = run_gh(["issue", "edit", str(issue_number), "--repo", repo, "--body", body])
     if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or f"gh issue edit failed for {issue_number}")
+        raise RuntimeError(
+            result.stderr.strip()
+            or result.stdout.strip()
+            or f"gh issue edit failed for {issue_number}"
+        )
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Detect and optionally rewrite malformed GitHub issue bodies")
+    parser = argparse.ArgumentParser(
+        description="Detect and optionally rewrite malformed GitHub issue bodies"
+    )
     parser.add_argument("--repo", default=DEFAULT_REPO)
     parser.add_argument("--limit", type=int, default=200)
-    parser.add_argument("--apply", action="store_true", help="Rewrite malformed bodies with a safe fallback")
+    parser.add_argument(
+        "--apply", action="store_true", help="Rewrite malformed bodies with a safe fallback"
+    )
     args = parser.parse_args()
 
     issues = load_open_issues(args.repo, args.limit)

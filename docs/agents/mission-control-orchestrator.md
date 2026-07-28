@@ -58,4 +58,4 @@ The orchestrator routes file-area ownership as follows:
 
 ## Source
 
-See the full agent definition in `agents/mission-control-orchestrator/AGENT.md`.
+See the full [agent definition](https://github.com/mutx-dev/mutx-dev/blob/main/agents/mission-control-orchestrator/AGENT.md) in the source repository.

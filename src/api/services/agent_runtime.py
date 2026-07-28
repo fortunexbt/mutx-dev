@@ -138,14 +138,20 @@ class ToolExecutionHandler:
         if evaluation.decision.is_deferred:
             receipt, audit_event = await self._governance.record_outcome(
                 evaluation,
-                outcome="approval_required",
-                outcome_detail=evaluation.decision.reason,
+                outcome="blocked_no_resume_binding",
+                outcome_detail=(
+                    "DEFER remained fail-closed because no durable canonical approval "
+                    "resume binding is configured"
+                ),
             )
             return {
-                "error": "Tool execution requires approval",
+                "error": (
+                    "Tool execution is blocked: DEFER has no durable canonical "
+                    "approval resume binding"
+                ),
                 "decision": evaluation.decision.decision.value,
                 "reason": evaluation.decision.reason,
-                "approval_id": evaluation.approval.id if evaluation.approval else None,
+                "resumable": False,
                 "receipt_id": receipt.receipt_id,
                 "integrity_hash": audit_event.integrity_hash,
             }

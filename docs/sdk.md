@@ -28,6 +28,10 @@ with MutxClient(api_key="mutx_live_your_key") as client:
 
 ### Custom Base URL
 
+`MutxClient` accepts either an API origin or a URL already ending in `/v1`.
+It normalizes both forms to exactly one `/v1` segment, so local development can
+use either `http://localhost:8000` or `http://localhost:8000/v1`.
+
 ```python
 with MutxClient(
     api_key="mutx_live_your_key",
@@ -145,6 +149,42 @@ with MutxClient(api_key="your-api-key") as client:
 with MutxClient(api_key="your-api-key") as client:
     client.agents.delete("agent-id")
 ```
+
+---
+
+## Legacy Runtime Security
+
+Security state is tenant-owned. `user_id` comes from authentication and is
+intentionally absent from both sync and async SDK method signatures. The
+supplied agent UUID must resolve to a persisted agent owned by the authenticated
+principal, and the session must be bound to that same agent. Approval creation
+can include an explicit `reviewer_id` selected from
+`client.approvals.list_reviewers()`.
+
+```python
+with MutxClient(api_key="your-api-key") as client:
+    client.security.create_session("run-123", agent_id="owned-agent-uuid")
+    evaluation = client.security.evaluate_action(
+        tool_name="file_read",
+        tool_args={"path": "/tmp/report.txt"},
+        agent_id="owned-agent-uuid",
+        session_id="run-123",
+    )
+    receipt = client.security.get_receipt(evaluation.receipt_id)
+    page = client.security.get_session_receipts("run-123", limit=25, offset=0)
+```
+
+Approval decisions use the durable request ID plus the authenticated caller's
+persisted assignment and role. No approval token is returned or accepted:
+
+```python
+client.security.approve(request_id, comment="Reviewed against the requested intent")
+client.security.deny(request_id, reason="The action exceeds the requested scope")
+```
+
+For async calls, construct `Security` with an `httpx.AsyncClient` and use its
+`a*` methods, such as `aevaluate_action`, `aapprove`, and
+`aget_session_receipts`.
 
 ---
 
@@ -333,21 +373,31 @@ with MutxClient(api_key="your-api-key") as client:
 
 ## Async Support
 
+The package does not export a general-purpose `MutxAsyncClient`. `MutxClient`
+is synchronous. Resource classes provide `a*` methods when constructed with an
+`httpx.AsyncClient`; because that client is user-owned, its base URL must include
+the mounted `/v1` prefix.
+
 ```python
 import asyncio
-from mutx import MutxAsyncClient
+import httpx
+
+from mutx.agents import Agents
 
 async def main():
-    async with MutxAsyncClient(api_key="your-key") as client:
-        agents = await client.agents.alist()
-        await client.agents.acreate(name="async-agent", type="openai")
+    async with httpx.AsyncClient(
+        base_url="https://api.mutx.dev/v1",
+        headers={"Authorization": "Bearer your-key"},
+    ) as http:
+        agents = Agents(http)
+        items = await agents.alist()
+        await agents.acreate(name="async-agent", type="openai")
 
 asyncio.run(main())
 ```
 
-{% hint style="warning" %}
-MutxAsyncClient is deprecated. Use MutxClient with async-prefixed resource methods instead.
-{% endhint %}
+For the exported agent-runtime client, use `MutxAgentClient`; its methods are
+asynchronous and it accepts either root or `/v1`-terminated MUTX URLs.
 
 ---
 

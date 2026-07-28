@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   GitBranch,
   RefreshCcw,
@@ -14,8 +14,10 @@ import {
 
 import { Card } from "@/components/ui/Card";
 import { type components } from "@/app/types/api";
+import { extractApiErrorMessage } from "@/components/app/http";
 
 type DeploymentEventResponse = components["schemas"]["DeploymentEventResponse"];
+type DeploymentEventHistoryResponse = components["schemas"]["DeploymentEventHistoryResponse"];
 
 interface StateTransitionsProps {
   deploymentId: string;
@@ -76,7 +78,7 @@ function getEventIcon(eventType: string, status: string) {
     return <XCircle className="h-4 w-4 text-rose-400" />;
   }
   if (normalizedEvent === "starting" || normalizedEvent === "restarting" || normalizedEvent === "scaling") {
-    return <RefreshCcw className="h-4 w-4 text-amber-400 animate-spin" />;
+    return <RefreshCcw className="h-4 w-4 text-amber-400 motion-safe:animate-spin motion-reduce:animate-none" />;
   }
   if (normalizedEvent === "stopping" || normalizedEvent === "stopped") {
     return <Clock className="h-4 w-4 text-slate-400" />;
@@ -134,15 +136,37 @@ function getStatusBadge(status?: string | null) {
   );
 }
 
-async function fetchEvents(deploymentId: string): Promise<DeploymentEventResponse[]> {
-  const response = await fetch(`/deployments/${deploymentId}/events?limit=50`, {
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch events: ${response.statusText}`);
+export function parseDeploymentEventHistory(payload: unknown): DeploymentEventResponse[] {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Invalid deployment event response");
   }
-  const data = await response.json();
-  return data.items ?? [];
+
+  const { items } = payload as DeploymentEventHistoryResponse;
+  if (!Array.isArray(items)) {
+    throw new Error("Invalid deployment event response");
+  }
+
+  return items;
+}
+
+export async function fetchDeploymentEvents(
+  deploymentId: string,
+  request: typeof fetch = fetch,
+): Promise<DeploymentEventResponse[]> {
+  const response = await request(
+    `/api/deployments/${encodeURIComponent(deploymentId)}/events?limit=50`,
+    {
+      cache: "no-store",
+    },
+  );
+  const payload: unknown = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      extractApiErrorMessage(payload, `Failed to fetch events: ${response.statusText}`),
+    );
+  }
+
+  return parseDeploymentEventHistory(payload);
 }
 
 export function StateTransitions({
@@ -152,27 +176,43 @@ export function StateTransitions({
   const [events, setEvents] = useState<DeploymentEventResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const loadedDeploymentIdRef = useRef<string | null>(null);
+  const requestSequenceRef = useRef(0);
 
   const loadEvents = useCallback(async function loadEvents() {
     if (!deploymentId) return;
 
+    const requestSequence = ++requestSequenceRef.current;
+    if (loadedDeploymentIdRef.current !== deploymentId) {
+      setEvents([]);
+    }
     setLoading(true);
     setError(null);
 
     try {
-      const data = await fetchEvents(deploymentId);
+      const data = await fetchDeploymentEvents(deploymentId);
+      if (requestSequence !== requestSequenceRef.current) return;
+
+      loadedDeploymentIdRef.current = deploymentId;
       setEvents(data);
     } catch (err) {
+      if (requestSequence !== requestSequenceRef.current) return;
+
       setError(err instanceof Error ? err.message : "Failed to load events");
     } finally {
-      setLoading(false);
+      if (requestSequence === requestSequenceRef.current) {
+        setLoading(false);
+      }
     }
   }, [deploymentId]);
 
   useEffect(() => {
     loadEvents();
     const interval = setInterval(loadEvents, 10000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      requestSequenceRef.current += 1;
+    };
   }, [deploymentId, loadEvents]);
 
   const sortedEvents = [...events].sort(
@@ -196,7 +236,7 @@ export function StateTransitions({
         </div>
         <div className="flex items-center gap-2">
           <span className="flex items-center gap-1.5 rounded-lg bg-violet-400/10 px-2.5 py-1 text-[10px] font-medium text-violet-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-pulse" />
+            <span className="h-1.5 w-1.5 rounded-full bg-violet-400 motion-safe:animate-pulse motion-reduce:animate-none" />
             Live
           </span>
           <button
@@ -205,7 +245,7 @@ export function StateTransitions({
             className="inline-flex items-center gap-1.5 rounded-lg bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:text-white disabled:opacity-50"
           >
             <RefreshCcw
-              className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+              className={`h-3.5 w-3.5 ${loading ? "motion-safe:animate-spin motion-reduce:animate-none" : ""}`}
             />
           </button>
         </div>
@@ -220,8 +260,16 @@ export function StateTransitions({
 
       {loading && events.length === 0 ? (
         <div className="flex items-center justify-center py-12 text-slate-500">
-          <RefreshCcw className="mr-2 h-4 w-4 animate-spin" />
+          <RefreshCcw className="mr-2 h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" />
           Loading events...
+        </div>
+      ) : error && events.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+          <AlertCircle className="mb-2 h-8 w-8 text-rose-400/70" />
+          <p className="text-sm">State transitions unavailable</p>
+          <p className="mt-1 text-xs text-slate-600">
+            Refresh to try loading deployment events again
+          </p>
         </div>
       ) : sortedEvents.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-slate-500">
