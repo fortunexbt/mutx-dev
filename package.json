@@ -36,6 +36,7 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run test:app",
     "test:app": "jest --runInBand tests/unit",
+    "test:dependency-compat": "node scripts/check-js-dependency-compat.mjs",
     "test:e2e:dashboard": "playwright test tests/dashboardAgents.spec.ts tests/dashboardOpenClaw.spec.ts tests/dashboardRouteMatrix.spec.ts --project=chromium --workers=1",
     "smoke:dashboard": "node scripts/dashboard-interactions-smoke.mjs",
     "test:e2e:release": "bash scripts/run-release-web-smoke.sh",
@@ -179,7 +180,9 @@
     "@babel/core": "^7.29.7",
     "@xmldom/xmldom": "^0.9.10",
     "app-builder-bin": "5.0.0-alpha.13",
-    "brace-expansion": "^5.0.6",
+    "brace-expansion@<2.0.0": "1.1.16",
+    "brace-expansion@>=2.0.0 <3.0.0": "2.1.2",
+    "brace-expansion@>=3.0.0": "5.0.7",
     "form-data": "^4.0.6",
     "gray-matter": {
       "js-yaml": "^3.15.0"
