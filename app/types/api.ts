@@ -8018,6 +8018,11 @@ export interface components {
          */
         ReceiptResponse: {
             /**
+             * Receipt Version
+             * @default 1.0
+             */
+            receipt_version: string;
+            /**
              * Receipt Id
              * @default
              */
@@ -8085,10 +8090,18 @@ export interface components {
             timestamp: string;
             /** Duration Ms */
             duration_ms?: number | null;
+            /** Session Snapshot */
+            session_snapshot?: Record<string, never> | null;
+            /** Prior Action Hashes */
+            prior_action_hashes?: string[];
             /** Signature */
             signature?: string | null;
             /** Signed By */
             signed_by?: string | null;
+            /** Signature Algorithm */
+            signature_algorithm?: string | null;
+            /** Signing Key Id */
+            signing_key_id?: string | null;
             /** Metadata */
             metadata?: Record<string, never>;
         };

@@ -4,8 +4,9 @@ Receipt Generator.
 Cryptographically signed records binding action, context, policy decision,
 and outcome. Enables forensic reconstruction and compliance audit trails.
 
-AARM alignment: contributes to current R5 tamper-evident receipts. Signing is
-optional and the full current R5 receipt schema is not yet demonstrated.
+AARM alignment: contributes to current R5 tamper-evident receipts. Every
+generated receipt is signed with Ed25519 and can be verified offline from the
+embedded public key. The full current R5 receipt schema is not yet demonstrated.
 
 AARM documentation reference: MIT License, Copyright (c) 2023 Mintlify.
 https://github.com/aarm-dev/docs/tree/8eff208b98786b2c9a578b26cb7eaca440ec4020
@@ -13,8 +14,9 @@ https://github.com/aarm-dev/docs/tree/8eff208b98786b2c9a578b26cb7eaca440ec4020
 
 import hashlib
 import json
+import secrets
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -34,9 +36,10 @@ class ActionReceipt:
     - The policy decision
     - The actual outcome (executed, blocked, error, etc.)
 
-    Receipts can be optionally signed with Ed25519 for tamper detection.
+    Receipts are signed with Ed25519 for tamper detection and offline verification.
     """
 
+    receipt_version: str = "1.0"
     receipt_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     action_id: str = ""
     action_hash: str = ""
@@ -64,6 +67,8 @@ class ActionReceipt:
 
     signature: Optional[str] = None
     signed_by: Optional[str] = None
+    signature_algorithm: Optional[str] = None
+    signing_key_id: Optional[str] = None
 
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -81,14 +86,38 @@ class ActionReceipt:
         """Serialize to JSON string."""
         return json.dumps(self.to_dict(), sort_keys=True)
 
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "ActionReceipt":
+        """Rebuild an exported receipt for offline verification."""
+        payload = dict(value)
+        unknown_fields = set(payload) - {item.name for item in fields(cls)}
+        if unknown_fields:
+            names = ", ".join(sorted(unknown_fields))
+            raise ValueError(f"Unknown receipt fields: {names}")
+        timestamp = payload.get("timestamp")
+        if isinstance(timestamp, str):
+            try:
+                payload["timestamp"] = datetime.fromisoformat(timestamp)
+            except ValueError as exc:
+                raise ValueError("Receipt timestamp must be ISO 8601") from exc
+        elif timestamp is not None and not isinstance(timestamp, datetime):
+            raise ValueError("Receipt timestamp must be ISO 8601")
+        return cls(**payload)
+
+    def signing_payload(self) -> bytes:
+        """Return the canonical receipt content covered by the signature."""
+        payload = self.to_dict()
+        payload.pop("signature", None)
+        canonical = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+        return canonical.encode()
+
     def compute_hash(self) -> str:
         """
         Compute SHA-256 hash of receipt content.
 
         This hash can be used to verify the receipt hasn't been tampered with.
         """
-        canonical = self.to_json()
-        return hashlib.sha256(canonical.encode()).hexdigest()
+        return hashlib.sha256(self.signing_payload()).hexdigest()
 
 
 @dataclass
@@ -167,14 +196,17 @@ class ReceiptGenerator:
             outcome="executed",
         )
 
-        # Sign receipt
-        generator.sign(receipt, private_key)
-
         # Store for audit
         storage.store(receipt)
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        signing_private_key: bytes | str | None = None,
+        signing_key_id: str = "mutx-runtime",
+    ):
+        self._signing_private_key = self._load_private_key(signing_private_key)
+        self._signing_key_id = signing_key_id
         self._chains: dict[str, ReceiptChain] = {}
         self._receipts: dict[str, ActionReceipt] = {}
 
@@ -241,6 +273,8 @@ class ReceiptGenerator:
             metadata=metadata or {},
         )
 
+        self.sign(receipt)
+
         self._receipts[receipt.receipt_id] = receipt
 
         chain = self._chains.get(action.session_id)
@@ -254,7 +288,7 @@ class ReceiptGenerator:
     def sign(
         self,
         receipt: ActionReceipt,
-        private_key: bytes,
+        private_key: bytes | str | None = None,
         public_key_id: str = "",
     ) -> str:
         """
@@ -262,36 +296,38 @@ class ReceiptGenerator:
 
         Args:
             receipt: Receipt to sign
-            private_key: Ed25519 private key bytes
-            public_key_id: Identifier for the signing key
+            private_key: Optional 32-byte Ed25519 private key seed. The generator's
+                configured key is used when omitted.
+            public_key_id: Optional stable identifier for the signing key
 
         Returns:
             The signature as a hex string
         """
-        try:
-            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives import serialization
 
-            if isinstance(private_key, str):
-                private_key = bytes.fromhex(private_key)
+        key = (
+            self._load_private_key(private_key)
+            if private_key is not None
+            else self._signing_private_key
+        )
+        public_key = key.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        receipt.signed_by = public_key.hex()
+        receipt.signature_algorithm = "Ed25519"
+        receipt.signing_key_id = public_key_id or self._signing_key_id
+        signature = key.sign(receipt.signing_payload())
+        receipt.signature = signature.hex()
+        return signature.hex()
 
-            key = Ed25519PrivateKey.from_private_bytes(private_key[:32])
-            signature = key.sign(receipt.to_json().encode())
-
-            receipt.signature = signature.hex()
-            receipt.signed_by = public_key_id
-
-            return signature.hex()
-
-        except ImportError:
-            import hmac
-
-            key = hashlib.sha256(private_key).digest()
-            signature = hmac.new(key, receipt.to_json().encode(), hashlib.sha256).hexdigest()
-            receipt.signature = signature
-            receipt.signed_by = public_key_id or "hmac-fallback"
-            return signature
-
-    def verify(self, receipt: ActionReceipt) -> tuple[bool, str]:
+    def verify(
+        self,
+        receipt: ActionReceipt,
+        *,
+        trusted_public_key: bytes | str | None = None,
+        trusted_key_id: str | None = None,
+    ) -> tuple[bool, str]:
         """
         Verify a receipt's integrity.
 
@@ -301,59 +337,53 @@ class ReceiptGenerator:
         Returns:
             Tuple of (is_valid, error_message)
         """
-        if receipt.signature and receipt.signed_by:
-            if receipt.signed_by == "hmac-fallback":
-                computed = self._compute_hmac_signature(receipt, receipt.signed_by)
-                if computed != receipt.signature:
-                    return False, "HMAC signature mismatch"
-                return True, ""
+        if not receipt.signature or not receipt.signed_by:
+            return False, "Receipt is unsigned"
+        if receipt.signature_algorithm != "Ed25519":
+            return False, "Receipt does not use Ed25519"
+        if trusted_key_id is not None and receipt.signing_key_id != trusted_key_id:
+            return False, "Receipt signing key ID is not trusted"
 
+        if trusted_public_key is not None:
+            if isinstance(trusted_public_key, bytes):
+                trusted_public_key = trusted_public_key.hex()
             try:
-                from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+                trusted_public_key_bytes = bytes.fromhex(trusted_public_key)
+            except ValueError:
+                return False, "Trusted Ed25519 public key must be hex-encoded"
+            if len(trusted_public_key_bytes) != 32:
+                return False, "Trusted Ed25519 public key must contain exactly 32 bytes"
+            if not secrets.compare_digest(receipt.signed_by, trusted_public_key.lower()):
+                return False, "Receipt signer does not match the trusted public key"
 
-                public_key_bytes = bytes.fromhex(receipt.signed_by)
-                key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
-                expected_sig = receipt.signature
+        try:
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-                receipt_for_verify = ActionReceipt(
-                    receipt_id=receipt.receipt_id,
-                    action_id=receipt.action_id,
-                    action_hash=receipt.action_hash,
-                    session_id=receipt.session_id,
-                    tool_name=receipt.tool_name,
-                    tool_args=receipt.tool_args,
-                    agent_id=receipt.agent_id,
-                    user_id=receipt.user_id,
-                    policy_decision=receipt.policy_decision,
-                    policy_rule_id=receipt.policy_rule_id,
-                    policy_rule_name=receipt.policy_rule_name,
-                    decision_reason=receipt.decision_reason,
-                    outcome=receipt.outcome,
-                    outcome_detail=receipt.outcome_detail,
-                    timestamp=receipt.timestamp,
-                    duration_ms=receipt.duration_ms,
-                    session_snapshot=receipt.session_snapshot,
-                    prior_action_hashes=receipt.prior_action_hashes,
-                    metadata=receipt.metadata,
-                )
+            public_key_bytes = bytes.fromhex(receipt.signed_by)
+            key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
+            key.verify(bytes.fromhex(receipt.signature), receipt.signing_payload())
+            return True, ""
+        except Exception as exc:
+            return False, f"Signature verification failed: {exc}"
 
-                key.verify(
-                    bytes.fromhex(expected_sig),
-                    receipt_for_verify.to_json().encode(),
-                )
-                return True, ""
+    @staticmethod
+    def _load_private_key(private_key: bytes | str | None):
+        """Load a 32-byte Ed25519 seed or generate a new signing key."""
+        try:
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        except ImportError as exc:
+            raise RuntimeError("Ed25519 receipt signing requires cryptography") from exc
 
-            except Exception as e:
-                return False, f"Signature verification failed: {e}"
-
-        return True, ""
-
-    def _compute_hmac_signature(self, receipt: ActionReceipt, key_id: str) -> str:
-        """Compute HMAC signature (fallback when cryptography unavailable)."""
-        import hmac
-
-        key = hashlib.sha256(key_id.encode()).digest()
-        return hmac.new(key, receipt.to_json().encode(), hashlib.sha256).hexdigest()
+        if private_key is None:
+            return Ed25519PrivateKey.generate()
+        if isinstance(private_key, str):
+            try:
+                private_key = bytes.fromhex(private_key)
+            except ValueError as exc:
+                raise ValueError("Ed25519 private key must be hex-encoded") from exc
+        if len(private_key) != 32:
+            raise ValueError("Ed25519 private key must contain exactly 32 bytes")
+        return Ed25519PrivateKey.from_private_bytes(private_key)
 
     def get_receipt(self, receipt_id: str) -> Optional[ActionReceipt]:
         """Get a receipt by ID."""

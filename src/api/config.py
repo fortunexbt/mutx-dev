@@ -62,6 +62,17 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("SECRET_ENCRYPTION_KEY"),
     )
+    receipt_signing_private_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RECEIPT_SIGNING_PRIVATE_KEY"),
+        description="Hex-encoded 32-byte Ed25519 seed used to sign governance receipts.",
+    )
+    receipt_signing_key_id: str = Field(
+        default="mutx-runtime",
+        validation_alias=AliasChoices("RECEIPT_SIGNING_KEY_ID"),
+        min_length=1,
+        max_length=128,
+    )
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
     refresh_token_max_sliding_days: int = 30  # Max days for sliding expiry
@@ -488,6 +499,26 @@ class Settings(BaseSettings):
                 "SECRET_ENCRYPTION_KEY must not match JWT_SECRET. "
                 "Use a dedicated encryption key to keep token signing and secret encryption separate."
             )
+
+        if not self.receipt_signing_private_key:
+            if is_production:
+                errors.append(
+                    "RECEIPT_SIGNING_PRIVATE_KEY environment variable must be set in production. "
+                    'Generate one with: python3 -c "import secrets; print(secrets.token_hex(32))"'
+                )
+            else:
+                warnings.append(
+                    "RECEIPT_SIGNING_PRIVATE_KEY is not set; governance receipts will use an "
+                    "ephemeral Ed25519 key. Set a stable key for durable signer identity."
+                )
+        else:
+            try:
+                receipt_signing_seed = bytes.fromhex(self.receipt_signing_private_key)
+            except ValueError:
+                errors.append("RECEIPT_SIGNING_PRIVATE_KEY must be hex-encoded")
+            else:
+                if len(receipt_signing_seed) != 32:
+                    errors.append("RECEIPT_SIGNING_PRIVATE_KEY must decode to exactly 32 bytes")
 
         # OIDC is optional, but partial configuration is unsafe and unusable.
         oidc_values = {

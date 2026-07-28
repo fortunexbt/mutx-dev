@@ -21,7 +21,7 @@ else
 fi
 
 echo "🔎 Validating required environment variables..."
-required_vars=(POSTGRES_PASSWORD DATABASE_URL JWT_SECRET NEXT_PUBLIC_API_URL NEXT_PUBLIC_SITE_URL)
+required_vars=(POSTGRES_PASSWORD DATABASE_URL JWT_SECRET RECEIPT_SIGNING_PRIVATE_KEY NEXT_PUBLIC_API_URL NEXT_PUBLIC_SITE_URL)
 for var_name in "${required_vars[@]}"; do
   if ! grep -Eq "^${var_name}=.+" "${ENV_FILE}"; then
     echo "❌ Missing required variable in .env.production: ${var_name}"

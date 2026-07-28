@@ -54,6 +54,7 @@ jobs:
           POSTGRES_PASSWORD: testpass
           REDIS_PASSWORD: testpass
           JWT_SECRET: test-secret-key-that-is-long-enough-32
+          RECEIPT_SIGNING_PRIVATE_KEY: "0101010101010101010101010101010101010101010101010101010101010101"
           DATABASE_URL: postgresql://mutx:testpass@postgres:5432/mutx
           DATABASE_SSL_MODE: disable
           GRAFANA_ADMIN_PASSWORD: testpass

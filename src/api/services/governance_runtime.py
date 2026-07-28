@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 import uuid
 
+from src.api.config import get_settings
 from src.api.integrations.tool_names import RUNTIME_BUILTIN_TOOL_NAMES
 from src.api.services.audit_log import AuditEvent, AuditEventType, AuditLog, get_audit_log
 from src.security import (
@@ -363,5 +364,10 @@ def get_governance_runtime() -> GovernanceRuntime:
     """Return the process-wide security composition root."""
     global _governance_runtime
     if _governance_runtime is None:
-        _governance_runtime = GovernanceRuntime()
+        settings = get_settings()
+        receipt_generator = ReceiptGenerator(
+            signing_private_key=settings.receipt_signing_private_key,
+            signing_key_id=settings.receipt_signing_key_id,
+        )
+        _governance_runtime = GovernanceRuntime(receipt_generator=receipt_generator)
     return _governance_runtime

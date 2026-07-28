@@ -50,7 +50,7 @@ The authoritative requirements are pinned at
 | R2 | MUST | Context accumulation including data classification and original request | Partial; not demonstrated |
 | R3 | MUST | Static and contextual policy evaluation with mandatory deferral conditions | Partial; not demonstrated |
 | R4 | MUST | Distinct ALLOW, DENY, MODIFY, STEP_UP, and DEFER decisions | Partial; STEP_UP is not distinct |
-| R5 | MUST | Complete signed and offline-verifiable receipts for every action | Partial; not demonstrated |
+| R5 | MUST | Complete signed and offline-verifiable receipts for every action | Partial; mandatory Ed25519 signing shipped, full evidence schema/path proof remains |
 | R6 | MUST | Human, service, agent, session, role, and privilege identity binding | Partial; not demonstrated |
 | R7 | SHOULD | Calibrated cumulative semantic-distance tracking | Gap; current heuristic is insufficient |
 | R8 | SHOULD | Structured near-real-time telemetry, filtering, and historical export | Partial; not demonstrated |

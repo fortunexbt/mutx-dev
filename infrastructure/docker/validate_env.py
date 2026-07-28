@@ -13,6 +13,7 @@ def validate_required_vars() -> list[str]:
     required = [
         "DATABASE_URL",
         "JWT_SECRET",
+        "RECEIPT_SIGNING_PRIVATE_KEY",
     ]
 
     missing = []
@@ -40,6 +41,15 @@ def validate_database_url() -> bool:
     return True
 
 
+def validate_receipt_signing_key() -> bool:
+    """Validate the persistent Ed25519 receipt signing seed."""
+    private_key = os.environ.get("RECEIPT_SIGNING_PRIVATE_KEY", "")
+    try:
+        return len(bytes.fromhex(private_key)) == 32
+    except ValueError:
+        return False
+
+
 def main() -> int:
     """Run all validations and return exit code."""
     errors = []
@@ -52,6 +62,9 @@ def main() -> int:
     # Validate JWT_SECRET
     if os.environ.get("JWT_SECRET") and not validate_jwt_secret():
         errors.append("JWT_SECRET must be at least 32 characters")
+
+    if os.environ.get("RECEIPT_SIGNING_PRIVATE_KEY") and not validate_receipt_signing_key():
+        errors.append("RECEIPT_SIGNING_PRIVATE_KEY must be a 64-character hex seed")
 
     # Validate DATABASE_URL
     if os.environ.get("DATABASE_URL") and not validate_database_url():

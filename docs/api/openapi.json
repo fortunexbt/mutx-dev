@@ -25336,6 +25336,11 @@
       },
       "ReceiptResponse": {
         "properties": {
+          "receipt_version": {
+            "type": "string",
+            "title": "Receipt Version",
+            "default": "1.0"
+          },
           "receipt_id": {
             "type": "string",
             "title": "Receipt Id",
@@ -25433,6 +25438,24 @@
             ],
             "title": "Duration Ms"
           },
+          "session_snapshot": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Snapshot"
+          },
+          "prior_action_hashes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Prior Action Hashes"
+          },
           "signature": {
             "anyOf": [
               {
@@ -25454,6 +25477,28 @@
               }
             ],
             "title": "Signed By"
+          },
+          "signature_algorithm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signature Algorithm"
+          },
+          "signing_key_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signing Key Id"
           },
           "metadata": {
             "type": "object",

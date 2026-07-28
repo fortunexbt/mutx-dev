@@ -110,6 +110,7 @@ def test_api_docs_are_disabled_in_production_by_default(monkeypatch):
     monkeypatch.setenv("SECRET_ENCRYPTION_KEY", "test-secret-key-that-is-32-bytes-long!")
     monkeypatch.setenv("DATABASE_URL", "postgresql://prod:***@db.example.com:5432/mutx")
     monkeypatch.setenv("FORWARDED_ALLOW_IPS", "10.0.0.1")
+    monkeypatch.setenv("RECEIPT_SIGNING_PRIVATE_KEY", "01" * 32)
 
     settings = Settings(_env_file=None)
 

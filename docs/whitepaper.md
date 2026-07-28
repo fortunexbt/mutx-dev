@@ -20,7 +20,7 @@ Operating autonomous agents in production fails in predictable ways:
 | Unbounded tool execution | Agent calls destructive tools (shell, file delete, network) without constraint | Supported supervised paths can evaluate a NormalizedAction before execution; complete current AARM R1 coverage is not yet demonstrated |
 | Context-blind gating | Individual actions look safe but the sequence is dangerous (e.g., read-credit-cards → send-email) | ContextAccumulator stores session actions and data access (partial current R2/R3); IntentSignal is a heuristic, not current R7 semantic distance |
 | No human override | High-risk actions execute automatically with no approval path | ApprovalService provides a human decision lifecycle (partial current R4; STEP_UP and DEFER are not yet distinct) |
-| No audit trail | After an incident, there is no record of what the agent did, why, or who approved it | ReceiptGenerator can create and sign ActionReceipts (partial current R5; full receipt evidence is not yet demonstrated) |
+| No audit trail | After an incident, there is no record of what the agent did, why, or who approved it | ReceiptGenerator automatically Ed25519-signs ActionReceipts for offline tamper verification (partial current R5; the full evidence schema/path proof is not yet demonstrated) |
 | Credential sprawl | API keys and secrets embedded in agent configs or environment variables permanently | CredentialBroker retrieves on-demand with TTL, injects as ephemeral env vars |
 | Agent zombie processes | Agent crashes but its status remains "running" indefinitely | MonitorRuntimeState tracks heartbeats; SelfHealer recovers via RESTART/ROLLBACK |
 | Identity ambiguity | Cannot distinguish agent actions from developer actions or from different agents | JWT/API key auth plus agent, session, and user identifiers (partial current R6; service identity and privilege scope remain gaps) |
@@ -1408,6 +1408,7 @@ Source: `src/security/receipts.py` (407 lines)
 ```python
 @dataclass
 class ActionReceipt:
+    receipt_version: str              # Canonical receipt schema version
     receipt_id: str                    # UUID
     action_id: str
     action_hash: str                   # SHA-256 of the action
@@ -1426,8 +1427,10 @@ class ActionReceipt:
     duration_ms: Optional[int]
     session_snapshot: Optional[dict]   # Snapshot of SessionContext at decision time
     prior_action_hashes: list[str]     # Chain integrity: hashes of previous receipts
-    signature: Optional[str]           # Ed25519 signature (optional)
-    signed_by: Optional[str]
+    signature: Optional[str]           # Mandatory on generated receipts
+    signed_by: Optional[str]           # Embedded Ed25519 public key
+    signature_algorithm: Optional[str] # "Ed25519"
+    signing_key_id: Optional[str]      # Stable operator key identifier
     metadata: dict[str, Any]
 
     def compute_hash(self) -> str:
@@ -1465,7 +1468,7 @@ class ReceiptGenerator:
         self, action, context, decision, outcome,
         outcome_detail="", duration_ms=None, metadata=None,
     ) -> ActionReceipt:
-        """Create receipt binding action + context + policy decision + outcome."""
+        """Create and sign a receipt binding action, context, decision, and outcome."""
         receipt = ActionReceipt(
             action_id=action.id,
             action_hash=action.action_hash,
@@ -1473,7 +1476,8 @@ class ReceiptGenerator:
             session_snapshot=context.to_dict() if context else None,
             ...
         )
-        # Add to chain
+        self.sign(receipt)
+        # Add the signed receipt to the chain
         chain = self._chains.get(action.session_id)
         if chain is None:
             chain = ReceiptChain(session_id=action.session_id)
@@ -1496,7 +1500,7 @@ current AARM model; they do not certify conformance.
 | R2 | MUST | Accumulated actions, data classifications, and original request | Partial; not demonstrated |
 | R3 | MUST | Static and contextual policy evaluation with mandatory deferral conditions | Partial; not demonstrated |
 | R4 | MUST | Distinct ALLOW, DENY, MODIFY, STEP_UP, and DEFER decisions | Partial; STEP_UP is missing as a distinct decision |
-| R5 | MUST | Complete signed, offline-verifiable receipts for every decision | Partial; not demonstrated |
+| R5 | MUST | Complete signed, offline-verifiable receipts for every decision | Partial; mandatory Ed25519 signing is implemented, full schema/path proof remains |
 | R6 | MUST | Multi-level trusted identity binding and preservation | Partial; not demonstrated |
 | R7 | SHOULD | Calibrated cumulative semantic-distance tracking | Gap; current heuristic is not sufficient |
 | R8 | SHOULD | Structured near-real-time telemetry and historical export | Partial; not demonstrated |

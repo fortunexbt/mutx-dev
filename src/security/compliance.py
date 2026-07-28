@@ -128,9 +128,10 @@ _REQUIREMENTS: dict[str, _RequirementAssessment] = {
     "R5": _RequirementAssessment(
         ConformanceLevel.MUST,
         "Signed, offline-verifiable receipts with the complete required evidence",
-        "Receipt generation and optional Ed25519 signing exist, but signing is not mandatory, "
-        "an HMAC fallback is allowed, and the complete identity, policy, approval, deferral, "
-        "resolution, and outcome schema has not been demonstrated for every decision.",
+        "Receipt generation now requires Ed25519 signing, embeds offline verification data, "
+        "and rejects unsigned or non-Ed25519 records. The complete service identity, role, "
+        "privilege, policy hash/version, approval-resolution, credential-use, and production "
+        "path evidence has not been demonstrated for every decision.",
         "receipt_generator",
     ),
     "R6": _RequirementAssessment(

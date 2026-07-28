@@ -87,6 +87,8 @@ The following table lists the configurable parameters of the MUTX chart and thei
 | `secretEnv.DATABASE_URL` | PostgreSQL connection string | _(not set)_ |
 | `secretEnv.JWT_SECRET` | JWT signing secret | _(required in production)_ |
 | `secretEnv.SECRET_ENCRYPTION_KEY` | Secret encryption key | _(required in production)_ |
+| `secretEnv.RECEIPT_SIGNING_PRIVATE_KEY` | Hex-encoded 32-byte Ed25519 receipt signing seed | _(required in production)_ |
+| `secretEnv.RECEIPT_SIGNING_KEY_ID` | Stable receipt signing key identifier | `mutx-runtime` |
 | `secretEnv.OIDC_ISSUER` | OIDC provider issuer URL | _(not set)_ |
 | `secretEnv.OIDC_CLIENT_ID` | OIDC client ID | _(not set)_ |
 | `secretEnv.OIDC_JWKS_URI` | OIDC JWKS endpoint | _(not set)_ |
@@ -110,7 +112,8 @@ helm upgrade --install mutx-prod ./infrastructure/helm/mutx \
 - `autoscaling.enabled: false` until governance state is moved to shared storage
 - `env.LOG_LEVEL: "WARNING"`
 - `env.ENVIRONMENT: "production"`
-- `secretEnv.JWT_SECRET` and `secretEnv.SECRET_ENCRYPTION_KEY` must be set
+- `secretEnv.JWT_SECRET`, `secretEnv.SECRET_ENCRYPTION_KEY`, and
+  `secretEnv.RECEIPT_SIGNING_PRIVATE_KEY` must be set
 - Ingress enabled with TLS
 
 ## RBAC Setup

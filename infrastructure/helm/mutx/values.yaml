@@ -37,6 +37,8 @@ secretEnv:
   # DATABASE_URL: "postgresql://user:pass@localhost:5432/mutx"
   # JWT_SECRET: "replace-me"
   # SECRET_ENCRYPTION_KEY: "replace-me"
+  # RECEIPT_SIGNING_PRIVATE_KEY: "replace-with-64-hex-character-ed25519-seed"
+  # RECEIPT_SIGNING_KEY_ID: "mutx-production"
 
 autoscaling:
   enabled: false

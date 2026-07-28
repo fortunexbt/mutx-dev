@@ -23,7 +23,7 @@ These are **adjacent, not identical**. AGT is SDK-first (developer tooling). MUT
 | Policy engine | ✅ PolicyEngine + REST API | ✅ <0.1ms eval | Parity |
 | Action interception | ⚠️ Partial current AARM R1/R3; universal path coverage not demonstrated | ✅ Pre-execution gate | Unverified |
 | Approval workflows | ⚠️ Built-in flow; current AARM R4 STEP_UP/DEFER distinction incomplete | ⚠️ Delegates to custom code | Unverified |
-| Audit receipts | ⚠️ Optional signing; complete current AARM R5 evidence not demonstrated | ✅ Audit trails | AGT evidence stronger |
+| Audit receipts | ⚠️ Mandatory Ed25519 signing; complete current AARM R5 schema/path evidence not demonstrated | ✅ Audit trails | Verification depth remains unproven |
 | Credential brokering | ✅ 6 backends + TTL | ❌ None | **MUTX ahead** |
 | Context-aware eval | ⚠️ Session context plus heuristic intent signal; current AARM R2/R3/R7 incomplete | ⚠️ Partial | Unverified |
 | Runtime supervision | ✅ Faramesh 13-framework | ❌ SDK-level only | **MUTX ahead** |

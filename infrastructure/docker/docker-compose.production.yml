@@ -57,6 +57,8 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: 8000
       JWT_SECRET: ${JWT_SECRET}
+      RECEIPT_SIGNING_PRIVATE_KEY: ${RECEIPT_SIGNING_PRIVATE_KEY}
+      RECEIPT_SIGNING_KEY_ID: ${RECEIPT_SIGNING_KEY_ID:-mutx-production}
       RESEND_API_KEY: ${RESEND_API_KEY}
     depends_on:
       postgres:

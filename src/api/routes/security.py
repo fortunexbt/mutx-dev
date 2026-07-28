@@ -133,6 +133,7 @@ class ReceiptActionModel(BaseModel):
 class ReceiptResponse(BaseModel):
     """Response for a single action receipt."""
 
+    receipt_version: str = "1.0"
     receipt_id: str = ""
     action_id: str = ""
     action_hash: str = ""
@@ -149,8 +150,12 @@ class ReceiptResponse(BaseModel):
     outcome_detail: str = ""
     timestamp: str = ""
     duration_ms: Optional[int] = None
+    session_snapshot: Optional[dict[str, Any]] = None
+    prior_action_hashes: list[str] = Field(default_factory=list)
     signature: Optional[str] = None
     signed_by: Optional[str] = None
+    signature_algorithm: Optional[str] = None
+    signing_key_id: Optional[str] = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
