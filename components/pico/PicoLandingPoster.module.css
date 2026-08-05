@@ -120,13 +120,17 @@
 .hero {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 0.78fr) minmax(32rem, 1.22fr);
-  gap: clamp(3rem, 7vw, 8rem);
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: clamp(2.5rem, 5vw, 5rem);
   width: min(100% - 3rem, 100rem);
   min-height: 46rem;
   margin: 0 auto;
   padding: clamp(5rem, 8vw, 8rem) 0;
   align-items: center;
+}
+
+.heroCopy {
+  min-width: 0;
 }
 
 .hero::before {
@@ -170,7 +174,7 @@
 }
 
 .hero h1 {
-  max-width: 8.5ch;
+  max-width: 9ch;
   margin: 1.8rem 0 0;
   font-family: var(--font-site-display), var(--font-display), sans-serif;
   font-size: clamp(5rem, 8.8vw, 9rem);
