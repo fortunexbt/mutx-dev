@@ -178,7 +178,7 @@
   },
   "overrides": {
     "@babel/core": "^7.29.7",
-    "@xmldom/xmldom": "^0.9.10",
+    "@xmldom/xmldom": "^0.9.12",
     "app-builder-bin": "5.0.0-alpha.13",
     "brace-expansion@<2.0.0": "1.1.16",
     "brace-expansion@>=2.0.0 <3.0.0": "2.1.2",
